@@ -21,7 +21,7 @@ git submodule update
 ### 3. Logging Configuration
 You **MUST** set the Weights & Biases (wandb) key:
 ```bash
-export WANDB_KEY="<your_key>"
+export WANDB_API_KEY="<your_key>"
 ```
 Alternatively, modify line 65 in `verl-tool/examples/train/train_acecoder.sh`:
 - Change:

@@ -62,7 +62,7 @@ def main(config):
                 'NCCL_DEBUG': 'WARN',
                 'VLLM_LOGGING_LEVEL': 'WARN',
                 
-                "RAY_DEBUG_POST_MORTEM": "1"
+                "RAY_DEBUG_POST_MORTEM": "0"
             }
         }, num_cpus=32)
 
@@ -170,10 +170,10 @@ class TaskRunner:
             raise NotImplementedError
 
         compute_score = get_custom_reward_fn(config)
-        reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=0, compute_score=compute_score)
+        reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=0, compute_score=compute_score, config=config)
 
         # Note that we always use function-based RM for validation
-        val_reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=1, compute_score=compute_score)
+        val_reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=1, compute_score=compute_score, config=config)
 
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 

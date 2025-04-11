@@ -90,6 +90,14 @@ class PythonCodeTool(BaseTool):
         else:
             observation = _execute_program(action, timeout=self.timeout)
             done = False
-        observation = f"\nHere is the returned execution results of the above python codes:\n<output>{observation}</output>\n"
-        return observation, done, is_valid
+        
+        # if the output is empty, encourage the model to contibue generating more test cases
+        if observation == "":
+            assembled_observation = "\nThe execution results of the above python codes is empty. I will think about how to test the code differently.\n" 
+        else:
+            assembled_observation = f"\nHere is the returned execution results of the above python codes:\n<output>{observation}</output>\n"
+        
+        
+        
+        return assembled_observation, done, is_valid
     

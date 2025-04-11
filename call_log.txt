@@ -1,0 +1,1 @@
+Function multiply has been called 1 times.

@@ -31,6 +31,8 @@ import subprocess
 import time
 from pathlib import Path
 
+import wandb
+
 def hash_string(s):
     return hashlib.sha256(s.encode()).hexdigest()
 
@@ -92,7 +94,8 @@ class AceCoderRewardManager:
     The Reward Manager used in https://github.com/TIGER-AI-Lab/AceCoder
     """
 
-    def __init__(self, tokenizer, num_examine, compute_score=None) -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, config=None) -> None:
+        self.rm_config = config
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
@@ -134,6 +137,17 @@ class AceCoderRewardManager:
         question_hashes = [hash_string(question) for question in prompt_str]
         assert len(response_str) == len(ground_truth) == len(data_sources)
         
+        # TODO: process response strs. count the number of tool calls, if the number >= min and <= max then reward it for 1.
+        tool_call_counts = [len(re.findall(r"<python>(.|\n)*?</python>", response)) for response in response_str]
+        tool_use_min = self.rm_config.reward_model.tool_use_min_calls
+        tool_use_max = self.rm_config.reward_model.tool_use_max_calls
+        tool_call_rewards = [1.0 if tool_use_min <= count <= tool_use_max else 0.0 for count in tool_call_counts]
+        
+        # TODO: report average_toll_call_cnt to wandb
+        avg_tool_call_cnt = sum(tool_call_counts) / len(tool_call_counts)
+        print(f"[DEBUG] average tool call counts: {avg_tool_call_cnt}")
+        wandb.log({"toll_use/avg_tool_call_cnt": avg_tool_call_cnt})
+        
         samples = [
             {
                 'task_id': question_hash,
@@ -141,7 +155,8 @@ class AceCoderRewardManager:
                 'output': answer,
                 'original_response': response,
                 'tests': list(test_case),
-                '_identifier': f"{question_hash}_{i}"
+                '_identifier': f"{question_hash}_{i}",
+                "number_of_tool_calls": tool_call_counts[i],
             }
             for i, (question_hash, question, answer, test_case, response) in enumerate(zip(question_hashes, prompt_str, extracted_answers, ground_truth, response_str))
         ]
@@ -188,8 +203,11 @@ class AceCoderRewardManager:
         
         for i in range(len(data)):
             data_source = data_sources[i]
-            reward_tensor[i, valid_response_length[i].item() - 1] = scores[i]
-
+            
+            # TODO: add tool_use rewards
+            # reward_tensor[i, valid_response_length[i].item() - 1] = scores[i]
+            reward_tensor[i, valid_response_length[i].item() - 1] = scores[i] + tool_call_rewards[i]
+            
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
 

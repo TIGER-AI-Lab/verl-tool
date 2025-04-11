@@ -1,0 +1,5 @@
+# Application Configuration
+database = production_db
+port = 5432
+# timeout setting
+timeout = 30
