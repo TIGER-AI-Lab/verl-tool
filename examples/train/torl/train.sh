@@ -1,10 +1,12 @@
 set -x
-dataset_name=AceCoderV2-mini-processed-with-execution-prompt
-train_data=data/acecoder/$dataset_name/train.parquet
-val_data=data/acecoder/$dataset_name/test.parquet
-model_name=Qwen/Qwen2.5-7B-Instruct
+train_data=data/math_torl/train.parquet
+val_data=[data/math_torl/test.parquet,\
+data/math_torl/math500_test.parquet,\
+data/math_torl/aime24_test.parquet,\
+data/math_torl/aime25_test.parquet]
+model_name=Qwen/Qwen2.5-Math-7B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=4
+n_gpus_per_node=8
 n_nodes=1
 n=16
 batch_size=128
@@ -22,7 +24,7 @@ kl_coef=0
 entropy_coeff=0
 kl_loss_type=low_var_kl
 lr=1e-6
-reward_manager=acecoder
+reward_manager=torl
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=2
 
@@ -38,7 +40,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=0.0.0.0
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "python_code" --workers_per_tool 16 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "firejail_python_code" --workers_per_tool 32 &
 server_pid=$!
 echo "Server (pid=$server_pid) started at $tool_server_url"
 
@@ -88,7 +90,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     critic.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
     algorithm.kl_ctrl.kl_coef=$kl_coef \
     trainer.logger=['console','wandb'] \
-    trainer.project_name='acecoder' \
+    trainer.project_name='torl' \
     trainer.experiment_name=$run_name \
     trainer.val_before_train=False \
     trainer.default_hdfs_dir=null \

@@ -51,3 +51,4 @@ def code_exec_firejail(code, stdin: str = None):
 
 if __name__ == "__main__":
     print(code_exec_firejail("print('Hello, World!')"))
+

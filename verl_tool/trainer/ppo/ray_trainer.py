@@ -4,26 +4,26 @@ from .metric_utils import (
     agent_compute_data_metrics as compute_data_metrics,
     compute_timing_metrics,
 )
+from tqdm import tqdm
 
 def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty='kl'):
     responses = data.batch['responses']
     response_length = responses.size(1)
     token_level_scores = data.batch['token_level_scores']
     batch_size = data.batch.batch_size[0]
-    
-    # masking observations, instead of directly using original `attention_mask`
-    attention_mask = data.batch['info_mask']    
+    if 'info_mask' in data.batch.keys():
+        # masking observations, instead of directly using original `attention_mask`
+        attention_mask = data.batch['info_mask']
+    else:
+        attention_mask = data.batch['attention_mask']
     response_mask = attention_mask[:, -response_length:]
 
     # compute kl between ref_policy and current policy
-    if 'ref_log_prob' in data.batch.keys():
-        kld = core_algos.kl_penalty(data.batch['old_log_probs'], data.batch['ref_log_prob'],
-                                    kl_penalty=kl_penalty)  # (batch_size, response_length)
-        kld = kld * response_mask
-        beta = kl_ctrl.value
-    else:
-        beta = 0
-        kld = torch.zeros_like(response_mask, dtype=torch.float32)
+    # When apply_kl_penalty, algorithm.use_kl_in_reward=True, so the reference model has been enabled.
+    kld = core_algos.kl_penalty(data.batch['old_log_probs'], data.batch['ref_log_prob'],
+                                kl_penalty=kl_penalty)  # (batch_size, response_length)
+    kld = kld * response_mask
+    beta = kl_ctrl.value
 
     token_level_rewards = token_level_scores - beta * kld
 
@@ -34,10 +34,19 @@ def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, 
     kl_ctrl.update(current_kl=current_kl, n_steps=batch_size)
     data.batch['token_level_rewards'] = token_level_rewards
 
-    metrics = {'critic/kl': current_kl, 'critic/kl_coeff': beta}
+    metrics = {'actor/reward_kl_penalty': current_kl, 'actor/reward_kl_penalty_coeff': beta}
 
     return data, metrics
 
+def compute_response_mask(data: DataProto):
+    responses = data.batch['responses']
+    response_length = responses.size(1)
+    if 'info_mask' in data.batch.keys():
+        # masking observations, instead of directly using original `attention_mask`
+        attention_mask = data.batch['info_mask']
+    else:
+        attention_mask = data.batch['attention_mask']
+    return attention_mask[:, -response_length:]
 class AgentRayPPOTrainer(RayPPOTrainer):
     
     def fit(self):
@@ -67,6 +76,9 @@ class AgentRayPPOTrainer(RayPPOTrainer):
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get('val_only', False):
                 return
+
+        # add tqdm
+        progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
 
         # we start from step 1
         self.global_steps += 1
@@ -120,6 +132,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
 
+                    batch.batch['response_mask'] = compute_response_mask(batch)
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
@@ -156,13 +169,26 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                             batch = batch.union(reward_tensor)
 
                         # we combine with rule-based rm
-                        reward_tensor = self.reward_fn(batch)
+                        reward_extra_infos_dict: dict[str, list]
+                        try:
+                            reward_result = self.reward_fn(batch, return_dict=True)
+                            reward_tensor = reward_result['reward_tensor']
+                            reward_extra_infos_dict = reward_result['reward_extra_info']
+                        except Exception as e:
+                            print(f'Error in reward_fn: {e}')
+                            reward_tensor = self.reward_fn(batch)
+                            reward_extra_infos_dict = {}
+
                         batch.batch['token_level_scores'] = reward_tensor
 
+                        print(f'{list(reward_extra_infos_dict.keys())=}')
+                        if reward_extra_infos_dict:
+                            batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
+
                         # compute rewards. apply_kl_penalty if available
-                        if not self.config.actor_rollout_ref.actor.get('use_kl_loss', False):
+                        if self.config.algorithm.use_kl_in_reward:
                             batch, kl_metrics = apply_kl_penalty(batch,
-                                                                 kl_ctrl=self.kl_ctrl,
+                                                                 kl_ctrl=self.kl_ctrl_in_reward,
                                                                  kl_penalty=self.config.algorithm.kl_penalty)
                             metrics.update(kl_metrics)
                         else:
@@ -175,6 +201,10 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                                                   lam=self.config.algorithm.lam,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
 
+                    if "info_mask" in batch.batch.keys():
+                        # masking observations, instead of directly using original `attention_mask`
+                        ori_attention_mask = batch.batch['attention_mask']
+                        batch.batch['attention_mask'] = batch.batch['info_mask']
                     # update critic
                     if self.use_critic:
                         with _timer('update_critic', timing_raw):
@@ -189,6 +219,9 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
+                    if "info_mask" in batch.batch.keys():
+                        # restore original attention mask
+                        batch.batch['attention_mask'] = ori_attention_mask
 
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and \
@@ -216,6 +249,8 @@ class AgentRayPPOTrainer(RayPPOTrainer):
 
                 if is_last_step:
                     pprint(f'Final validation metrics: {last_val_metrics}')
+                    progress_bar.close()
                     return
 
+                progress_bar.update(1)
                 self.global_steps += 1
