@@ -61,10 +61,8 @@ def main(config):
                 'TOKENIZERS_PARALLELISM': 'true',
                 'NCCL_DEBUG': 'WARN',
                 'VLLM_LOGGING_LEVEL': 'WARN',
-                
-                "RAY_DEBUG_POST_MORTEM": "1"
             }
-        })
+        }, num_cpus=32)
 
     runner = TaskRunner.remote()
     ray.get(runner.run.remote(config))
@@ -163,6 +161,9 @@ class TaskRunner:
         elif reward_manager_name == 'acecoder':
             from verl_tool.agent_workers.reward_manager.acecoder import AceCoderRewardManager
             reward_manager_cls = AceCoderRewardManager
+        elif reward_manager_name == 'torl':
+            from verl_tool.agent_workers.reward_manager.torl import ToRLRewardManager
+            reward_manager_cls = ToRLRewardManager
         else:
             raise NotImplementedError
 

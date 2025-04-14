@@ -35,15 +35,15 @@ def agent_compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dic
     response_length = response_info['response_length']
     
      # metrics for actions
-    if 'turns_stats' in batch.meta_info:
-        metrics['env/number_of_actions/mean'] = float(np.array(batch.meta_info['turns_stats'], dtype=np.int16).mean())
-        metrics['env/number_of_actions/max'] = float(np.array(batch.meta_info['turns_stats'], dtype=np.int16).max())
-        metrics['env/number_of_actions/min'] = float(np.array(batch.meta_info['turns_stats'], dtype=np.int16).min())
-    if 'active_mask' in batch.meta_info:
-        metrics['env/finish_ratio'] = 1 - float(np.array(batch.meta_info['active_mask'], dtype=np.int16).mean())
-    if 'valid_action_stats' in batch.meta_info:
-        metrics['env/number_of_valid_action'] = float(np.array(batch.meta_info['valid_action_stats'], dtype=np.int16).mean())
-        metrics['env/ratio_of_valid_action'] = float((np.array(batch.meta_info['valid_action_stats'], dtype=np.int16) / np.array(batch.meta_info['turns_stats'], dtype=np.int16)).mean())
+    if 'turns_stats' in batch.non_tensor_batch:
+        metrics['env/number_of_actions/mean'] = float(np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16).mean())
+        metrics['env/number_of_actions/max'] = float(np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16).max())
+        metrics['env/number_of_actions/min'] = float(np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16).min())
+    if 'active_mask' in batch.non_tensor_batch:
+        metrics['env/finish_ratio'] = 1 - float(np.array(batch.non_tensor_batch['active_mask'], dtype=np.int16).mean())
+    if 'valid_action_stats' in batch.non_tensor_batch:
+        metrics['env/number_of_valid_action'] = float(np.array(batch.non_tensor_batch['valid_action_stats'], dtype=np.int16).mean())
+        metrics['env/ratio_of_valid_action'] = float((np.array(batch.non_tensor_batch['valid_action_stats'], dtype=np.int16) / np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16)).mean())
     
     metrics.update({
         # response length

@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fire>=0.7.0",
+    "psutils>=3.3.9",
+    "timeout-decorator>=0.5.0",
 ]
 
 [tool.setuptools]
@@ -17,4 +19,7 @@ tool_browser = [
 ]
 acecoder = [
     "AceCoder @ git+https://github.com/TIGER-AI-Lab/AceCoder.git@dev",
+]
+torl = [
+    "math-verify[antlr4-9-3]>=0.7.0",
 ]

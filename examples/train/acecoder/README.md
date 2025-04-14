@@ -1,7 +1,12 @@
 # AceCoder Training Guide
 
 ## Preparation Steps
-
+### Requirements
+```python
+git clone https://github.com/TIGER-AI-Lab/AceCoder.git
+pip install ./AceCoder
+pip install "evalplus[vllm]" --upgrade
+```
 ### 1. Dataset Preparation
 Download and process the dataset using the following command:
 ```bash

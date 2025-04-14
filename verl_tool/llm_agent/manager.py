@@ -41,10 +41,12 @@ class AgentActorManager:
             max_start_length=config.max_start_length,
             max_response_length=config.max_response_length,
         ))
-        if config.valid_actions is not None:
-            self.action_stop_tokens = [f"</{action}>" for action in config.valid_actions]
+        if os.path.exists(self.config.action_stop_tokens):
+            with open(self.config.action_stop_tokens, 'r') as f:
+                self.action_stop_tokens = f.read().strip('\n').split(',')
+            print(f"Using action stop tokens: {self.action_stop_tokens}")
         else:
-            self.action_stop_tokens = []
+            raise FileNotFoundError(f"Action stop tokens file '{self.config.action_stop_tokens}' not found.")
 
     def _batch_tokenize(self, responses: List[str]) -> torch.Tensor:
         """Tokenize a batch of responses."""
@@ -181,8 +183,8 @@ class AgentActorManager:
         return padded_tensor, padded_tensor_with_info
 
     def _update_right_side(self, right_side: Dict, 
-                          cur_responses: torch.Tensor,
-                          next_obs_ids: torch.Tensor = None) -> Dict:
+                cur_responses: torch.Tensor,
+                next_obs_ids: torch.Tensor = None) -> Dict:
         """Update right side state."""
         
         # observation exists, perform concatenation and masked concatenation
@@ -221,7 +223,7 @@ class AgentActorManager:
         # original_right_side = {'responses': initial_input_ids[:, []]}
         original_right_side = {'responses': initial_input_ids[:, []], 'responses_with_info_mask': initial_input_ids[:, []]}
         
-        turns_stats = torch.ones(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
+        turns_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
         valid_action_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
         active_mask = torch.ones(gen_batch.batch['input_ids'].shape[0], dtype=torch.bool)
         active_num_list = [active_mask.sum().item()]
@@ -280,7 +282,10 @@ class AgentActorManager:
                 responses_ids,
                 next_obs_ids
             )
-            
+        
+        agent_sampling_params = {
+            "n": 1, # already repeated by n times in _preprocess_inputs
+        } # reomve stop related params in the last call
         # final LLM rollout
         if active_mask.sum():
             rollings.batch = self.tensor_fn.cut_to_effective_len(
@@ -297,32 +302,47 @@ class AgentActorManager:
             meta_info = gen_output.meta_info            
             responses_ids, responses_str, do_actions = self._postprocess_responses(gen_output.batch['responses'], step)
             responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask)
-
-            # Execute in environment and process observations
-            active_uids = [traj_ids[i] for i in range(len(traj_ids)) if active_mask[i]]
-            next_obs, dones, valid_action = self.interact_with_tool_server(active_uids, responses_str, do_actions, active_mask)
+            
+            dones = []
+            j=0
+            for i, active in enumerate(active_mask):
+                if not active:
+                    dones.append(1)
+                else:
+                    if do_actions[j]:
+                        dones.append(0)
+                    else:
+                        dones.append(1)
+                    j += 1
+            assert j == len(do_actions), f"j: {j}, len(do_actions): {len(do_actions)}"
 
             curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
             active_mask = active_mask * curr_active_mask
             active_num_list.append(active_mask.sum().item())
-            valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
 
             original_right_side = self._update_right_side(
                 original_right_side,
                 responses_ids,
             )
             
-        meta_info['turns_stats'] = turns_stats.tolist()
-        meta_info['active_mask'] = active_mask.tolist()
-        meta_info['valid_action_stats'] = valid_action_stats.tolist()
+        # meta_info['turns_stats'] = turns_stats.tolist()
+        # meta_info['active_mask'] = active_mask.tolist()
+        # meta_info['valid_action_stats'] = valid_action_stats.tolist()
+        non_tensors = {
+            'traj_ids': traj_ids.tolist(),
+            'turns_stats': turns_stats.tolist(),
+            'valid_action_stats': valid_action_stats.tolist(),
+            'active_mask': active_mask.tolist(),
+        }
         
         print("ACTIVE_TRAJ_NUM:", active_num_list)
         
-        results = self._compose_final_output(original_left_side, original_right_side, meta_info)
+        results = self._compose_final_output(original_left_side, original_right_side, non_tensors, meta_info)
         return results
 
     def _compose_final_output(self, left_side: Dict,
                             right_side: Dict,
+                            non_tensors: Dict,
                             meta_info: Dict) -> Tuple[Dict, Dict]:
         """Compose final generation output."""
         final_output = right_side.copy()
@@ -367,7 +387,7 @@ class AgentActorManager:
             final_output['attention_mask']
         )
         
-        final_output = DataProto.from_dict(final_output)
+        final_output = DataProto.from_dict(final_output, non_tensors=non_tensors)
         final_output.meta_info.update(meta_info)
         
         return final_output
