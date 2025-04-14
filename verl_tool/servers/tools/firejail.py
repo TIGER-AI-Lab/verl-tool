@@ -9,7 +9,6 @@ import timeout_decorator
 
 TIMEOUT = 5
 
-# TODO: `exec` api should indicate whether success or not
 @timeout_decorator.timeout(TIMEOUT, use_signals=False)
 def _code_exec_firejail(code, stdin: str = None):
     env = os.environ.copy()
