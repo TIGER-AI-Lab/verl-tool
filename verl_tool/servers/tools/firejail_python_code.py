@@ -44,6 +44,37 @@ def check_forbidden_imports(code: str) -> bool:
     return False
 
 def execute_python_in_firejail(code: str, stdin: Optional[str] = None) -> str:
+    # ... existing code ...
+    
+    # Create a minimal environment instead of copying everything
+    original_env = os.environ.copy()
+    env = {}
+    
+    # Core system variables
+    essential_vars = [
+        "PATH", "HOME", "USER", "SHELL", 
+        "LANG", "LC_ALL", "LC_CTYPE", "TERM",
+        # Python-specific
+        "PYTHONIOENCODING", "PYTHONUNBUFFERED", "PYTHONHASHSEED", "PYTHONDONTWRITEBYTECODE",
+        # Runtime optimization
+        "MKL_NUM_THREADS", "OMP_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+        # Temp directories
+        "TMPDIR", "TEMP", "TMP",
+        # Display if needed
+        "DISPLAY", "XAUTHORITY"
+    ]
+    
+    # Copy only essential variables if they exist
+    for var in essential_vars:
+        if var in original_env:
+            env[var] = original_env[var]
+    
+    # Explicitly set optimization variables
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    
+    # ... rest of your existing code ...
+    
+def execute_python_in_firejail(code: str, stdin: Optional[str] = None) -> str:
     """
     Execute Python code in a Firejail sandbox with a timeout.
     
@@ -58,10 +89,34 @@ def execute_python_in_firejail(code: str, stdin: Optional[str] = None) -> str:
     if check_forbidden_imports(code):
         return "Execution blocked: Code contains potentially dangerous operations or imports."
     
-    env = os.environ.copy()
+    # Create a minimal environment instead of copying everything
+    original_env = os.environ.copy()
+    env = {}
+    
+    # Core system variables
+    essential_vars = [
+        "PATH", "HOME", "USER", "SHELL", 
+        "LANG", "LC_ALL", "LC_CTYPE", "TERM",
+        # Python-specific
+        "PYTHONIOENCODING", "PYTHONUNBUFFERED", "PYTHONHASHSEED", "PYTHONDONTWRITEBYTECODE",
+        # Runtime optimization
+        "MKL_NUM_THREADS", "OMP_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+        # Temp directories
+        "TMPDIR", "TEMP", "TMP",
+        # Display if needed
+        "DISPLAY", "XAUTHORITY"
+    ]
+    
+    # Copy only essential variables if they exist
+    for var in essential_vars:
+        if var in original_env:
+            env[var] = original_env[var]
+    
+    # Explicitly set optimization variables
     env["OPENBLAS_NUM_THREADS"] = "1"
+    
     if "PYTHONPATH" in env:
-        del env["PYTHONPATH"]  # avoid importing wrong stuff
+        del env["PYTHONPATH"]
     
     # Build the firejail command with resource limits
     command = [
