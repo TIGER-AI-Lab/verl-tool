@@ -114,6 +114,9 @@ class ToRLRewardManager:
             else:
                 reward = score
             
+            if extra_info['split'] == 'test': 
+                reward = reward if reward > 0 else 0
+                
             # execution penalty to do
             if "turns_stats" in data_item.non_tensor_batch:
                 num_turn = data_item.non_tensor_batch["turns_stats"]
@@ -121,7 +124,7 @@ class ToRLRewardManager:
                 is_active = data_item.non_tensor_batch["active_mask"]
                 is_done = not is_active
 
-            reward_tensor[i, valid_response_length - 1] = reward
+            reward_tensor[i, valid_response_length - 1] = reward 
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
@@ -143,6 +146,7 @@ class ToRLRewardManager:
                 'response': response_str,
                 'ground_truth': ground_truth,
                 'score': score,
+                'reward': reward,
                 'add_exec_penalty': add_exec_penalty,
                 'extra_info': extra_info,
                 'num_turn': num_turn,

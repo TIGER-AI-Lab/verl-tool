@@ -1,10 +1,13 @@
-export CUDA_VISIBLE_DEVICES=6
+export CUDA_VISIBLE_DEVICES=5,7
+export WANDB_API_KEY="31800be459915fc29628b8c03920c3b526d64109"
 
-set -x
+n_gpus_per_node=1
+n_nodes=1
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 train_data=data/math_hard/train.parquet
-val_data=data/math_hard/test.parquet
-model_name=Qwen/Qwen2.5-Math-1.5B
+val_data=data/math_hard/math500_test.parquet
+model_name=GAIR/ToRL-1.5B
+# model_name=/home/user/.cache/huggingface/hub/models--Qwen--Qwen2.5-Math-1.5B/snapshots/4a83ca6e4526a4f2da3aa259ec36c259f66b2ab2
 batch_size=128
 max_prompt_length=1024
 max_response_length=3072
@@ -18,15 +21,16 @@ kl_coef=0
 entropy_coeff=0
 
 host=0.0.0.0
-port=30268
+port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-# python -m verl_tool.servers.serve --host $host --port $port --tool_type "firejail_python_code" --workers_per_tool 32 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "firejail_python_code" --workers_per_tool 32 &
+# host=0.0.0.0
+# port=30207
+# tool_server_url=http://$host:$port/get_observation
 server_pid=$!
 echo "Server (pid=$server_pid) started at $tool_server_url"
 max_obs_length=512
 max_turns=1
-n_gpus_per_node=8
-n_nodes=1
 action_stop_tokens="\`\`\`output"
 temperature=1.0
 top_p=1.0
@@ -42,7 +46,7 @@ echo "$action_stop_tokens" > $action_stop_tokens_file
 echo "action_stop_tokens_file=$action_stop_tokens_file"
 
 # export VLLM_USE_V1=1
-PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
+python3 -m verl_tool.trainer.main_ppo \
     algorithm.adv_estimator=$rl_alg \
     data.train_files=$train_data \
     data.val_files=$val_data \
@@ -50,6 +54,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.val_batch_size=2048 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
+    +data.template_type=tir_base_0309 \
     reward_model.reward_manager=$reward_manager \
     actor_rollout_ref.model.path=$model_name \
     actor_rollout_ref.actor.optim.lr=$lr \
@@ -79,6 +84,10 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.rollout.max_num_seqs=1024 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    critic.optim.lr=1e-5 \
+    critic.strategy=$strategy \
+    critic.model.path=$model_name \
+    critic.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
     algorithm.kl_ctrl.kl_coef=$kl_coef \
     trainer.logger=['console','wandb'] \
     trainer.project_name='torl' \
