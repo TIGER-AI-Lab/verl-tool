@@ -305,3 +305,4 @@ outputs
 /test*
 /verl_step_records
 /state.json
+**/tmp.*
