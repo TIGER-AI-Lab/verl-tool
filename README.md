@@ -7,7 +7,8 @@ pip install uv # if not installed
 uv sync
 git submodule update --init --recursive
 source .venv/bin/activate
-uv pip install -e verl[vllm] # this shall use vllm==0.8.2 which uses the faster v1 engine 
+uv pip install -e verl[vllm]
+uv pip install vllm==0.8.1 # aligh with torl 
 uv pip install flash-attn --no-build-isolation
 ```
 

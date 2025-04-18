@@ -69,7 +69,7 @@ class AgentActorManager:
         else:
             n = self.config.n 
             inputs = inputs.repeat(n)
-        inputs.non_tensor_batch['traj_ids'] = np.array([str(uuid.uuid4()) for _ in range(len(inputs.batch))], dtype=object)
+        inputs.non_tensor_batch['traj_ids'] = np.array([str(uuid.uuid4()) for _ in range(len(inputs.batch))], dtype=object) # [bs*n]
         return inputs
         
     def _postprocess_responses(self, responses: torch.Tensor, action_step: int) -> torch.Tensor:
@@ -225,7 +225,7 @@ class AgentActorManager:
         
         turns_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
         valid_action_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
-        active_mask = torch.ones(gen_batch.batch['input_ids'].shape[0], dtype=torch.bool)
+        active_mask = torch.ones(gen_batch.batch['input_ids'].shape[0], dtype=torch.bool) # [bs*n]
         active_num_list = [active_mask.sum().item()]
         rollings = gen_batch
         traj_ids = gen_batch.non_tensor_batch['traj_ids']
@@ -245,23 +245,23 @@ class AgentActorManager:
             rollings.batch = self.tensor_fn.cut_to_effective_len(
                 rollings.batch,
                 keys=['input_ids', 'attention_mask', 'position_ids']
-            )
+            ) # TODO: delete 
             
             rollings_active = DataProto.from_dict({
                 k: v[active_mask] for k, v in rollings.batch.items()
             }, meta_info=ori_meta_info)
             with self.actor_rollout_wg.rollout.update_sampling_params(**agent_sampling_params):
-                gen_output = self.actor_rollout_wg.rollout.generate_sequences(rollings_active)
+                gen_output = self.actor_rollout_wg.rollout.generate_sequences(rollings_active) # [active_size, response_length]
             
             meta_info = gen_output.meta_info            
-            responses_ids, responses_str, do_actions = self._postprocess_responses(gen_output.batch['responses'], step)
-            responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask)
+            responses_ids, responses_str, do_actions = self._postprocess_responses(gen_output.batch['responses'], step) # [active_size, ...]
+            responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask) # [bs*n, response_length]
             print(f"Number of active trajectories: {active_mask.sum().item()}")
             print(f"Length of responses: {responses_ids.shape[1]}")
 
             # Execute in environment and process observations
             active_uids = [traj_ids[i] for i in range(len(traj_ids)) if active_mask[i]]
-            next_obs, dones, valid_action = self.interact_with_tool_server(active_uids, responses_str, do_actions, active_mask)
+            next_obs, dones, valid_action = self.interact_with_tool_server(active_uids, responses_str, do_actions, active_mask) # [active_size,]
             
             curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
             active_mask = active_mask * curr_active_mask
@@ -269,7 +269,7 @@ class AgentActorManager:
             turns_stats[curr_active_mask] += 1
             valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
 
-            next_obs_ids = self._process_next_obs(next_obs)
+            next_obs_ids = self._process_next_obs(next_obs) # [active_size, obs_length]
             
             # Update states
             rollings = self._update_rolling_state(
@@ -346,7 +346,7 @@ class AgentActorManager:
                             meta_info: Dict) -> Tuple[Dict, Dict]:
         """Compose final generation output."""
         final_output = right_side.copy()
-        final_output['prompts'] = left_side['input_ids']
+        final_output['prompts'] = left_side['input_ids'] # [bs*n, prompt_length]
         
         # padding responses length to max_response_length
         if final_output['responses'].shape[1] < self.config.max_response_length:
@@ -354,7 +354,7 @@ class AgentActorManager:
                 final_output['responses'],
                 max_length=self.config.max_response_length,
                 padding_side='right'
-            )
+            ) # [bs*n, max_response_length]
         
         # padding response_with_info_mask length to max_response_length 
         if final_output['responses_with_info_mask'].shape[1] < self.config.max_response_length:
@@ -362,30 +362,30 @@ class AgentActorManager:
                 final_output['responses_with_info_mask'],
                 max_length=self.config.max_response_length,
                 padding_side='right'
-            )
+            ) # [bs*n, max_response_length]
         
         # Combine input IDs
         final_output['input_ids'] = torch.cat([
             left_side['input_ids'],
             final_output['responses']
-        ], dim=1)
+        ], dim=1) # [bs*n, prompt_length + max_response_length]
         
         # Create attention mask 
         final_output['attention_mask'] = torch.cat([
             self.tensor_fn.create_attention_mask(left_side['input_ids']),
             self.tensor_fn.create_attention_mask(final_output['responses'])
-        ], dim=1)
+        ], dim=1) # [bs*n, prompt_length + max_response_length]
         
         # Create observation mask 
         final_output['info_mask'] = torch.cat([
             self.tensor_fn.create_attention_mask(left_side['input_ids']),
             self.tensor_fn.create_attention_mask(final_output['responses_with_info_mask'])
-        ], dim=1)
+        ], dim=1) # [bs*n, prompt_length + max_response_length]
         
         # Create position ids
         final_output['position_ids'] = self.tensor_fn.create_position_ids(
             final_output['attention_mask']
-        )
+        ) # [bs*n, prompt_length + max_response_length]
         
         final_output = DataProto.from_dict(final_output, non_tensors=non_tensors)
         final_output.meta_info.update(meta_info)
@@ -429,7 +429,7 @@ class AgentActorManager:
         print(f" - Number of non-finished actions: {len([x for x in do_actions if not x])} / {len(do_actions)}")
         
         from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=32) as executor:
+        with ThreadPoolExecutor(max_workers=32) as executor: # TODO: check
             results = list(tqdm(executor.map(self.dummy_tool, active_uids, responses, finishs), total=len(active_uids)))
         active_observations = [result[0] for result in results]
         active_dones = [result[1] for result in results]

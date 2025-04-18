@@ -293,7 +293,7 @@ tests/e2e/toy_examples/deepspeed/synchronous/output.txt
 # ckpt
 *.lock
 
-# data
+data/
 *.parquet
 
 
@@ -301,7 +301,6 @@ tests/e2e/toy_examples/deepspeed/synchronous/output.txt
 logs
 log
 outputs
-
-/test*
-/verl_step_records
-/state.json
+verl_checkpoints/
+verl_step_records/
+**/tmp.*
