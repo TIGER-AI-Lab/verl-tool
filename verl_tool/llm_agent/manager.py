@@ -115,9 +115,10 @@ class AgentActorManager:
 
         return next_obs_ids
 
-    def _update_rolling_state(self, rollings, cur_responses: torch.Tensor, 
+    def _update_rolling_state(self, left_side, rollings, cur_responses: torch.Tensor,
                             next_obs_ids: torch.Tensor) -> Dict:
         """Update rolling state with new responses and observations."""
+
         # Concatenate and handle padding        
         new_input_ids = self.tensor_fn.concatenate_with_padding([
             rollings.batch['input_ids'],
@@ -132,13 +133,44 @@ class AgentActorManager:
         # Cut to appropriate length
         effective_len = new_attention_mask.sum(dim=1).max()
         max_len = min(self.config.max_prompt_length, effective_len)
-        
-        new_rollings = DataProto.from_dict({
-            'input_ids': new_input_ids[:, -max_len:],
-            'position_ids': new_position_ids[:, -max_len:],
-            'attention_mask': new_attention_mask[:, -max_len:]
-        })
-        
+
+        if getattr(self.config, "rolling_with_prompt", False):
+            # Added Zhiheng, if rolling_with_prompt is True, then we need to keep the prompt
+            if isinstance(left_side, dict):
+                left_ids = left_side["input_ids"]
+            else:
+                left_ids = left_side.batch["input_ids"]
+
+            left_len = left_ids.size(1)
+
+            if left_len >= max_len:
+                final_input_ids = left_ids[:, -max_len:]
+            else:
+                right_budget = max_len - left_len
+                right_ids_full = new_input_ids[:, left_len:]
+                right_ids = right_ids_full[:, -right_budget:] if right_budget < right_ids_full.size(
+                    1) else right_ids_full
+                final_input_ids = torch.cat([left_ids, right_ids], dim=1)
+
+            final_attention_mask = self.tensor_fn.create_attention_mask(final_input_ids)
+            final_position_ids = self.tensor_fn.create_position_ids(final_attention_mask)
+
+            new_rollings = DataProto.from_dict(
+                {
+                    "input_ids": final_input_ids,
+                    "position_ids": final_position_ids,
+                    "attention_mask": final_attention_mask,
+                }
+            )
+        else:
+            new_rollings = DataProto.from_dict(
+                {
+                    "input_ids": new_input_ids[:, -max_len:],
+                    "position_ids": new_position_ids[:, -max_len:],
+                    "attention_mask": new_attention_mask[:, -max_len:],
+                }
+            )
+
         new_rollings.meta_info.update(rollings.meta_info)
         
         return new_rollings
@@ -207,9 +239,14 @@ class AgentActorManager:
             
         effective_len = self.tensor_fn.create_attention_mask(responses).sum(dim=1).max()
         max_len = min(self.config.max_response_length, effective_len)
-        
+
         # return the updated responses along with its masked version
-        return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
+        if self.config.truncate_response_side == 'left':
+            return {'responses': responses[:, :max_len], 'responses_with_info_mask': responses_with_info_mask[:, :max_len]}
+        elif self.config.truncate_response_side == 'right':
+            return {'responses': responses[:, -max_len:], 'responses_with_info_mask': responses_with_info_mask[:, -max_len:]}
+        else:
+            raise ValueError(f"Invalid truncate_response_side: {self.config.truncate_response_side}. Allowed options are 'left' or 'right'.")
         
 
     def run_llm_loop(self, gen_batch: DataProto) -> Tuple[Dict, Dict]:
@@ -236,6 +273,32 @@ class AgentActorManager:
             "include_stop_str_in_output": True,
             "detokenize": True
         }
+        if not self.config.action_before_observation:
+            # Added Zhiheng: Add initial observation to the prompt from server, use response=""
+            do_actions = [True] * len(traj_ids)
+            responses_str = [''] * len(traj_ids)
+            responses_ids = torch.zeros((len(traj_ids), 1), dtype=torch.int64)
+            active_uids = [traj_ids[i] for i in range(len(traj_ids)) if active_mask[i]]
+            next_obs, dones, valid_action = self.interact_with_tool_server(active_uids, responses_str, do_actions, active_mask)
+            curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
+            active_mask = active_mask * curr_active_mask
+            active_num_list.append(active_mask.sum().item())
+            # turns_stats[curr_active_mask] += 1
+            valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
+            next_obs_ids = self._process_next_obs(next_obs)
+            rollings = self._update_rolling_state(
+                original_left_side,
+                rollings,
+                responses_ids,
+                next_obs_ids
+            )
+            original_right_side = self._update_right_side(
+                original_right_side,
+                responses_ids,
+                next_obs_ids
+            )
+            # End of Added Zhiheng
+
         # Main generation loop
         for step in range(self.config.max_turns):
             if not active_mask.sum():
@@ -270,9 +333,13 @@ class AgentActorManager:
             valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
 
             next_obs_ids = self._process_next_obs(next_obs)
+
+            # Added Zhiheng: max_action_length, only keep the first max_action_length tokens
+            next_obs_ids = next_obs_ids[:, :self.config.max_action_length]
             
             # Update states
             rollings = self._update_rolling_state(
+                original_left_side,
                 rollings,
                 responses_ids,
                 next_obs_ids

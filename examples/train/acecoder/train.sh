@@ -12,6 +12,15 @@ ppo_mini_batch_size=$batch_size
 max_prompt_length=1024
 max_response_length=3072
 max_obs_length=512
+
+# === begin, added by Zhiheng ===
+max_action_length=512
+rolling_with_prompt=False
+action_before_observation=True
+truncate_obs_side=left # This is weird but required in the current code
+truncate_response_side=right
+# === end, added by Zhiheng ===
+
 temperature=1.0
 top_p=1.0
 strategy="fsdp_agent" # remove _agent for normal verl behavior
@@ -70,6 +79,11 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     +actor_rollout_ref.agent.max_response_length=$max_response_length \
     +actor_rollout_ref.agent.max_start_length=$max_prompt_length \
     +actor_rollout_ref.agent.max_obs_length=$max_obs_length \
+    +actor_rollout_ref.agent.max_action_length=$max_action_length \
+    +actor_rollout_ref.agent.rolling_with_prompt=$rolling_with_prompt \
+    +actor_rollout_ref.agent.action_before_observation=$action_before_observation \
+    +actor_rollout_ref.agent.truncate_obs_side=$truncate_obs_side \
+    +actor_rollout_ref.agent.truncate_response_side=$truncate_response_side \
     +actor_rollout_ref.agent.max_turns=$max_turns \
     +actor_rollout_ref.agent.num_gpus=$n_gpus_per_node \
     +actor_rollout_ref.agent.action_stop_tokens=$action_stop_tokens_file \
