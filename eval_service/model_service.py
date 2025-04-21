@@ -1,235 +1,219 @@
-import torch
-import re
-import time
-import uuid
+import uuid, time, torch, re
+from typing import List, Dict, Any, Tuple, Optional
 from vllm import LLM, SamplingParams
-from typing import List, Dict, Any, Optional, Union
+
 from config import ModelConfig, ToolConfig
 from utils import extract_python_tags, call_tool_server
 
+# -------------------------------------------------
+#                 ModelService
+# -------------------------------------------------
 class ModelService:
-    """verl-tool model inference service"""
-    
+    """verl‑tool   evaluation‑time inference service"""
+
     def __init__(self, model_config: ModelConfig, tool_config: ToolConfig):
-        """initialize model service"""
-        self.model_config = model_config
-        self.tool_config = tool_config
-        self.model = None
-        self.tokenizer = None
-        
+        self.model_config   = model_config
+        self.tool_config    = tool_config
+        self.model          = None
+        self.tokenizer      = None
+        self.stop_tokens    = tool_config.stop_tokens          # list[str]
+
+    # ---------- model loading ---------- #
     def load_model(self):
-        """load the model using VLLM backend"""
-        print(f"Loading Model using VLLM: {self.model_config.model_path}...")
+        print(f"[LOAD] VLLM model: {self.model_config.model_path}")
         self.model = LLM(
             model=self.model_config.model_path,
             tensor_parallel_size=self.model_config.tensor_parallel_size,
             gpu_memory_utilization=self.model_config.gpu_memory_utilization,
             max_model_len=self.model_config.max_model_len
         )
-        
-        print(f"Loading Tokenizer using VLLM: {self.model_config.model_path}...")
         self.tokenizer = self.model.get_tokenizer()
-        
-        
-        print("Model loaded successfully.")
         return self.model, self.tokenizer
-    
-    def format_system_user_prompt(self, system_prompt: str, user_message: str) -> str:
-        """Format the system and user messages into a single prompt string"""
-        
-        return f"<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{user_message}<|im_end|>\n<|im_start|>assistant\n"
 
-    def generate_with_tools(self, prompt, max_total_tokens=4096, max_chunk_tokens=1024, debug=False):
+    # ---------- prompt assembling ---------- #
+    @staticmethod
+    def format_system_user_prompt(system_prompt: List[str], user_msg: str) -> str:
+        assembled_system_prompt = '\n'.join(system_prompt)
+        return (
+            f"<|im_start|>system\n{assembled_system_prompt}<|im_end|>\n"
+            f"<|im_start|>user\n{user_msg}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+    # ---------- _postprocess_responses() ---------- #
+    def _postprocess_response(
+        self, resp: str, step_idx: int
+    ) -> Tuple[str, bool]:
         """
-        Generate text with tool calls in a multi-turn loop.
-        
-        Args:
-            prompt: Initial prompt for generation
-            max_total_tokens: Maximum total tokens to generate
-            max_chunk_tokens: Maximum tokens to generate in each chunk
-            
-        Returns:
-            Generated text with tool interactions
+        return type: (cleaned_resp, do_action)
+        - do_action=True when the model need to call tool
+        - do_action=False when the model does not need to call tool
         """
-        # initialize the context as the passed prompt (system prompt + question)
-        context = prompt
-        action_step = 0
+        resp = resp.strip(" \n")
         
-        if not debug:
-            total_tokens_used = len(self.tokenizer.encode(context))
+        # case: if the model has reached the minimum required number of tool-calling actions
+        if step_idx >= self.tool_config.min_action_num:
+            # check if the model produced the tool-calling request token
+            for tok in self.stop_tokens:
+                if resp.endswith(tok):
+                    return resp, True          # the model wants to call tool
+            return resp, False                 # otherwise the model does not want to call tool, halt
         else:
-            total_tokens_used = 0
-        
-        # initialize the response payload
-        return_payload = {
-            "full_response": "",
-            "final_response": ""   
-        }
-        
-        # keep trying to generate the response until reached the token limit or the tool-calling limit
-        while total_tokens_used < max_total_tokens and action_step < self.tool_config.max_turns:
-            # for each new generation, mark it as the next action step
-            action_step += 1
-            print(f"Action step {action_step}")
-            print(context)
-            
-            # for testing: in test mode avoid calling LLM
+            return resp, True                  # if the current step is less than the minimum required number of tool-calling actions, force one tool call
+
+    # ---------- main inference loop ---------- #
+    def generate_with_tools(
+        self,
+        prompt: str,
+        max_total_tokens: int = 4096,
+        max_chunk_tokens: int = 1024,
+        debug: bool = False,
+        verbose: bool = True
+    ) -> Dict[str, str]:
+
+        context      = prompt
+        traj_id      = str(uuid.uuid4())
+        tokens_used  = len(self.tokenizer.encode(prompt)) if not debug else 0
+        final_answer = ""
+
+        for step in range(self.tool_config.max_turns):
+            if verbose:
+                print(f"\n[STEP {step+1}/{self.tool_config.max_turns}] tokens={tokens_used}")
+
+            # generate text chunks
             if not debug:
-                # 1. generate the text chunk using the model
-                # fix for qwen 
-                # REF: https://github.com/vllm-project/vllm/issues/2947#issuecomment-1959569041
-                sampling_params = SamplingParams(
-                    temperature=0,
-                    top_p=0.9,
+                if verbose:
+                    print(f"  ↳ Context: {context}")
+                params = SamplingParams(
+                    temperature=self.model_config.temperature,
+                    top_p=self.model_config.top_p,
                     max_tokens=max_chunk_tokens,
-                    skip_special_tokens=False, 
-                    stop=["<|im_end|>", "<|endoftext|>"]
+                    stop=self.stop_tokens,
+                    skip_special_tokens=False,
                 )
-                
                 with torch.no_grad():
-                    outputs = self.model.generate(
-                        [context],
-                        sampling_params
-                    )
-                
-                response = outputs[0].outputs[0].text
-                print(f"[DEBUG] Generated text block: {response}")
+                    out = self.model.generate([context], params)
+                raw_resp = out[0].outputs[0].text.strip()
             else:
-                response = """
-                this is a dummy response without tool calling.
-                """
-                
-            # next: check if there is tool call, if not then break out the generation loop and try to extract the most recent code block in the entire context
-            # if there's tool call in the current block, then extract the code model want to execute, run it, get response and append it to the generated text
-            # otherwise stop generating and break out the generation loop as the model does not want to call tool anymore
-            
-            # set the flag to False, strip the response text chunk
-            has_action = False
-            response = response.strip(' \n')
+                raw_resp = "```python\nprint(1+1)\n``````output"
 
-            # define the tool-calling token (stop token) 
-            stop_token = "```output"
+            if verbose:
+                print(f"  ↳ LLM Response: {raw_resp}")
             
-            # check if the last part of the response text chunk include (part of) the stop token
-            for i in range(len(stop_token), 0, -1):
-                if response.endswith(stop_token[:i]):
-                    # if the last part of the response text chunk is the stop token
-                    # then we need to remove the stop token from the response text chunk
-                    trimmed_response = response[:-len(stop_token[:i])] 
-                    has_action = True
-                    break
-            # then need to extract the last python code block
-            if has_action:
-                extracted_python_code, is_code_found = extract_python_tags(trimmed_response)        
-                if is_code_found:
-                    print(f"[DEBUG] the extracted code is valid, will call too server")
-                    # interact with the tool server and retrieve observation result
-                    # create a trajectory id for interaction
-                    traj_id = str(uuid.uuid4())
-                    tool_response = call_tool_server(
-                        self.tool_config.tool_server_url,
-                        traj_id, 
-                        extracted_python_code, 
-                        has_action, 
-                    )
-                    next_obs = tool_response["observation"]
-                    valid_action = tool_response["valid"]
-                    
-                    print(f"\n[DEBUG] extracted code: {extracted_python_code}\n")
-                    print(f"\n[DEBUG] next_obs: {next_obs}, valid_action: {valid_action}\n")
+            # according to the current step and LLM response, determine whether to call tool or not
+            cleaned, need_tool = self._postprocess_response(raw_resp, step)
 
-                    if valid_action:
-                        # this round is finished, append the code execution result to the trimmed and cleaned response
-                        # then update the context
-                        response = trimmed_response + next_obs
-                        context += response
-                        
-                        if not debug:
-                            total_tokens_used += len(self.tokenizer.encode(response))
-                        else:
-                            total_tokens_used += 100
+            if not need_tool:
+                # LLM does not request for the tool call, extract the code block from the last response block
+                if verbose:
+                    print(f" ↳ LLM does not need tool, returning final answer.")
+                context += cleaned
+                # extract the last python code block from the last response
+                code, found = extract_python_tags(context)
+                if found:
+                    if verbose:
+                        print(f"  ↳ Extracted Code block: {code}")
+                    final_answer = code
+                else:
+                    if verbose:
+                        print(f"  ↳ No code block found, returning error.")
+                    final_answer = "No code block is found."
+                break
+            
+            
+            # LLM request for a tool call, extract the code block from the last response block and send to tool server
+            if verbose:
+                print(f"  ↳ LLM indicated tool use, extracting code block.")
+                print(f"  ↳ Raw Code block: {cleaned}")
+            code, found = extract_python_tags(cleaned)
+            
+            if not found:
+                # LLM indicate a tool call but no code block found, extract the last code block
+                if verbose:
+                    print(f"  ↳ No code block found in the last response block.")
+                context += cleaned
+                code, found = extract_python_tags(context)
+                if not found:
+                    if verbose:
+                        print(f"  ↳ No code block found, returning error.")
+                    final_answer = "No code block is found."
+                else:
+                    final_answer = code
+                break
+            
+            # found python code block, send it to the tool server    
+            print(f"  ↳ Successfully extracted Code block: {code}")
+            tool_ret = call_tool_server(
+                self.tool_config.tool_server_url,
+                traj_id,
+                python_code=code,
+                finish=False,
+            )
+            
+            # retrieve tool server response
+            observation = tool_ret["observation"]
+            done_flag   = tool_ret["done"]
+
+            # concatenate the tool server response with the context
+            context += cleaned + observation
+            # count tokens
+            if not debug:
+                tokens_used += len(self.tokenizer.encode(cleaned + observation))
             else:
-                # the model has not utilized tool calling in this iteration but the number of generation turns has reached the limit
-                if action_step > self.tool_config.min_turns:
-                    
-                    print(f"[DEBUG] current action step: {action_step}, min_turns: {self.tool_config.min_turns}")
-                    # no tool-calling token found, the model does not want to call tools anymore
-                    # then we try to extract the most recent python code and return the result
-                    most_recent_python_code, is_extract_success = extract_python_tags(response)
-                    
-                    if not is_extract_success:
-                        most_recent_python_code = "[ERR] No python code extracted"
-                        
-                    context += response
-                    return_payload = {
-                        "full_response": context,
-                        "final_response": most_recent_python_code 
-                    }                
-                    return return_payload    
-            
+                tokens_used += 1
+            if verbose:
+                print(f"  ↳ tool‑obs(valid={tool_ret['valid']}): {observation[:120]}")
+
+            # extra ending conditions
+            if done_flag or tokens_used >= max_total_tokens:
+                final_answer = code
+                break
         
-        # failsafe: if the loop ends without returning, then extract the most recent python code from the entire context
-        most_recent_python_code, is_extract_success = extract_python_tags(context)
-        if not is_extract_success:
-            most_recent_python_code = "[ERR] No python code extracted"
+        # failsafe: if the model does not actively stops, need to extract the last code block as its final response
+        if final_answer == "":
+            if verbose:
+                print(f"  ↳ No final answer, extracting the last code block.")
+            code, found = extract_python_tags(context)
+            if found:
+                if verbose:
+                    print(f"  ↳ Extracted Code block as the final response: {code}")
+                final_answer = code
+            else:
+                if verbose:
+                    print(f"  ↳ No code block found, returning error.")
+                final_answer = "No code block is found."
         
-        return_payload = {
-            "full_response": context,
-            "final_response": most_recent_python_code 
-        }
-        return return_payload    
-            
-        
-    # TODO: fix generation prompt
+        return {"full_response": context, "final_response": final_answer}
+
+    # OpenAI-compliant response generation
     def generate_response(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        """process API request and generate response"""
-        system_prompt = \
-"""
-Answer the given coding question. You must conduct reasoning about the problem and then provide the final program as answer. 
-During the thinking process, you can write test cases or test your current solutions using a testing tool. if you want to test any python code, writing it inside ```python and ``` tags following with "```output". 
-The code between "```python" and "``````output" will then be executed, and the terminal output (standard output and standard error) will be provided to you. 
-Each program between ```python and ``` tags are independent program. You can test Python codes as many times as you want. 
-If you find no further code execution needed, you can then give your final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything. 
-The final program will be evaluated against the hidden test cases. If the final program passes all the test cases, you will get a reward. If the final program fails any of the test cases, you will get a penalty.
-"""
-        
-        user_message = None
-        
-        # we keep the system message intact, only need to retrieve the user query
-        for message in messages:
-            if message["role"] == "user":
-                if user_message is None:  
-                    user_message = message["content"]
-        
-        if not user_message:
-            raise ValueError("No user message found in the request.")
-        
-        # 1. format the system and user messages into a single prompt string
-        prompt = self.format_system_user_prompt(system_prompt, user_message)
-        
-        # 2. utilize the model to generate the response
-        result = self.generate_with_tools(prompt)
-        
-        # TODO: implement token usage computation
-        # format the response into OpenAI-compliant format
+        system_prompt = [
+            'Answer the given coding question. You must conduct reasoning about the problem and then provide the final program as answer.',
+            'During the thinking process, you can write test cases or test your current solutions using a testing tool. if you want to test any python code, writing it inside ```python and ``` tags following with "```output".',
+            'The code between "```python" and "``````output" will then be executed, and the terminal output (standard output and standard error) will be provided to you.',
+            'Each program between ```python and ``` tags are independent program. You can test Python codes as many times as you want. ',
+            'If you find no further code execution needed, you can then give your final solution in a markdown code block like this:',
+            '```python\nyour code here\n``` without appending anything.',
+            'The final program will be evaluated against the hidden test cases. If the final program passes all the test cases, you will get a reward. If the final program fails any of the test cases, you will get a penalty.'
+        ]
+        user_msg = next((m["content"] for m in messages if m["role"] == "user"), None)
+        if not user_msg:
+            raise ValueError("No user message provided.")
+
+        prompt  = self.format_system_user_prompt(system_prompt, user_msg)
+        result  = self.generate_with_tools(prompt)
+
         return {
-            "id": f"chatcmpl-{str(uuid.uuid4())}",
+            "id": f"chatcmpl-{uuid.uuid4()}",
             "object": "chat.completion",
             "created": int(time.time()),
             "model": self.model_config.model_path,
             "choices": [
                 {
                     "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": f"{result['final_response']}"
-                    },
-                    "finish_reason": "stop"
+                    "message": {"role": "assistant", "content": result["final_response"]},
+                    "finish_reason": "stop",
                 }
             ],
-            "usage": {
-                "prompt_tokens": 0,  
-                "completion_tokens": 0,
-                "total_tokens": 0
-            }
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
