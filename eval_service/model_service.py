@@ -37,10 +37,7 @@ class ModelService:
     def format_system_user_prompt(self, system_prompt: str, user_message: str) -> str:
         """Format the system and user messages into a single prompt string"""
         
-        # print(f"[DEBUG] system_prompt: {system_prompt}\nuser_msg: {user_message}")
-        # return f"<|system|>\n{system_prompt}\n<|user|>\n{user_message}\n<|assistant|>\n"
-        
-        return f"{system_prompt}\n{user_message}\n"
+        return f"<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{user_message}<|im_end|>\n<|im_start|>assistant\n"
 
     def generate_with_tools(self, prompt, max_total_tokens=4096, max_chunk_tokens=1024, debug=False):
         """
@@ -186,19 +183,22 @@ class ModelService:
     # TODO: fix generation prompt
     def generate_response(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """process API request and generate response"""
-        system_prompt = "Answer the given coding question. You must conduct reasoning inside <think> and </think> first before you can finally output the final program. During the thinking, you can test your program by writing it inside <python> and </python> tags. The code will be executed, and the terminal output (standard output and standard error) will be returned between <output> and </output>. Each program between <python> and </python> tags are independent program. You can run Python code as many times as you want. If you find no further code execution needed, you can then give the final program in a markdown code block like this: ```python\nyour code here\n```. The final program will be evaluated against the test cases. If the final program passes all the test cases, you will get a reward. If the final program fails any of the test cases, you will get a penalty."
+        system_prompt = """\
+        Answer the given coding question. You must conduct reasoning about the problem and then provide the final program as answer. 
+        During the thinking process, you can write test cases or test your current solutions using a testing tool. if you want to test any python code, writing it inside ```python and ``` tags following with "```output". 
+        The code between "```python" and "``````output" will then be executed, and the terminal output (standard output and standard error) will be provided to you. 
+        Each program between ```python and ``` tags are independent program. You can test Python codes as many times as you want. 
+        If you find no further code execution needed, you can then give your final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything. 
+        The final program will be evaluated against the hidden test cases. If the final program passes all the test cases, you will get a reward. If the final program fails any of the test cases, you will get a penalty.
+        """
+        
         user_message = None
         
-        # TODO: verify prompt assembly logic
+        # we keep the system message intact, only need to retrieve the user query
         for message in messages:
-            if message["role"] == "system":
-                system_prompt = message["content"]
-            elif message["role"] == "user":
+            if message["role"] == "user":
                 if user_message is None:  
                     user_message = message["content"]
-        
-        if not system_prompt:
-            system_prompt = "Answer the given coding question. You must conduct reasoning inside <think> and </think> first before you can finally output the final program. During the thinking, you can test your program by writing it inside <python> and </python> tags. The code will be executed, and the terminal output (standard output and standard error) will be returned between <output> and </output>. Each program between <python> and </python> tags are independent program. You can run Python code as many times as you want. If you find no further code execution needed, you can then give the final program in a markdown code block like this: ```python\nyour code here\n```. The final program will be evaluated against the test cases. If the final program passes all the test cases, you will get a reward. If the final program fails any of the test cases, you will get a penalty."
         
         if not user_message:
             raise ValueError("No user message found in the request.")
