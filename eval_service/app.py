@@ -91,7 +91,7 @@ if __name__ == "__main__":
             model_path=os.environ.get("MODEL_PATH", "yi-34b-chat"),  # Path to the model
         ),
         tool_config=ToolConfig(
-            tool_server_url=os.environ.get("TOOL_SERVER_URL", "http://localhost:30150/get_observation"),  # URL for tool server
+            tool_server_url=os.environ.get("TOOL_SERVER_URL", "http://localhost:30094/get_observation"),  # URL for tool server
             valid_actions=json.loads(os.environ.get("VALID_ACTIONS", '["python"]')),  # List of valid tool actions
             max_turns=int(os.environ.get("MAX_TURNS", "5")),  # Maximum number of tool interaction turns
         ),

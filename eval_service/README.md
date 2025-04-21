@@ -25,6 +25,13 @@ If you need to convert a Megatron model to Hugging Face format:
 
 See the [VERL documentation](https://verl.readthedocs.io/en/latest/advance/checkpoint.html#convert-fsdp-and-megatron-checkpoints-to-huggingface-format-model) for detailed instructions.
 
+Specifically:
+
+~~~bash
+python3 /data/yi/verl-tool/verl/scripts/model_merger.py --local_dir /data/yi/verl-tool/checkpoints/torl/acecoder-fsdp_agent--grpo-n16-b128-t1.0-lr1e-6-20250419-153306/global_step_170/actor --backend fsdp --hf_model_path Qwen/Qwen2.5-1.5B-Instruct
+~~~
+
+
 ## Architecture
 
 The main tool-calling logic is implemented in: `model_service.py`, which took `manager.py` as a reference.
@@ -34,25 +41,13 @@ The main tool-calling logic is implemented in: `model_service.py`, which took `m
 ### Start the Complete Service
 
 ```bash
-# Select GPU to use
-export CUDA_VISIBLE_DEVICES=7
-
-# Start the tool server
-host=0.0.0.0
-port=$(shuf -i 30000-31000 -n 1)
-tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "python_code" &
-server_pid=$!
-echo "Server (pid=$server_pid) started at $tool_server_url"
-
-# Start the API service
-chmod +x start_service.sh
-./start_api_service.sh /path/to/model 0.0.0.0 8000 $tool_server_url
+# Start the API service directly
+bash start_api_service.sh 
 ```
 
 ### Configuration
 
-Update the tool server URL in `app.py` to match the actual port used:
+(Optional) Update the tool server URL in `app.py` to match the actual port used:
 
 ```python
 # Line 94 in app.py
