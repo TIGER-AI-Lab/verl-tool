@@ -7,6 +7,8 @@ import sys
 from typing import Tuple, Dict, Any, Optional
 from ..utils import kill_python_subprocess_processes
 
+import random
+
 # Timeout for code execution in seconds
 TIMEOUT = 5
 
@@ -173,6 +175,39 @@ class FirejailPythonCodeTool(BaseTool):
         """
         parsed_action, is_valid = self.parse_action(action)
         
+        heuristic_sentences = {
+            "empty": [
+                "Hmm, no output at all. Since nothing broke, I'll draft a few edge-case inputs to see if the function ever emits data:",
+                "The run is silent—no errors, no text. I’ll broaden the test suite and watch for any change in behaviour:",
+                "Blank output suggests the happy path passed; I’ll now probe unusual parameters to confirm:",
+                "Nothing was printed, yet the call completed. Let me invent some stress tests to check hidden branches:",
+                "Zero output but no crash: time to craft randomized cases and observe whether output appears under different conditions:"
+            ],
+            "timeout": [
+                "The call never returned—likely stuck in a heavy loop. I’ll scan the control flow and think about where it could stall.",
+                "Timeout reached. That hints at an expensive section or possible infinite recursion; I’ll trace the algorithm paths and rethink them.",
+                "Execution exceeded the limit. I’ll review the data size assumptions and consider simpler test inputs first.",
+                "Ran out of time—maybe I’m missing a termination condition. I’ll inspect loops and add safeguards before retrying.",
+                "Process froze long enough to trigger a timeout; I’ll look for bottlenecks and refactor the slow part."
+            ],
+            "error": [
+                "It crashed with error message: `<<ERR>>`. I’ll read the stack trace, locate the failing line, and reason out a fix.",
+                "Error message captured: `<<ERR>>`. I’ll match it against the code section and adjust the logic.",
+                "The run ended in an exception (<<ERR>>). I’ll rethink the assumptions that lead to that problem.",
+                "Received `<<ERR>>`. I’ll double-check code logic and try to fix the root cause.",
+                "Execution failed: `<<ERR>>`. I’ll analyze the traceback and locate the error source.",
+            ],
+            "success": [
+                "Output obtained: `<<OUT>>`. I’ll cross-check it with expectations and decide if more cases are needed.",
+                "Call succeeded with result `<<OUT>>`; next I’ll test boundary values to be thorough.",
+                "I see `<<OUT>>` as the response. I’ll verify its plausibility and consider edge cases.",
+                "Successful run—output reads `<<OUT>>`. I’ll think about corner cases the current test didn’t cover.",
+                "Result `<<OUT>>` returned without errors. I’ll validate it and add more tests if needed.",
+            ]
+        }
+
+
+        
         if not is_valid:
             # observation = "No valid Python code found. Please provide code in either <python>...</python> tags or ```python...``` code blocks."
             observation = "No valid Python code found. Please provide code in ```python...``` code blocks."
@@ -186,13 +221,29 @@ class FirejailPythonCodeTool(BaseTool):
             # Execute the code
             execution_result = execute_python_in_firejail(parsed_action, self.timeout, stdin)
             
-            # Format the result
-            if "Execution timed out" in execution_result:
-                observation = execution_result
+            # use heuristics to reformat the results, add sentences to encourage models continue thinking
+            # case: empty (correctly runned or the test case does not have output, need to check)
+            if execution_result == "":
+                # randomly select a sentence from the empty heuristic sentences
+                idx = random.randint(0, len(heuristic_sentences["empty"]) - 1)
+                observation = heuristic_sentences["empty"][idx]
+            
+            # case: execution timed out, need to check if the code is correct
+            elif "Execution timed out" in execution_result:
+                # observation = execution_result
+                idx = random.randint(0, len(heuristic_sentences["timeout"]) - 1)
+                observation = heuristic_sentences["timeout"][idx]
+            
+            # case: execution ends with error, need to look back and fix the bug
             elif "ERROR:" in execution_result:
-                observation = f"Execution completed with errors:\n{execution_result}"
+                # observation = f"Execution completed with errors:\n{execution_result}"
+                idx = random.randint(0, len(heuristic_sentences["error"]) - 1)
+                observation = heuristic_sentences["error"][idx].replace("<<ERR>>", execution_result)            
+            # case: generated output without error, need to check the code's output
             else:
-                observation = f"Execution result:\n{execution_result}"
+                # observation = f"Execution result:\n{execution_result}"
+                idx = random.randint(0, len(heuristic_sentences["success"]) - 1)
+                observation = heuristic_sentences["success"][idx].replace("<<OUT>>", execution_result)                
             done = False
             valid = True
         
