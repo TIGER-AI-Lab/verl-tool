@@ -21,7 +21,7 @@ max_turns=4
 api_host="0.0.0.0"
 api_port=5001
 action_stop_tokens='```output'
-tensor_parallel_size=2
+tensor_parallel_size=4
 num_models=1 # number of vllm instances; num_models * tensor_parallel_size should be equal to the number of GPUs
 # temp file for action tokens as verl cannot pass special strs as params
 action_stop_tokens_file=$(mktemp)

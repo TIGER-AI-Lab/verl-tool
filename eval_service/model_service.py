@@ -404,6 +404,17 @@ class ModelService:
                 completion_tokens += len(self.tokenizer.encode(response))
             total_tokens = prompt_tokens + completion_tokens
         
+        # perform regex-based filtering of each responses in all_responses
+        # filter out the last python code block in ```python<code_block>```, allow multi-lines
+        # if does not exist, then keep it as is
+        for i in range(len(all_responses)):
+            pattern = r"```python(.*?)```"
+            matches = re.findall(pattern, all_responses[i], re.DOTALL)
+            
+            if matches:
+                last_code_block = matches[-1]
+                all_responses[i] = "```python" + last_code_block + "```"
+        
         # format the response into OpenAI-compliant format
         return {
             "id": f"chatcmpl-{str(uuid.uuid4())}",
