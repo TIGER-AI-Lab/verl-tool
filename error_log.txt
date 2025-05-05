@@ -1,0 +1,904 @@
+2025-05-03 21:02:21,031 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:21,452 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:22,398 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:22,405 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:22,826 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:23,672 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:23,676 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:24,135 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:24,967 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:24,974 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:25,462 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:26,448 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:26,455 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:26,837 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:27,635 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:27,640 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:28,136 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:28,952 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:28,959 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:29,354 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:30,117 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:30,124 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:30,517 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:31,464 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:31,471 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:31,970 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:32,959 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:32,966 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:33,388 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:34,199 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:34,207 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:34,684 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:35,567 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:35,574 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:36,057 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:36,870 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:36,876 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:37,360 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:38,277 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:38,282 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:38,735 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:39,529 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:39,533 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:40,032 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:40,961 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:40,967 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:41,407 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:42,289 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:42,294 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:42,731 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:43,533 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:43,541 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:43,986 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:44,960 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:44,968 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:45,348 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:46,247 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:46,257 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:46,655 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:47,487 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:47,494 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:47,928 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:48,927 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:48,933 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:49,342 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:50,257 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:50,266 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:50,750 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:51,533 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:51,538 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:52,000 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:52,843 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:52,849 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:53,287 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:54,169 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:54,176 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:54,598 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:55,560 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:55,568 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:55,989 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:56,862 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:56,867 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:57,260 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:58,133 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:58,137 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:58,560 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:59,461 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:59,465 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:02:59,883 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:00,681 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:00,686 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:01,083 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:02,041 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:02,045 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:02,460 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:03,274 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:03,281 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:03,737 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:04,644 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:04,648 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:05,113 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:05,898 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:05,903 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:06,296 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:07,181 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:07,192 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:07,692 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:08,568 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:08,575 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:08,956 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:09,795 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:09,802 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+
+2025-05-03 21:03:10,249 - __main__ - ERROR - Error in chat completions endpoint: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+Traceback (most recent call last):
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/app.py", line 102, in completions
+    response = await app.state.model_service.chat_completions_async(request_body)
+  File "/home/luyi/luyi_workspace/verl-tool/eval_service/model_service.py", line 317, in chat_completions_async
+    assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+AssertionError: model mismatch: python -m lcb_runner.runner.main --model /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step --scenario codegeneration --evaluate  --release_version release_v4 != /home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step
+

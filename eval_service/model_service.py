@@ -317,18 +317,25 @@ class ModelService:
         assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
         
         async with self.encode_lock:
-            prompt = self.tokenizer.apply_chat_template(body['messages'],
-                                                    add_generation_prompt=True,
-                                                    tokenize=False)
+            # prompt = self.tokenizer.apply_chat_template(body['messages'],
+            #                                         add_generation_prompt=True,
+            #                                         tokenize=False)
+            
+            system_prompt = body["messages"][0]["content"]
+            problem = body["messages"][1]["content"]
+            prompt = f"system\n{system_prompt}\n\nuser\n{problem}\nassistant\n"
+            
         if body.get('n', 1) > 1:
             prompts = [prompt for _ in range(body["n"])]
         else:
             prompts = [prompt]
 
         sampling_params = {
-            "temperature": body.get("temperature", 1.0),
+            # "temperature": body.get("temperature", 1.0),
+            "temperature": 1.0,
             "max_tokens": body.get("max_tokens", body.get("max_completion_tokens", 512)),
-            "top_p": body.get("top_p", 1.0),
+            # "top_p": body.get("top_p", 1.0),
+            "top_p": 0.95,
             "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)),
         }
 
@@ -382,9 +389,9 @@ class ModelService:
             prompts = [prompt]
 
         sampling_params = {
-            "temperature": body.get("temperature", 1.0),
+            "temperature": 1,# body.get("temperature", 1.0),
             "max_tokens": body.get("max_tokens", body.get("max_completion_tokens", 512)),
-            "top_p": body.get("top_p", 1.0),
+            "top_p": 0.95,# body.get("top_p", 1.0),
             "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)),
         }
 

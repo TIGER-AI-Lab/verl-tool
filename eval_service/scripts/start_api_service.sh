@@ -9,13 +9,20 @@ server_pid=$!
 echo "Server (pid=$server_pid) started at $tool_server_url"
 
 # 2. start api service
-model_path=VerlTool/torl-fsdp_agent-qwen_qwen2.5-math-7b-grpo-n16-b128-t1.0-lr1e-6
+
+
+# model_path="/home/luyi/luyi_workspace/model_weights/acecoder-qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-5-turns-force-reflect-410-step"
+# model_path="/home/luyi/luyi_workspace/model_weights/mathcoder-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-no-toolusepenalty-390-step"
+# model_path="/home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step"
+model_path="/home/luyi/luyi_workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-69k-350-step"
+
+
 max_turns=4
 api_host="0.0.0.0"
-api_port=5000
+api_port=5001
 action_stop_tokens='```output'
-tensor_parallel_size=1
-num_models=4 # number of vllm instances; num_models * tensor_parallel_size should be equal to the number of GPUs
+tensor_parallel_size=2
+num_models=1 # number of vllm instances; num_models * tensor_parallel_size should be equal to the number of GPUs
 # temp file for action tokens as verl cannot pass special strs as params
 action_stop_tokens_file=$(mktemp)
 echo "$action_stop_tokens" > $action_stop_tokens_file
