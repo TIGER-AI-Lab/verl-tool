@@ -14,6 +14,21 @@ import asyncio
 import random
 import subprocess
 
+TEMPERATURE = 0
+TOP_P = 0.95
+PROMPT_TEMPLATE = "2"    # 1: <|im_start|>, 2: system\n
+POST_PROPCESSING = True
+system_prompt_choice=2
+
+MAX_OUTPUT_LEN=1024
+SYSTEM_PROMPTS = {
+    "1": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the coding problems below. If you want to test any python code, writing it inside <python> and </python> tags following with <output>. Please put your final answer in a markdown code block like this: python\nyour code here\n``` without appending anything.\n",
+    "2": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The Assistant can reason with the help of Python code. If the Assistant wants to run any Python code, it writes it inside ```python and ``` tags, and makes sure to follow it with \"```output\", meaning that it is requesting the code to be executed. Then the result of execution will be provided to the Assistant between \"```output\" and \"```\" for the python code block that it follows. \n\nCoding questions can ask various forms of program solutions:\n- If the coding question has a starter code, you may use the starter code to write the solution to the problem.\n- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.\n- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)\n\nThe Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything. \n",
+    "3": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the problem above. For math problems, please put your final answer within \\boxed{}. For code problems, please put your final answer in a markdown code block like this: ```python\nyour code here\n```.\n",
+    "4": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The Assistant can reason with the help of Python code. If the Assistant wants to run any Python code, it writes it inside ```python and ``` tags, and makes sure to follow it with \"```output\", meaning that it is requesting the code to be executed. Then the result of execution will be provided to the Assistant between \"```output\" and \"```\" for the python code block that it follows. The Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything.\n",
+}
+SYSTEM_PROMPT = SYSTEM_PROMPTS[str(system_prompt_choice)]
+
 # 1) A sanitizer that strips all embedded NULs (and, optionally, any
 #    other C0 control characters except common whitespace).
 CONTROL_CHAR_RE = re.compile(
@@ -314,17 +329,34 @@ class ModelService:
         if not 'user' in [message["role"] for message in body["messages"]]:
             raise ValueError("No user message found in the request.")
         
-        assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+        # assert body["model"] == self.model_config.model, f"model mismatch: {body['model']} != {self.model_config.model}"\
+        
+        # force replace the system prompt
+        if not "system" in [message["role"] for message in body["messages"]]:
+            body["messages"].insert(0, {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            })
+        else:
+            # force replace the system prompt
+            for i in range(len(body["messages"])):
+                if body["messages"][i]["role"] == "system":
+                    body["messages"][i]["content"] = SYSTEM_PROMPT
+                    break
+                
+        # print(f"\n\n\n[DEBUG] fixed request chat history: \n{body['messages']}\n\n\n")
         
         async with self.encode_lock:
-            # prompt = self.tokenizer.apply_chat_template(body['messages'],
-            #                                         add_generation_prompt=True,
-            #                                         tokenize=False)
+            if PROMPT_TEMPLATE == "1":
             
-            system_prompt = body["messages"][0]["content"]
-            problem = body["messages"][1]["content"]
-            prompt = f"system\n{system_prompt}\n\nuser\n{problem}\nassistant\n"
-            
+                prompt = self.tokenizer.apply_chat_template(body['messages'],
+                    add_generation_prompt=True,
+                    tokenize=False)
+            else:
+                system_prompt = body["messages"][0]["content"]
+                problem = body["messages"][1]["content"]
+                prompt = f"system\n{system_prompt}\n\nuser\n{problem}\nassistant\n"
+                
         if body.get('n', 1) > 1:
             prompts = [prompt for _ in range(body["n"])]
         else:
@@ -332,11 +364,12 @@ class ModelService:
 
         sampling_params = {
             # "temperature": body.get("temperature", 1.0),
-            "temperature": 1.0,
-            "max_tokens": body.get("max_tokens", body.get("max_completion_tokens", 512)),
+            "temperature": TEMPERATURE,
+            # "max_tokens": body.get("max_tokens", body.get("max_completion_tokens", 512)),
+            "max_tokens": MAX_OUTPUT_LEN,
             # "top_p": body.get("top_p", 1.0),
-            "top_p": 0.95,
-            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)),
+            "top_p": TOP_P,
+            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)) + ["<|fim_middle|>"],
         }
 
         all_responses, finish_reasons = await self.generate_with_tools(prompts, sampling_params)
@@ -389,10 +422,11 @@ class ModelService:
             prompts = [prompt]
 
         sampling_params = {
-            "temperature": 1,# body.get("temperature", 1.0),
-            "max_tokens": body.get("max_tokens", body.get("max_completion_tokens", 512)),
-            "top_p": 0.95,# body.get("top_p", 1.0),
-            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)),
+            "temperature": TEMPERATURE,
+            # "max_tokens": body.get("max_tokens", body.get("max_completion_tokens", 512)),
+            "max_tokens": MAX_OUTPUT_LEN,
+            "top_p": TOP_P,
+            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)) + ["<|fim_middle|>"],
         }
 
         all_responses, finish_reasons = await self.generate_with_tools(prompts, sampling_params)
@@ -407,14 +441,15 @@ class ModelService:
         # perform regex-based filtering of each responses in all_responses
         # filter out the last python code block in ```python<code_block>```, allow multi-lines
         # if does not exist, then keep it as is
-        for i in range(len(all_responses)):
-            pattern = r"```python(.*?)```"
-            matches = re.findall(pattern, all_responses[i], re.DOTALL)
+        if POST_PROPCESSING:
+            for i in range(len(all_responses)):
+                pattern = r"```python(.*?)```"
+                matches = re.findall(pattern, all_responses[i], re.DOTALL)
+                
+                if matches:
+                    last_code_block = matches[-1]
+                    all_responses[i] = "```python" + last_code_block + "```"
             
-            if matches:
-                last_code_block = matches[-1]
-                all_responses[i] = "```python" + last_code_block + "```"
-        
         # format the response into OpenAI-compliant format
         return {
             "id": f"chatcmpl-{str(uuid.uuid4())}",

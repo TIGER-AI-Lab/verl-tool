@@ -14,10 +14,19 @@ echo "Server (pid=$server_pid) started at $tool_server_url"
 # model_path="/home/luyi/luyi_workspace/model_weights/acecoder-qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-5-turns-force-reflect-410-step"
 # model_path="/home/luyi/luyi_workspace/model_weights/mathcoder-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-no-toolusepenalty-390-step"
 # model_path="/home/luyi/luyi_workspace/model_weights/mathcoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6new-330-step"
-model_path="/home/luyi/luyi_workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-69k-350-step"
+# model_path="/home/luyi/luyi_workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-69k-350-step"
 
+# model_path="/home/user/luyi-workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-122k-300-step"
+# model_path="/home/user/luyi-workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-wdcoder-150-step"
+# model_path="/home/user/luyi-workspace/model_weights/Qwen2.5-Coder-1B-TIR-SFT-new-Interpreter-Thinking"
+# model_path="/home/user/luyi-workspace/model_weights/Qwen2.5-Coder-7B-Inst-Interpreter-thinking-valid-tool"
+# model_path="/home/user/luyi-workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-122k-650-step"
+# model_path="/home/user/luyi-workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-with-wdcoder-400-step"
+# model_path="/home/user/luyi-workspace/model_weights/acecoder-fsdp-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-69k-no-tool-1070-step"
+# model_path="/home/user/luyi-workspace/model_weights/acecoder-fsdp-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-69k-no-tool-350-step"
+model_path="/home/user/luyi-workspace/model_weights/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-grpo-n16-b128-t1.0-lr1e-6-122k-650-step"
+max_turns=3
 
-max_turns=4
 api_host="0.0.0.0"
 api_port=5001
 action_stop_tokens='```output'
