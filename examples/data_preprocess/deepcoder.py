@@ -17,6 +17,7 @@ Preprocess the GSM8k dataset to parquet format
 import fire
 import os
 import datasets
+import json
 from pathlib import Path
 from tqdm import tqdm
 
@@ -33,6 +34,16 @@ naive_instruction = "Let's think step by step and generate the final program in 
 naive_execution_prompt = """
 A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The Assistant can reason with the help of Python code. If the Assistant wants to run any Python code, it writes it inside ```python and ``` tags, and makes sure to follow it with "```output", meaning that it is requesting the code to be executed. Then the result of execution will be provided to the Assistant between "```output" and "```" for the python code block that it follows. The Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything.
 """
+complex_execution_prompt = """
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The Assistant can reason with the help of Python code. If the Assistant wants to run any Python code, it writes it inside ```python and ``` tags, and makes sure to follow it with "```output", meaning that it is requesting the code to be executed. Then the result of execution will be provided to the Assistant between "```output" and "```" for the python code block that it follows. 
+
+Coding questions can ask various forms of program solutions:
+- If the coding question has a starter code, you may use the starter code to write the solution to the problem.
+- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.
+- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)
+
+The Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything. 
+"""
 # naive_execution_prompt = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the coding problems below. If you want to test any python code, writing it inside <python> and </python> tags, results will be inside <output> and </output>. Please put your final answer in a markdown code block like this: python\nyour code here\n``` without appending anything."""
 
 coder_instruction = """\
@@ -48,22 +59,42 @@ You are also allowed to analyze the problem with any other domain-specific knowl
 
 Now start thinking and generate the final program in a markdown code block like this: ```python\nyour code here\n```.
 """
+naive_coder_instruction = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. 
+
+Let's think step by step and generate the final program in a markdown code block like this: ```python\nyour code here\n```.
+"""
+
+complex_coder_instruction = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. 
+
+Coding questions can ask various forms of program solutions:
+- If the coding question has a starter code, you may use the starter code to write the solution to the problem.
+- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.
+- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)
+
+Let's think step by step and generate the final program in a markdown code block like this: ```python\nyour code here\n```.
+"""
 
 def main(
     dataset_path: str = 'agentica-org/DeepCoder-Preview-Dataset',
     subset='all',
     local_dir: str = 'data/deepcoder',
     add_execution_prompt: bool = False,
-    detaield_instruction: bool = False
+    propmt_type='complex',
+    add_public_tests: bool = False,
 ):
     all_subsets = ['lcbv5', 'taco', 'codeforces', 'primeintellect']
     assert subset in all_subsets + ['all'], f"Invalid subset {subset}, please choose from {all_subsets} or 'all'"
     
-    local_dir = Path(local_dir) / subset
+    local_dir = Path(local_dir)
+    local_dir_post_fix = ""
     if add_execution_prompt:
-        local_dir = local_dir.parent / (local_dir.name + '-with-execution-prompt')
-    if detaield_instruction:
-        local_dir = local_dir.parent / (local_dir.name + '-detailed')
+        local_dir_post_fix = "-with-execution-prompt"
+    if add_public_tests:
+        local_dir_post_fix += "-with-public-tests"
+    local_dir_post_fix += f"-{propmt_type}"
+    local_dir = local_dir / (subset + local_dir_post_fix)
     local_dir.mkdir(parents=True, exist_ok=True)
 
     if subset == 'all':
@@ -77,6 +108,8 @@ def main(
                         'problem': example['problem'],
                         'tests': example['tests'],
                         'data_source': _subset,
+                        'metadata': example.get('metadata', None),
+                        'starter_code': example.get('starter_code', None)
                     }
                 for example in dataset['train']])
             if "test" in dataset:
@@ -85,6 +118,8 @@ def main(
                         'problem': example['problem'],
                         'tests': example['tests'],
                         'data_source': _subset,
+                        'metadata': example.get('metadata', None),
+                        'starter_code': example.get('starter_code', None)
                     }
                 for example in dataset['test']])
         train_dataset = datasets.Dataset.from_list(train_data)
@@ -100,20 +135,64 @@ def main(
         else:
             test_dataset = None
 
-
+    
     # add a row to each data item that represents a unique id
     def make_map_fn(split):
 
         def process_fn(example, idx):
+            
+            if propmt_type == 'complex':
+                system_instruction = complex_execution_prompt if add_execution_prompt else complex_coder_instruction
+            elif propmt_type == 'naive':
+                system_instruction = naive_execution_prompt if add_execution_prompt else naive_coder_instruction
+            else:
+                raise ValueError(f"Unknown propmt_type: {propmt_type}")
+            
             question_raw = example.pop('problem')
             inputs_outputs = example.pop('tests')
             data_source = example.get('data_source', f"{dataset_path}-{subset}")
+            if "primeintellect" in data_source or 'codeforces' in data_source:
+                # special process of primeintellect dataset
+                inputs_outputs = json.loads(inputs_outputs)
+                fn_name = inputs_outputs[0].get("fn_name")
+                inputs_outputs = {
+                    "type": inputs_outputs[0].get("type"),
+                    "inputs": [inputs_outputs[j]['input'] for j in range(len(inputs_outputs))],
+                    "outputs": [inputs_outputs[j]['output'] for j in range(len(inputs_outputs))],
+                }
+                if fn_name:
+                    inputs_outputs["fn_name"] = fn_name
+                inputs_outputs = json.dumps(inputs_outputs)
+            if 'lcbv5' in data_source:
+                starter_code = example.get('starter_code')
+                if starter_code:
+                    question_raw += "\n\nHere is the starter code:\n" + example.get('starter_code', '')
+                tests = inputs_outputs
+                tests = json.loads(tests)
+                new_tests = {
+                    "type": tests[0]['testtype'],
+                    "inputs": [tests[j]['input'] for j in range(len(tests))],
+                    "outputs": [tests[j]['output'] for j in range(len(tests))]
+                }
+                if example['metadata']['func_name']:
+                    assert new_tests['type'] == "functional"
+                    func_name = example['metadata']['func_name']
+                    new_tests['fn_name'] = func_name
+                inputs_outputs = json.dumps(new_tests)
+            
+            if add_public_tests:
+                public_tests = json.loads(inputs_outputs)
+                public_tests['inputs'] = public_tests['inputs'][:3]
+                public_tests['outputs'] = public_tests['outputs'][:3]
+                public_tests = json.dumps(public_tests)
+            else:
+                public_tests = None
             data = {
                 "data_source": data_source,
                 "prompt": [
                     {
                         "role": "system",
-                        "content": naive_execution_prompt if add_execution_prompt else coder_instruction,
+                        "content": system_instruction,
                     },
                     {
                         "role": "user",
@@ -132,36 +211,49 @@ def main(
                     "question": question_raw,
                     "test_cases": None,
                     "inputs_outputs": inputs_outputs,
+                    "public_tests": public_tests,
                 }
             }
             return data
 
         return process_fn
+    batch_size=50 # this is required for processing lcbv5
+    features = {
+        'data_source': datasets.Value(dtype='string', id=None),
+        'prompt': [
+            {
+                'content': datasets.Value(dtype='string', id=None),
+                'role': datasets.Value(dtype='string', id=None)
+            }
+        ],
+        'ability': datasets.Value(dtype='string', id=None),
+        'reward_model': {
+            'ground_truth': datasets.Value(dtype='string', id=None),
+            'style': datasets.Value(dtype='string', id=None)
+        },
+        'extra_info': {
+            'id': datasets.Value(dtype='string', id=None),
+            'index': datasets.Value(dtype='int64', id=None),
+            'inputs_outputs': datasets.Value(dtype='large_string', id=None),
+            'question': datasets.Value(dtype='string', id=None),
+            'split': datasets.Value(dtype='string', id=None),
+            'test_cases': datasets.Value(dtype='null', id=None)
+        }
+    }
+    features = datasets.Features(features)
     if train_dataset is not None:
-        try:
-            train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True, remove_columns=train_dataset.column_names)
-        except Exception as e:
-            map_func = make_map_fn('train')
-            train_data = [map_func(example, idx) for idx, example in tqdm(enumerate(train_dataset), total=len(train_dataset), desc="Mapping train dataset")]
-            train_dataset = datasets.Dataset.from_list(train_data)
-            print(train_dataset)
+        train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True, remove_columns=train_dataset.column_names, features=features)
         print(f"Loaded {len(train_dataset)} training samples")
         print(f"Example of a training sample:")
         print(train_dataset[0])
-        train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
+        train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'), batch_size=batch_size)
         print(f"Saved to {len(train_dataset)} training samples to {local_dir}/train.parquet")
     if test_dataset is not None:
-        try:
-            test_dataset = test_dataset.map(function=make_map_fn('test'), with_indices=True, remove_columns=test_dataset.column_names)
-        except Exception as e:
-            map_func = make_map_fn('test')
-            test_data = [map_func(example, idx) for idx, example in tqdm(enumerate(test_dataset), total=len(test_dataset), desc="Mapping test dataset")]
-            test_dataset = datasets.Dataset.from_list(test_data)
-            print(train_dataset)
+        test_dataset = test_dataset.map(function=make_map_fn('test'), with_indices=True, remove_columns=test_dataset.column_names, features=features)
         print(f"Loaded {len(test_dataset)} testing samples")
         print(f"Example of a test sample:")
         print(test_dataset[0])
-        test_dataset.to_parquet(os.path.join(local_dir, 'test.parquet'))
+        test_dataset.to_parquet(os.path.join(local_dir, 'test.parquet'), batch_size=batch_size)
         print(f"Saved to {len(test_dataset)} testing samples to {local_dir}/test.parquet")
 
 if __name__ == '__main__':

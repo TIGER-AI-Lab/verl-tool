@@ -113,6 +113,10 @@ class ToRLRewardManager:
                     score['tool_use_penalty'] = 1
                 else:
                     score['tool_use_penalty'] = 0
+            else:
+                num_turn = 0
+                num_valid_action = 0
+                is_done = True
             
             if isinstance(score, dict):
                 reward = score["score"]

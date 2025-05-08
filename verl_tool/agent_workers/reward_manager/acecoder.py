@@ -33,12 +33,24 @@ import os
 import json
 import subprocess
 import time
+import ast
 from pathlib import Path
 
 def hash_string(s):
     return hashlib.sha256(s.encode()).hexdigest()
 
-def parse_code(action: str):
+def check_syntax(code_string):
+    try:
+        # Attempt to parse the code string
+        ast.parse(code_string)
+        return True
+    # except SyntaxError as e:
+    except Exception as e:
+        # If a SyntaxError is raised, the code is not valid
+        # print(f"Syntax error in code: {e}")
+        return False
+    
+def parse_code(action: str, mode="all"):
     """
     Parse the raw action string (which is the llm response) into an actual action and its contents.
     Ensures that the parsed code is valid and safe for execution.
@@ -55,15 +67,20 @@ def parse_code(action: str):
     if not all_valid_python_code:
         all_valid_python_code = re.findall(r"```python(.*?)```", action, re.DOTALL)
     
-    if not all_valid_python_code:
-        all_valid_python_code = re.findall(r"```(.*?)```", action, re.DOTALL)
-    
     if len(all_valid_python_code) == 0:
         return ""
     
-    # Use the final code block found (we could extend this to support multiple blocks)
-    parsed_code = all_valid_python_code[-1].strip()
-    
+    if mode == "all":
+        parsed_code = "\n".join([code for code in all_valid_python_code if check_syntax(code)])
+    elif mode == "first":
+        # Use the first code block found
+        parsed_code = all_valid_python_code[0]
+    elif mode == "last":
+        # Use the last code block found
+        parsed_code = all_valid_python_code[-1]
+    else:
+        raise ValueError(f"Invalid mode: {mode}. Use 'all', 'first', or 'last'.")
+    passed_code = parsed_code.strip(' \n')
     return parsed_code
 
 def prime_code_compute_score_async(data_source, solution_str, ground_truth, extra_info=None):
@@ -87,7 +104,10 @@ class AceCoderRewardManager:
         self.compute_score = compute_score or _default_compute_score
         self.step_idx = 0
         self.n_workers = 64
-        self.binary = False
+        self.binary = True
+        self.add_format_think_penalty = False # -0.5 if not begines with <think> and end with </think>
+        self.add_format_answer_penalty = False # -0.5 if not having <answer> </answer>
+        self.parse_code_mode = "last" # "all", "first", "last"
         try:
             from acecoder import evaluate_test_cases
         except ImportError:
@@ -118,9 +138,9 @@ class AceCoderRewardManager:
             for sample in samples:
                 f.write(json.dumps(sample) + "\n")
         # perform batched scoring for coding score: call the acecoder evaluation script to retrieve the coder part scores
-        output_file = Path(temp_file).with_suffix(f".eval_results{'_binary' if self.binary else ''}.jsonl").absolute()
+        output_file = Path(temp_file).with_suffix(f".eval_results_binary.jsonl").absolute()
         command = f"python -m acecoder.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} \
-            --extract_solution True --output_file {output_file} --test_details {not self.binary} \
+            --extract_solution True --output_file {output_file} --test_details True \
             --i_just_wanna_run True --min_time_limit 1 --gt_time_limit_factor 1"
         start = time.time()
         subprocess.run(command, shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
@@ -140,14 +160,17 @@ class AceCoderRewardManager:
         for i in range(len(scores)):
             scores[i]['pass_rate'] = pass_rates[i]
             scores[i]['binary_pass_rate'] = 1.0 if pass_rates[i] == 1.0 else 0.0
-            scores[i]['score'] = 1.0 if pass_rates[i] == 1.0 else -1.0 # -1.0 for failed test cases
+            if self.binary:
+                scores[i]['score'] = 1.0 if pass_rates[i] == 1.0 else -1.0 # -1.0 for failed test cases
+            else:
+                scores[i]['score'] = pass_rates[i]
         return scores
     
     def get_prime_code_data_score(self, data: DataProto, response_str, prompt_str, extracted_answers, test_cases):
         scores = [{} for _ in range(len(data))]
         data_sources = data.non_tensor_batch['data_source']
         
-        sequences_str = response_str
+        sequences_str = extracted_answers
         ground_truth = test_cases
         data_sources = ["taco"] * len(sequences_str)
         extra_info = [None] * len(sequences_str)
@@ -164,7 +187,10 @@ class AceCoderRewardManager:
         for i in range(len(scores)):
             scores[i]['pass_rate'] = pass_rates[i]
             scores[i]['binary_pass_rate'] = 1.0 if pass_rates[i] == 1.0 else 0.0
-            scores[i]['score'] = 1.0 if pass_rates[i] == 1.0 else -1.0 # -1.0 for failed test cases
+            if self.binary:
+                scores[i]['score'] = 1.0 if pass_rates[i] == 1.0 else -1.0
+            else:
+                scores[i]['score'] = pass_rates[i]
         return scores
         
         
@@ -211,12 +237,13 @@ class AceCoderRewardManager:
         
         # extract the answer for the list of responses
         extracted_answers = [re.sub(r"<think>(.|\n)*?</think>", "", response) for response in response_str]
-        extracted_answers = [parse_code(response) for response in extracted_answers]
+        extracted_answers = [parse_code(response, self.parse_code_mode) for response in extracted_answers]
         
         # retrieve the list of ground truths/test cases
         test_cases = []
         acecoder_data_idxs = []
         prime_code_data_idxs = []
+        # data.save_to_disk("temp_data.pkl")
         for i in range(len(data)):
             if data[i].non_tensor_batch['extra_info'].get("inputs_outputs"):
                 test_cases.append(data[i].non_tensor_batch['extra_info']['inputs_outputs'])
@@ -228,18 +255,34 @@ class AceCoderRewardManager:
                 raise ValueError(f"Cannot find test cases for data {i} in {data[i].non_tensor_batch['extra_info']}")
 
         # 1.1 process acecoder data
-        acecoder_data = data[acecoder_data_idxs]
-        acecoder_response_str = [response_str[i] for i in acecoder_data_idxs]
-        acecoder_prompt_str = [prompt_str[i] for i in acecoder_data_idxs]
-        acecoder_test_cases = [test_cases[i] for i in acecoder_data_idxs]
-        acecoder_scores = self.get_acecoder_data_score(acecoder_data, acecoder_response_str, acecoder_prompt_str, extracted_answers, acecoder_test_cases)
+        if len(acecoder_data_idxs) > 0:
+            acecoder_data = data[acecoder_data_idxs]
+            acecoder_response_str = [response_str[i] for i in acecoder_data_idxs]
+            acecoder_prompt_str = [prompt_str[i] for i in acecoder_data_idxs]
+            acecoder_test_cases = [test_cases[i] for i in acecoder_data_idxs]
+            acecoder_extracted_answers = [extracted_answers[i] for i in acecoder_data_idxs]
+            acecoder_scores = self.get_acecoder_data_score(acecoder_data, acecoder_response_str, acecoder_prompt_str, acecoder_extracted_answers, acecoder_test_cases)
+            print(f"Step {self.step_idx}: {len(acecoder_data_idxs)} acecoder data scores")
+            print(" - Average pass rate: ", sum([x['pass_rate'] for x in acecoder_scores]) / len(acecoder_scores))
+            print(" - Average binary pass rate: ", sum([x['binary_pass_rate'] for x in acecoder_scores]) / len(acecoder_scores))
+            print(" - Average score: ", sum([x['score'] for x in acecoder_scores]) / len(acecoder_scores))
+        else:
+            acecoder_scores = []
         
         # 1.2 
-        prime_code_data = data[prime_code_data_idxs]
-        prime_code_response_str = [response_str[i] for i in prime_code_data_idxs]
-        prime_code_prompt_str = [prompt_str[i] for i in prime_code_data_idxs]
-        prime_code_test_cases = [test_cases[i] for i in prime_code_data_idxs]
-        prime_code_scores = self.get_prime_code_data_score(prime_code_data, prime_code_response_str, prime_code_prompt_str, extracted_answers, prime_code_test_cases)
+        if len(prime_code_data_idxs) > 0:
+            prime_code_data = data[prime_code_data_idxs]
+            prime_code_response_str = [response_str[i] for i in prime_code_data_idxs]
+            prime_code_prompt_str = [prompt_str[i] for i in prime_code_data_idxs]
+            prime_code_test_cases = [test_cases[i] for i in prime_code_data_idxs]
+            prime_code_extracted_answers = [extracted_answers[i] for i in prime_code_data_idxs]
+            prime_code_scores = self.get_prime_code_data_score(prime_code_data, prime_code_response_str, prime_code_prompt_str, prime_code_extracted_answers, prime_code_test_cases)
+            print(f"Step {self.step_idx}: {len(prime_code_data_idxs)} prime code data scores")
+            print(" - Average pass rate: ", sum([x['pass_rate'] for x in prime_code_scores]) / len(prime_code_scores))
+            print(" - Average binary pass rate: ", sum([x['binary_pass_rate'] for x in prime_code_scores]) / len(prime_code_scores))
+            print(" - Average score: ", sum([x['score'] for x in prime_code_scores]) / len(prime_code_scores))
+        else:
+            prime_code_scores = []
         
         # 1.3 merge the scores
         idxs_map = sorted([(idx, i, 'acecoder') for i, idx in enumerate(acecoder_data_idxs)] + [(idx, i, 'prime_code') for i, idx in enumerate(prime_code_data_idxs)], key=lambda x: x[0])
@@ -248,7 +291,32 @@ class AceCoderRewardManager:
                 scores[i] = acecoder_scores[idxs_map[i][1]]
             else:
                 scores[i] = prime_code_scores[idxs_map[i][1]]
-        
+        # 1.4 format penalty
+        if self.add_format_think_penalty:
+            for i, response in enumerate(response_str):
+                match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
+                if not match:
+                    scores[i]['score'] -= 0.5
+                    scores[i]['think_format_penalty'] = 1
+                else:
+                    scores[i]['think_format_penalty'] = 0
+        if self.add_format_answer_penalty:
+            for i, response in enumerate(response_str):
+                match = re.search(r"<answer>(.*?)</answer>", response, re.DOTALL)
+                if not match:
+                    scores[i]['score'] -= 0.5
+                    scores[i]['answer_format_penalty'] = 1
+                else:
+                    scores[i]['answer_format_penalty'] = 0
+        # with open("test_scores", 'w') as f:
+        #     json.dump({
+        #         "prime_code": prime_code_scores,
+        #         "acecoder": acecoder_scores,
+        #         "scores": scores,
+        #         "acecoder_data_idxs": acecoder_data_idxs,
+        #         "prime_code_data_idxs": prime_code_data_idxs,
+        #     }, f, indent=4)
+            
         # 2. Adding additional penalty for errored or timed out
         keywords = ["ERROR:\nTraceback", "Execution timed out"]
         for i, response in enumerate(response_str):
@@ -292,17 +360,19 @@ class AceCoderRewardManager:
                     "prompt": prompt_str[i],
                     "response": response_str[i],
                     "extracted_code": extracted_answers[i],
-                    "ground_truth": test_cases[i],
+                    "ground_truth": "",
                     "score": scores[i],
                     'extra_info': data[i].non_tensor_batch.get('extra_info', None),
                 }
                 for i in range(len(data))
             ]
-            if "turns_stats" in data.non_tensor_batch:
-                for i in range(len(data)):
+            for i in range(len(data)):
+                if "turns_stats" in data.non_tensor_batch:
                     to_save_records[i]['num_turn'] = data[i].non_tensor_batch["turns_stats"]
                     to_save_records[i]['num_valid_action'] = data[i].non_tensor_batch["valid_action_stats"]
                     to_save_records[i]['is_done'] = not data[i].non_tensor_batch["active_mask"]
+                if isinstance(to_save_records[i]['extra_info']['inputs_outputs'], str) and len(to_save_records[i]['extra_info']['inputs_outputs']) > 1000:
+                    to_save_records[i]['extra_info']['inputs_outputs'] = to_save_records[i]['extra_info']['inputs_outputs'][:1000]
             # Save the records to a file
             if self.num_examine == 1:
                 temp_file = self.record_dir / f"acecoder-step-val-{self.step_idx}.json"

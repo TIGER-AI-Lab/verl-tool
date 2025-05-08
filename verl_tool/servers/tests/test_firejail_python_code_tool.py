@@ -36,8 +36,9 @@ def test_firejail_python(
     """Test Firejail Python code execution with various test cases"""
     
     print("--- Test 1: Basic Hello World ---")
-    action = """<python>print('Hello from Firejail Python!')</python>"""
+    action = """```python\ndef compute_project_statistics(projects):\n    # Dictionary to store the results\n    project_statistics = {}\n    \n    # Iterate through each project\n    for project in projects:\n        project_id = project[\"Id\"]\n        values = project[\"Values\"]\n        \n        # Calculate the total sum of values for the project\n        total = sum(values)\n        \n        # Calculate the average of values for the project\n        average = total / len(values)\n        \n        # Store the project statistics in the dictionary\n        project_statistics[project_id] = {\n            \"total\": total,\n            \"average\": average\n        }\n    \n    # Return the dictionary containing the project statistics\n    return project_statistics\n```\n```output"""
     print(_send_test_request(url, trajectory_id, action, "Hello World"))
+    exit(1)
     
     print("--- Test 1.1: History code running ---")
     action = """### Problem Title: Find the Least Recently Backed Up File

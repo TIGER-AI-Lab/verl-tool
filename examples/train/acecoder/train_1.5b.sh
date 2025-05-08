@@ -1,29 +1,38 @@
-set -x
-dataset_name1=acecoder_long/CodeDPO-AceCoderV2-150K-processed-Qwen32B-inference-with-execution-prompt
-dataset_name2=deepcoder/primeintellect-with-execution-prompt
-dataset_name3=deepcoder/taco-with-execution-prompt
-dataset_name4=deepcoder/lcbv5-with-execution-prompt
-train_data=[$(pwd)/data/${dataset_name1}/train.parquet,\
-$(pwd)/data/${dataset_name2}/train.parquet,\
-$(pwd)/data/${dataset_name3}/train.parquet]
-val_data=[$(pwd)/data/${dataset_name1}/test.parquet,\
-$(pwd)/data/${dataset_name4}/test.parquet]
+ppset -x
+dataset_name1=acecoder_long/CodeDPO-AceCoderV2-150K-processed-Qwen32B-inference-with-execution-prompt-complex
+dataset_name2=deepcoder/all-with-execution-prompt-complex
+dataset_name3=acecoderv2/AceCoderV2-122K-processed-filtered-with-execution-prompt-complex
+dataset_name4=acecoder_long/AceCoderV2-69K-with-execution-prompt-with-public-tests-complex
+dataset_name5=acecoder_custom/AceCoderV2-69K-system-prompt-1
+dataset_name6=acecoder_custom/AceCoderV2-69K-system-prompt-2
+dataset_name7=acecoder_custom/AceCoderV2-69K-system-prompt-3
+# train_data=[$(pwd)/data/${dataset_name1}/train.parquet,\
+# $(pwd)/data/${dataset_name2}/train.parquet]
+# val_data=[$(pwd)/data/${dataset_name1}/test.parquet,\
+# $(pwd)/data/${dataset_name2}/test.parquet]
+
+train_data=[$(pwd)/data/${dataset_name6}/train.parquet]
+val_data=[$(pwd)/data/${dataset_name6}/test.parquet]
 
 model_name=Qwen/Qwen2.5-Coder-1.5B
+# model_name=VerlTool/Qwen2.5-Coder-1B-TIR-SFT-new-Interpreter-Thinking
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
 n=16
 batch_size=128
-ppo_mini_batch_size=64
-max_prompt_length=1024
+ppo_mini_batch_size=$batch_size
+max_prompt_length=1536
 max_response_length=3072
 max_obs_length=512
 temperature=1.0
 top_p=1.0
 strategy="fsdp_agent" # remove _agent for normal verl behavior
 action_stop_tokens="\`\`\`output"
+# action_stop_tokens="</python>"
 max_turns=1
+min_action_num=0
+mask_observations=True # mask observations for kl loss and gradient descent
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -38,9 +47,10 @@ do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollo
 use_dynamic_bsz=True # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
+additional_eos_token_ids=[151660] # <|fim_middle|> token id
 
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="-with-deepcoder-data"
+run_name_postfix="-69k-sys2"
 run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 export VERL_RUN_ID=$run_name
 export NCCL_DEBUG=INFO
@@ -91,8 +101,11 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     +actor_rollout_ref.agent.max_start_length=$max_prompt_length \
     +actor_rollout_ref.agent.max_obs_length=$max_obs_length \
     +actor_rollout_ref.agent.max_turns=$max_turns \
+    +actor_rollout_ref.agent.min_action_num=$min_action_num \
     +actor_rollout_ref.agent.num_gpus=$n_gpus_per_node \
     +actor_rollout_ref.agent.action_stop_tokens=$action_stop_tokens_file \
+    +actor_rollout_ref.agent.additional_eos_token_ids=$additional_eos_token_ids \
+    +actor_rollout_ref.agent.mask_observations=$mask_observations \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$tensor_model_parallel_size \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.rollout.name=vllm \
@@ -117,14 +130,14 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name=$reward_manager \
     trainer.experiment_name=$run_name \
-    trainer.val_before_train=True \
+    trainer.val_before_train=False \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=$n_nodes \
     +trainer.remove_previous_ckpt_in_save=True \
-    trainer.save_freq=10 \
-    trainer.test_freq=10 \
-    trainer.total_epochs=2
+    trainer.save_freq=50 \
+    trainer.test_freq=50 \
+    trainer.total_epochs=1
 
 
 pkill -P -9 $server_pid

@@ -12,6 +12,8 @@ import uvicorn
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from .utils import hash_requests
+from collections import defaultdict
 
 from .tools import get_tool_cls, ALL_TOOLS
 
@@ -281,9 +283,19 @@ class AsyncToolServer:
             description="A server for executing tools based on agent requests using asyncio",
             version="1.0.0",
         )
+        self.processing_tasks = {}
         
         # Set up routes and event handlers
         self._configure_app()
+        
+    async def _decrement_reference_counter(self, data_hash_str):
+        """Decrement reference counter and clean up if no more references"""
+        if data_hash_str in self.processing_tasks:
+            self.processing_tasks[data_hash_str]['ref_count'] -= 1
+            # If no more references, remove from processing tasks
+            if self.processing_tasks[data_hash_str]['ref_count'] <= 0:
+                del self.processing_tasks[data_hash_str]
+                logger.debug(f"Cleaned up completed task: {data_hash_str}")
         
     def _configure_app(self):
         """Configure FastAPI app with routes and event handlers"""
@@ -291,68 +303,97 @@ class AsyncToolServer:
         # Create a semaphore to limit concurrent processing
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
         
-        # Request handling route
         @self.app.post("/get_observation", response_model=AgentResponse)
         async def handle_observation_request(request: Request, background_tasks: BackgroundTasks):
             async with semaphore:
                 # Parse request
                 data = await request.json()
-                logger.debug(f"Received request: {data}")
+                data_hash_str = hash_requests(data)
+                logger.debug(f"Request hash: {data_hash_str}")
                 
-                try:
-                    # Handle raw request data first for more flexible input handling
-                    # Convert any numeric trajectory_ids to strings
-                    if "trajectory_ids" in data:
-                        data["trajectory_ids"] = [str(tid) if not isinstance(tid, str) else tid 
-                                                 for tid in data.get("trajectory_ids", [])]
-                    
-                    # Validate and process request
-                    trajectory_ids = data.get("trajectory_ids", [])
-                    actions = data.get("actions", [])
-                    if 'extra_fields' in data.keys():
-                        extra_fields = data['extra_fields']
-                        assert len(extra_fields) == len(trajectory_ids)
-                    else:
-                        extra_keys = [k for k in data.keys() if k not in ["trajectory_ids", "actions"]]
-                        extra_fields = [
-                            {key: data[key][i] for key in extra_keys} 
-                            for i in range(len(trajectory_ids))
-                        ]
-                    
-                    observations, dones, valids = await self.tool_manager.process_actions(
-                        trajectory_ids,
-                        actions,
-                        extra_fields
-                    )
-                    
-                    # Create response
-                    response = AgentResponse(
-                        observations=observations,
-                        dones=dones,
-                        valids=valids
-                    )
-                    # import json
-                    # with open("request_response.json", "w") as f:
-                    #     json.dump([
-                    #         {
-                    #             "trajectory_id": trajectory_ids[i],
-                    #             "action": actions[i],
-                    #             "extra_field": extra_fields[i],
-                    #             "observation": observations[i],
-                    #             "done": dones[i],
-                    #             "valid": valids[i]
-                    #         } for i in range(len(trajectory_ids))
-                    #     ], f, indent=4)
-                    logger.debug(f"Sending response: {response}")
-                    return response
-                    
-                except Exception as e:
-                    logger.error(f"Error processing request: {e}", exc_info=True)
-                    return JSONResponse(
-                        status_code=500,
-                        content={"error": f"Failed to process request: {str(e)}"}
-                    )
-        
+                # Check if this request is already being processed
+                if data_hash_str in self.processing_tasks:
+                    self.processing_tasks[data_hash_str]["ref_count"] += 1
+                    logger.debug(f"Duplicate request detected: {data_hash_str}")
+                    # Wait for the original request to complete
+                    while True:
+                        # Check if result is available
+                        if self.processing_tasks[data_hash_str]['result'] is not None:
+                            logger.debug(f"Result for duplicate request {data_hash_str} is ready")
+                            response = self.processing_tasks[data_hash_str]['result']
+                            # Schedule background task to decrement reference counter
+                            background_tasks.add_task(self._decrement_reference_counter, data_hash_str)
+                            return response
+                        # Wait a bit before checking again
+                        await asyncio.sleep(0.5)
+                else:
+                    self.processing_tasks[data_hash_str] = {"ref_count": 1, "result": None}
+                    try:
+                        # Handle raw request data first for more flexible input handling
+                        # Convert any numeric trajectory_ids to strings
+                        if "trajectory_ids" in data:
+                            data["trajectory_ids"] = [str(tid) if not isinstance(tid, str) else tid 
+                                                    for tid in data.get("trajectory_ids", [])]
+                        
+                        # Validate and process request
+                        trajectory_ids = data.get("trajectory_ids", [])
+                        actions = data.get("actions", [])
+                        if 'extra_fields' in data.keys():
+                            extra_fields = data['extra_fields']
+                            for key in data.keys():
+                                assert len(data[key]) == len(trajectory_ids), f"Length of {key} ({len(data[key])}) does not match trajectory_ids ({len(trajectory_ids)})"
+                                if key not in ["trajectory_ids", "actions", "extra_fields"]:
+                                    for i in range(len(trajectory_ids)):
+                                        extra_fields[i][key] = data[key][i]
+                            assert len(extra_fields) == len(trajectory_ids), f"Length of extra_fields ({len(extra_fields)}) does not match trajectory_ids ({len(trajectory_ids)})"
+                        else:
+                            extra_keys = [k for k in data.keys() if k not in ["trajectory_ids", "actions"]]
+                            extra_fields = [
+                                {key: data[key][i] for key in extra_keys} 
+                                for i in range(len(trajectory_ids))
+                            ]
+                        
+                        observations, dones, valids = await self.tool_manager.process_actions(
+                            trajectory_ids,
+                            actions,
+                            extra_fields
+                        )
+                        
+                        # Create response
+                        response = AgentResponse(
+                            observations=observations,
+                            dones=dones,
+                            valids=valids
+                        )
+                        # import json
+                        # with open("request_response.json", "w") as f:
+                        #     json.dump([
+                        #         {
+                        #             "trajectory_id": trajectory_ids[i],
+                        #             "action": actions[i],
+                        #             "extra_field": extra_fields[i],
+                        #             "observation": observations[i],
+                        #             "done": dones[i],
+                        #             "valid": valids[i]
+                        #         } for i in range(len(trajectory_ids))
+                        #     ], f, indent=4)
+                        logger.debug(f"Sending response: {response}")
+                        # Store the result for potential duplicate requests
+                        self.processing_tasks[data_hash_str]['result'] = response
+                        # Schedule background task to decrement reference counter
+                        background_tasks.add_task(self._decrement_reference_counter, data_hash_str)
+                        return response
+                        
+                    except Exception as e:
+                        # On error, remove the task from processing
+                        if data_hash_str in self.processing_tasks:
+                            del self.processing_tasks[data_hash_str]
+                        logger.error(f"Error processing request: {e}", exc_info=True)
+                        return JSONResponse(
+                            status_code=500,
+                            content={"error": f"Failed to process request: {str(e)}"}
+                        )
+            
         # Health check endpoint
         @self.app.get("/health")
         async def health_check():
@@ -401,6 +442,7 @@ def main(
     numeric_level = getattr(logging, log_level.upper(), None)
     if isinstance(numeric_level, int):
         logging.basicConfig(level=numeric_level)
+        logger.setLevel(numeric_level)
     
     # Convert string to tuple of tool types if needed
     if isinstance(tool_type, str):

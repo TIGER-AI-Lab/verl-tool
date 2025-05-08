@@ -4,6 +4,7 @@ import re
 import ray
 import uuid
 import json
+import random
 import regex as re
 import numpy as np
 import requests
@@ -79,6 +80,13 @@ class AgentActorManager:
                 raise ValueError(f"action_stop_tokens file not found: {self.config.action_stop_tokens}")
         else:
             self.action_stop_tokens = [] 
+        self.additional_eos_token_ids = self.config.additional_eos_token_ids
+        if isinstance(self.additional_eos_token_ids, str):
+            self.additional_eos_token_ids = [int(x) for x in self.additional_eos_token_ids.split(',')]
+        elif isinstance(self.additional_eos_token_ids, list):
+            self.additional_eos_token_ids = [int(x) for x in self.additional_eos_token_ids]
+        elif self.additional_eos_token_ids is None:
+            self.additional_eos_token_ids = []
 
     def _batch_tokenize(self, responses: List[str]) -> torch.Tensor:
         """Tokenize a batch of responses."""
@@ -95,13 +103,17 @@ class AgentActorManager:
         """
         # we manually repeat the input by n times if needed since every trajectory is independent
         do_sample = inputs.meta_info.get("do_sample", True)
+        assert 'traj_ids' in inputs.non_tensor_batch, "traj_ids should be claimed univerally in the ray trainer"
+        ori_len = len(inputs.batch['input_ids'])
         if not do_sample:
             n = 1
         else:
             n = self.config.n
-            inputs = inputs.repeat(n)
-
-        inputs.non_tensor_batch['traj_ids'] = np.array([str(uuid.uuid4()) for _ in range(len(inputs.batch))], dtype=object) # [bs*n]
+            inputs = inputs.repeat(n, interleave=True)
+        # add "_{i}" for each trajectory to the traj_ids
+        for i in range(ori_len):
+            for j in range(n):
+                inputs.non_tensor_batch['traj_ids'][i*n+j] += f"_{j}"
         return inputs
 
     def _postprocess_responses(self, responses: torch.Tensor, action_step: int) -> torch.Tensor:
@@ -166,9 +178,12 @@ class AgentActorManager:
         new_position_ids = self.tensor_fn.create_position_ids(new_attention_mask)
 
         # Cut to appropriate length
-        effective_len = new_attention_mask.sum(dim=1).max()
-        max_len = min(self.config.max_prompt_length, effective_len)
-
+        effective_lens = new_attention_mask.sum(dim=1)
+        effective_len = effective_lens.max()
+        min_effective_len = effective_lens.min()
+        # max_len = min(self.config.max_prompt_length, effective_len)
+        max_len = min(self.config.max_prompt_length+self.config.max_response_length, effective_len)
+        available_context_budget = max(0, self.config.max_prompt_length+self.config.max_response_length - min_effective_len)
         if getattr(self.config, "rolling_with_prompt", False):
             # Added Zhiheng, if rolling_with_prompt is True, then we need to keep the system prompt
             if isinstance(left_side, dict):
@@ -208,7 +223,8 @@ class AgentActorManager:
         new_rollings.non_tensor_batch = rollings.non_tensor_batch.copy()
         new_rollings.meta_info.update(rollings.meta_info)
 
-        return new_rollings
+
+        return new_rollings, available_context_budget
 
     def _info_masked_concatenate_with_padding(self,
         prompt: torch.Tensor,
@@ -297,6 +313,11 @@ class AgentActorManager:
     def run_llm_loop(self, gen_batch: DataProto) -> Tuple[Dict, Dict]:
         """Run main LLM generation loop."""
         ori_meta_info = gen_batch.meta_info
+        if self.additional_eos_token_ids:
+            if isinstance(ori_meta_info['eos_token_id'], list):
+                ori_meta_info['eos_token_id'].extend(self.additional_eos_token_ids)
+            else:
+                ori_meta_info['eos_token_id'] = [ori_meta_info['eos_token_id']] + self.additional_eos_token_ids
         gen_batch = self._preprocess_inputs(gen_batch)
 
         initial_input_ids = gen_batch.batch['input_ids'][:, -self.config.max_start_length:].clone()
@@ -321,7 +342,8 @@ class AgentActorManager:
             "n": 1,  # already repeated by n times in _preprocess_inputs
             "stop": self.action_stop_tokens,  # stop when generated an end of action
             "include_stop_str_in_output": True,
-            "detokenize": True
+            "detokenize": True,
+            "stop_token_ids": self.additional_eos_token_ids,
         }
 
         if self.config.call_tool_first:
@@ -352,7 +374,7 @@ class AgentActorManager:
                 else:
                     turns_stats_extra["obs_lengths"][i].append(0)
 
-            rollings = self._update_rolling_state(
+            rollings, available_context_budget = self._update_rolling_state(
                 original_left_side,
                 rollings,
                 responses_ids,
@@ -363,6 +385,7 @@ class AgentActorManager:
                 responses_ids,
                 next_obs_ids
             )
+            agent_sampling_params['max_tokens'] = available_context_budget
             # print("Before overlong dones:", active_mask.sum().item())
             active_mask = active_mask * (~overlong_dones.to(active_mask.dtype).to(active_mask.device))
             # print("After overlong dones:", active_mask.sum().item())
@@ -381,15 +404,16 @@ class AgentActorManager:
                 keys=['input_ids', 'attention_mask', 'position_ids']
             ) # TODO: delete
 
-            rollings_active = DataProto.from_dict({
-                k: v[active_mask] for k, v in rollings.batch.items()
-            }, meta_info=ori_meta_info)
+            rollings_active = DataProto.from_dict(
+                {k: v[active_mask] for k, v in rollings.batch.items()},
+                {k: v[active_mask] for k, v in rollings.non_tensor_batch.items()},
+                meta_info=ori_meta_info
+            )
             if step == self.config.max_turns:
                 agent_sampling_params.pop('stop')
             with self.actor_rollout_wg.rollout.update_sampling_params(**agent_sampling_params):
                 gen_output = self.actor_rollout_wg.rollout.generate_sequences(rollings_active) # [active_size, response_length]
 
-            meta_info = gen_output.meta_info
             responses_ids, responses_str, do_actions = self._postprocess_responses(gen_output.batch['responses'], step) # [active_size, ...]
             responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask) # [bs*n, response_length]
 
@@ -411,12 +435,13 @@ class AgentActorManager:
             active_uids = [traj_ids[i] for i in range(len(traj_ids)) if active_mask[i]]
             next_obs, dones, valid_action = self.interact_with_tool_server(
                 active_uids, responses_str, do_actions, active_mask,
-                extra_fields=rollings.non_tensor_batch.get('extra_info', None)
+                extra_fields=rollings_active.non_tensor_batch.get('extra_info', None)
             )
 
-            # for debug
+            # # for debug
             # with open(f"temp-{step}.json", 'w') as f:
             #     json.dump([{
+            #         'prompt': self.tokenizer.decode(rollings_active.batch['input_ids'][i], skip_special_tokens=True),
             #         'response': resp,
             #         'do_action': do_action,
             #         'traj_id': traj_id,
@@ -445,7 +470,7 @@ class AgentActorManager:
                     turns_stats_extra["obs_lengths"][i].append(0)
 
             # Update states
-            rollings = self._update_rolling_state(
+            rollings, available_context_budget = self._update_rolling_state(
                 original_left_side,
                 rollings,
                 responses_ids,
@@ -456,6 +481,7 @@ class AgentActorManager:
                 responses_ids,
                 next_obs_ids
             )
+            agent_sampling_params['max_tokens'] = available_context_budget
             # print("Before overlong dones:", active_mask.sum().item())
             active_mask = active_mask * (~overlong_dones.to(active_mask.dtype).to(active_mask.device))
             # print("After overlong dones:", active_mask.sum().item())
@@ -543,10 +569,13 @@ class AgentActorManager:
         ], dim=1) # [bs*n, prompt_length + max_response_length]
 
         # Create observation mask
-        final_output['info_mask'] = torch.cat([
-            self.tensor_fn.create_attention_mask(left_side['input_ids']),
-            self.tensor_fn.create_attention_mask(final_output['responses_with_info_mask'])
-        ], dim=1) # [bs*n, prompt_length + max_response_length]
+        if self.config.mask_observations:
+            final_output['info_mask'] = torch.cat([
+                self.tensor_fn.create_attention_mask(left_side['input_ids']),
+                self.tensor_fn.create_attention_mask(final_output['responses_with_info_mask'])
+            ], dim=1) # [bs*n, prompt_length + max_response_length]
+        else:
+            final_output['info_mask'] = final_output['attention_mask']
 
         # Create position ids
         final_output['position_ids'] = self.tensor_fn.create_position_ids(
@@ -601,7 +630,7 @@ class AgentActorManager:
             "finish": finishs, # if do_action is False, then it is a finish action, finishing the trajectory,
         }
         if extra_fields is not None:
-            batch_data['extra_fields'] = extra_fields
+            batch_data['extra_fields'] = extra_fields.tolist() if isinstance(extra_fields, np.ndarray) else extra_fields
         print(f" - Number of finished responses: {len([x for x in do_actions if not x])} / {len(do_actions)}")
         response = self.send_batch_requests(batch_data)
         active_observations = response['observations']

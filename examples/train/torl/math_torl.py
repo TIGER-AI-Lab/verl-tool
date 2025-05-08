@@ -30,7 +30,7 @@ def extract_solution(solution_str):
 system_prompot = '''A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the problem above, and put your final answer within \\boxed{}.:
 '''
 
-system_prompot2 = '''A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the problem above. If you want to test any python code, writing it inside <python> and  </python> tags following with <output>. Please put your final answer within \\boxed{}.:
+system_prompt2 = '''A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the problem above. If you want to test any python code, writing it inside <python> and  </python> tags following with <output>. Please put your final answer within \\boxed{}.:
 '''
 
 def main(
@@ -47,7 +47,7 @@ def main(
     test_dataset = dataset['test']
     
     if sys_prompt_version == 'v2':
-        system_prompot = system_prompot2
+        system_prompot = system_prompt2
     else:
         system_prompot = system_prompot
     

@@ -32,6 +32,32 @@ naive_instruction = "Let's think step by step and generate the final program in 
 naive_execution_prompt = """
 A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The Assistant can reason with the help of Python code. If the Assistant wants to run any Python code, it writes it inside ```python and ``` tags, and makes sure to follow it with "```output", meaning that it is requesting the code to be executed. Then the result of execution will be provided to the Assistant between "```output" and "```" for the python code block that it follows. The Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything.
 """
+
+r1_naive_execution_prompt = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>. If the Assistant wants to run any Python code when thinking, it writes it inside "```python" and "```" tags, and makes sure to have "```output" after the python code block, meaning that it is requesting the code to be executed. Then the result of execution will in the output markdown block.
+"""
+
+complex_execution_prompt = """
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The Assistant can reason with the help of Python code. If the Assistant wants to run any Python code, it writes it inside "```python" and "```" tags, and makes sure to have "```output" after the python code block, meaning that it is requesting the code to be executed. Then the result of execution will in the output markdown block.
+
+Coding questions can ask various forms of program solutions:
+- If the coding question has a starter code, you may use the starter code to write the solution to the problem.
+- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.
+- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)
+
+The Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything. 
+"""
+r1_complex_execution_prompt = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>. If the Assistant wants to run any Python code when thinking, it writes it inside "```python" and "```" tags, and makes sure to have "```output" after the python code block, meaning that it is requesting the code to be executed. Then the result of execution will in the output markdown block.
+
+Coding questions can ask various forms of program solutions:
+- If the coding question has a starter code, you may use the starter code to write the solution to the problem.
+- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.
+- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)
+
+The Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything. 
+"""
+
 # naive_execution_prompt = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the coding problems below. If you want to test any python code, writing it inside <python> and </python> tags, results will be inside <output> and </output>. Please put your final answer in a markdown code block like this: python\nyour code here\n``` without appending anything."""
 
 coder_instruction = """\
@@ -47,20 +73,64 @@ You are also allowed to analyze the problem with any other domain-specific knowl
 
 Now start thinking and generate the final program in a markdown code block like this: ```python\nyour code here\n```.
 """
+naive_coder_instruction = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. 
 
+Let's think step by step and generate the final program in a markdown code block like this: ```python\nyour code here\n```.
+"""
+
+r1_naive_coder_instruction = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>.
+"""
+
+complex_coder_instruction = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. 
+
+Coding questions can ask various forms of program solutions:
+- If the coding question has a starter code, you may use the starter code to write the solution to the problem.
+- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.
+- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)
+
+Let's think step by step and generate the final program in a markdown code block like this: ```python\nyour code here\n```.
+"""
+r1_complex_coder_instruction = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>.
+
+Coding questions can ask various forms of program solutions:
+- If the coding question has a starter code, you may use the starter code to write the solution to the problem.
+- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.
+- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)
+"""
+
+    
+
+public_test_template = """\
+### Public Test Cases
+Here are some public test cases where you can use to test your program.
+```python
+{test_cases}
+```
+"""
 def main(
-    dataset_path: str = 'CodeDPO/AceCoderV2-mini-processed',
+    dataset_path: str = 'VerlTool/AceCoderV2-122K',
     local_dir: str = 'data/acecoder',
     add_execution_prompt: bool = False,
-    detaield_instruction: bool = False
+    propmt_type='complex',
+    add_public_tests: bool = False,
+    add_r1: bool = False,
 ):
-    local_dir = Path(local_dir) / dataset_path.split('/')[-1]
+    local_dir = Path(local_dir)
+    local_dir_post_fix = ""
     if add_execution_prompt:
-        local_dir = local_dir.parent / (local_dir.name + '-with-execution-prompt')
-    if detaield_instruction:
-        local_dir = local_dir.parent / (local_dir.name + '-detailed')
+        local_dir_post_fix = "-with-execution-prompt"
+    if add_public_tests:
+        local_dir_post_fix += "-with-public-tests"
+    if add_r1:
+        local_dir_post_fix += "-r1"
+    local_dir_post_fix += f"-{propmt_type}"
+    local_dir = local_dir / (dataset_path.split('/')[-1] + local_dir_post_fix)
     local_dir.mkdir(parents=True, exist_ok=True)
-
+    
     dataset = datasets.load_dataset(dataset_path, split='train')
 
     # 500 examples for testing
@@ -75,21 +145,34 @@ def main(
         def process_fn(example, idx):
             question_raw = example.pop('question')
 
-            # if not add_execution_prompt:
-            #     if not detaield_instruction:
-            #         question = question_raw + ' ' + naive_instruction
-            #     else:
-            #         question = question_raw + ' ' + coder_instruction
-            # else:
-            #     question = question_raw + ' ' + execution_prompt
+            if propmt_type == 'complex':
+                if add_r1:
+                    system_instruction = r1_complex_execution_prompt if add_execution_prompt else r1_complex_coder_instruction
+                else:
+                    system_instruction = complex_execution_prompt if add_execution_prompt else complex_coder_instruction
+            elif propmt_type == 'naive':
+                if add_r1:
+                    system_instruction = r1_naive_execution_prompt if add_execution_prompt else r1_naive_coder_instruction
+                else:
+                    system_instruction = naive_execution_prompt if add_execution_prompt else naive_coder_instruction
+            else:
+                raise ValueError(f"Unknown propmt_type: {propmt_type}")
             
+            if add_public_tests:
+                # system_instruction = system_instruction + "\n" + "Note that there may or may not be public test cases for this question. If there are, you can use them to test your program and even write more test cases by your own based on the public test cases to test your program. If there are no public test cases, you can write your own test cases to test your program. Put your test cases in the same markdown code block as your program to be executed so you can see the output of your test cases."
+                public_tests = example.pop('public_tests')
+                if public_tests:
+                    public_tests_str = "\n".join(public_tests)
+                    public_tests_str = public_test_template.format(test_cases=public_tests_str)
+                    # question_raw = f"{question_raw}\n\n{public_tests_str}"
+                    
             tests = example.pop('tests')
             data = {
                 "data_source": dataset_path,
                 "prompt": [
                     {
                         "role": "system",
-                        "content": naive_execution_prompt if add_execution_prompt else coder_instruction,
+                        "content": system_instruction.strip(' \n'),
                     },
                     {
                         "role": "user",
@@ -106,6 +189,7 @@ def main(
                     'index': idx,
                     'id': str(example['id']),
                     "question": question_raw,
+                    "public_tests": public_tests if add_public_tests else None,
                     "test_cases": tests,
                     "inputs_outputs": None,
                 }
@@ -132,10 +216,20 @@ if __name__ == '__main__':
     
 """
 python examples/data_preprocess/acecoder.py --dataset_path CodeDPO/AceCoderV2-mini-processed --local_dir data/acecoder --add_execution_prompt
-python examples/data_preprocess/acecoder.py --dataset_path chiruan/CodeDPO-AceCoderV2-150K-processed-Qwen32B-inference --local_dir data/acecoder --add_execution_prompt
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-69K --local_dir data/acecoder --add_execution_prompt
 python examples/data_preprocess/acecoder.py --dataset_path CodeDPO/AceCoderV2-150K-processed --local_dir data/acecoder --add_execution_prompt
 
-python examples/data_preprocess/acecoder.py --dataset_path chiruan/CodeDPO-AceCoderV2-150K-processed-Qwen32B-inference --local_dir data/acecoder_naive --add_execution_prompt
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-69K --local_dir data/acecoder_naive --add_execution_prompt
 
-python examples/data_preprocess/acecoder.py --dataset_path chiruan/CodeDPO-AceCoderV2-150K-processed-Qwen32B-inference --local_dir data/acecoder_long --add_execution_prompt
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-69K --local_dir data/acecoder_long --add_execution_prompt --propmt_type complex
+
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-69K --local_dir data/acecoder_long --add_execution_prompt --propmt_type complex --add_public_tests True --add_r1 False
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-69K --local_dir data/acecoder_long --add_execution_prompt --propmt_type complex --add_public_tests True --add_r1 True
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-69K --local_dir data/acecoder_long --add_execution_prompt --propmt_type naive --add_public_tests True --add_r1 True
+
+
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-122K --local_dir data/acecoderv2 --add_execution_prompt True --propmt_type complex
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-122K --local_dir data/acecoderv2 --add_execution_prompt True --propmt_type naive
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-122K --local_dir data/acecoderv2 --add_execution_prompt False --propmt_type complex
+python examples/data_preprocess/acecoder.py --dataset_path VerlTool/AceCoderV2-122K --local_dir data/acecoderv2 --add_execution_prompt False --propmt_type naive
 """

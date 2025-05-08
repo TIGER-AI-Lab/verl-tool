@@ -188,7 +188,7 @@ class RayToolManager:
         
         @ray.remote(num_cpus=0)
         def non_tool_action(trajectory_id: str, action: str, extra_field: Dict[str, Any]):
-            return "", False, False # no observation if no tool matched
+            return "", False, False # no observation if no tool matched, [obs, done, valid]
         
         pending_refs = []
         for i, tool_type in enumerate(tool_types):
@@ -253,6 +253,9 @@ class RayToolServer:
             version="1.0.0"
         )
         
+        # Initialize processing tasks dictionary for handling duplicates
+        self.processing_tasks = {}
+        
         # Configure routes
         self._configure_app()
         
@@ -266,6 +269,44 @@ class RayToolServer:
                 # Parse request
                 data = await request.json()
                 
+                # Generate hash for duplicate detection
+                from .utils import hash_requests  # Assuming the same hash_requests function
+                data_hash_str = hash_requests(data)
+                logger.debug(f"Request hash: {data_hash_str}")
+                
+                # Check for duplicate requests
+                if data_hash_str in self.processing_tasks:
+                    logger.info(f"Duplicate request detected: {data_hash_str}")
+                    # Wait for the original request to complete
+                    task_info = self.processing_tasks[data_hash_str]
+                    # Increment reference count
+                    task_info["ref_count"] += 1
+                    
+                    # Wait for result
+                    while task_info["result"] is None:
+                        if task_info.get("error"):
+                            # Original request failed, re-process this one
+                            logger.warning(f"Original request failed, processing duplicate: {data_hash_str}")
+                            break
+                        # Wait before checking again
+                        await asyncio.sleep(0.2)
+                    
+                    # If we have a valid result, return it
+                    if task_info["result"] is not None:
+                        logger.debug(f"Returning cached result for {data_hash_str}")
+                        # Schedule reference count decrement
+                        asyncio.create_task(self._decrement_ref_count(data_hash_str))
+                        return task_info["result"]
+                
+                # Register new request or process duplicate after original failed
+                if data_hash_str not in self.processing_tasks:
+                    self.processing_tasks[data_hash_str] = {
+                        "ref_count": 1,
+                        "result": None,
+                        "error": None,
+                        "start_time": time.time()
+                    }
+                
                 try:
                     # Normalize trajectory IDs
                     if "trajectory_ids" in data:
@@ -275,8 +316,15 @@ class RayToolServer:
                     # Validate and process request
                     trajectory_ids = data.get("trajectory_ids", [])
                     actions = data.get("actions", [])
+                    
+                    # Extract extra fields
                     if 'extra_fields' in data.keys():
                         extra_fields = data['extra_fields']
+                        for key in data.keys():
+                            assert len(data[key]) == len(trajectory_ids), f"Length of {key} ({len(data[key])}) does not match trajectory_ids ({len(trajectory_ids)})"
+                            if key not in ["trajectory_ids", "actions", "extra_fields"]:
+                                for i in range(len(trajectory_ids)):
+                                    extra_fields[i][key] = data[key][i]
                         assert len(extra_fields) == len(trajectory_ids)
                     else:
                         extra_keys = [k for k in data.keys() if k not in ["trajectory_ids", "actions"]]
@@ -287,35 +335,68 @@ class RayToolServer:
                     
                     # Process with Ray
                     start = time.time()
-                    print(f"Processing {len(trajectory_ids)} actions")
+                    logger.info(f"Processing {len(trajectory_ids)} actions")
                     observations, dones, valids = await self.tool_manager.process_actions(
                         trajectory_ids, actions, extra_fields
                     )
                     end = time.time() - start
-                    print(f"Processed {len(trajectory_ids)} actions in {end:.2f} seconds")
-                    # import json
-                    # with open("tool_results.json", 'w') as f:
-                    #     json.dump({"observations": observations, "dones": dones, "valids": valids}, f, indent=4)
-                    #     print(f"Results saved to tool_results.json")
-                    return {
+                    logger.info(f"Processed {len(trajectory_ids)} actions in {end:.2f} seconds")
+                    
+                    # Create response
+                    response = {
                         "observations": observations, 
                         "dones": dones, 
                         "valids": valids
                     }
                     
+                    # Store result for duplicates
+                    if data_hash_str in self.processing_tasks:
+                        self.processing_tasks[data_hash_str]["result"] = response
+                        # Schedule reference count decrement
+                        asyncio.create_task(self._decrement_ref_count(data_hash_str))
+                    
+                    return response
+                    
                 except Exception as e:
                     logger.error(f"Error processing request: {e}", exc_info=True)
+                    # Mark task as failed
+                    if data_hash_str in self.processing_tasks:
+                        self.processing_tasks[data_hash_str]["error"] = str(e)
+                        # Schedule task removal
+                        asyncio.create_task(self._decrement_ref_count(data_hash_str))
                     return {"error": str(e)}, 500
         
         @self.app.get("/health")
         async def health_check():
-            return {"status": "healthy", "ray_status": "connected" if ray.is_initialized() else "disconnected"}
+            return {
+                "status": "healthy", 
+                "ray_status": "connected" if ray.is_initialized() else "disconnected",
+                "active_tasks": len(self.processing_tasks)
+            }
+    
+    async def _decrement_ref_count(self, data_hash_str):
+        """Decrement reference count and clean up completed tasks"""
+        if data_hash_str in self.processing_tasks:
+            self.processing_tasks[data_hash_str]["ref_count"] -= 1
             
+            # If no more references, remove the task
+            if self.processing_tasks[data_hash_str]["ref_count"] <= 0:
+                # Calculate processing time
+                start_time = self.processing_tasks[data_hash_str].get("start_time", 0)
+                processing_time = time.time() - start_time
+                
+                # Log cleanup
+                logger.debug(f"Removing completed task {data_hash_str} (processed in {processing_time:.2f}s)")
+                del self.processing_tasks[data_hash_str]
+                
+                # Optionally, you could run garbage collection here if memory usage is a concern
+                # import gc
+                # gc.collect()
+                
     def start(self):
         """Start the server"""
         logger.info(f"Starting Ray Tool Server on {self.host}:{self.port}")
         uvicorn.run(self.app, host=self.host, port=self.port, log_level="info")
-
 
 # CLI entry point
 def main(

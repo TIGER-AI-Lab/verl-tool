@@ -115,10 +115,7 @@ class PythonCodeTool(BaseTool):
         
         if not all_valid_python_code:
             all_valid_python_code = re.findall(r"```python(.*?)```", action, re.DOTALL)
-        
-        if not all_valid_python_code:
-            all_valid_python_code = re.findall(r"```(.*?)```", action, re.DOTALL)
-        
+            
         if len(all_valid_python_code) == 0:
             return "", False
         

@@ -2,6 +2,7 @@ import os
 import signal
 import subprocess
 import sys
+import hashlib
 
 def kill_python_subprocess_processes():
     """
@@ -57,3 +58,20 @@ def kill_python_subprocess_processes():
     except Exception as e:
         print(f"Error during process cleanup: {e}")
         return 0
+    
+    
+def hash_requests(data):
+    """
+    Hash the input data to create a unique identifier.
+    
+    Args:
+        data: Input data to hash
+    
+    Returns:
+        str: Hexadecimal hash string
+    """
+    # Convert the data to a string and encode it
+    data_str = str(data).encode('utf-8')
+    hash_object = hashlib.sha256()
+    hash_object.update(data_str)
+    return hash_object.hexdigest()
