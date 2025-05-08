@@ -17,10 +17,15 @@ import subprocess
 TEMPERATURE = 0
 TOP_P = 0.95
 PROMPT_TEMPLATE = "2"    # 1: <|im_start|>, 2: system\n
-POST_PROPCESSING = True
+POST_PROPCESSING = False
+POST_PROCESS_BAD_TOKEN = True
 system_prompt_choice=2
 
-MAX_OUTPUT_LEN=1024
+# STOP_TOKENS=["<|fim_middle|>"]
+STOP_TOKENS=[]
+
+
+MAX_OUTPUT_LEN=512
 SYSTEM_PROMPTS = {
     "1": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. User: Please integrate natural language reasoning with programs to solve the coding problems below. If you want to test any python code, writing it inside <python> and </python> tags following with <output>. Please put your final answer in a markdown code block like this: python\nyour code here\n``` without appending anything.\n",
     "2": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The Assistant can reason with the help of Python code. If the Assistant wants to run any Python code, it writes it inside ```python and ``` tags, and makes sure to follow it with \"```output\", meaning that it is requesting the code to be executed. Then the result of execution will be provided to the Assistant between \"```output\" and \"```\" for the python code block that it follows. \n\nCoding questions can ask various forms of program solutions:\n- If the coding question has a starter code, you may use the starter code to write the solution to the problem.\n- Elif the coding question has a function signature, you may use the function signature to write the solution to the problem.\n- Else you may write a program that reads the input from standard input and writes the output to standard output. (do not directly test on the sample inputs)\n\nThe Assistant can test Python codes as many times as it wants. If the Assistant finds no further code execution needed, it can then give the final solution in a markdown code block like this: ```python\nyour code here\n``` without appending anything. \n",
@@ -149,6 +154,7 @@ class ModelService:
         """load the model using VLLM backend"""
         print(f"Loading Model using VLLM: {self.model_config.model}...")
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_config.model)
+
         # start a VLLM server using vllm.serve
         vllm_args = [f"--{k.replace('_', '-')}" for k in self.model_config.__dict__.keys() if k not in ["model", "api_key", "num_models", "host", "port"]]
         vllm_args = []
@@ -170,7 +176,7 @@ class ModelService:
             cmd = [
                 "vllm", "serve", self.model_config.model, "--api-key", "token-abc123",
                 "--host", host, "--port", str(ports[i]), 
-                "--disable-uvicorn-access-log", "--disable-log-stats", "--disable-log-requests"
+                "--disable-uvicorn-access-log", "--disable-log-stats", "--disable-log-requests",
             ] + vllm_args
             env = os.environ.copy()
             env["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_ids_per_model[i])
@@ -254,6 +260,11 @@ class ModelService:
         active_masks = [True for _ in range(len(prompts))]
         finish_reasons = [None for _ in range(len(prompts))]
         model = self.model_config.model
+        
+        # # inject the stop token into the sampling params
+        # if "stop" not in sampling_params or sampling_params["stop"] is None:
+        #     sampling_params["stop"] = []
+        # sampling_params["stop"] += STOP_TOKENS
         
         # keep trying to generate the response until reached the tool-calling limit
         for action_step in range(self.tool_config.max_turns+1):
@@ -362,6 +373,7 @@ class ModelService:
         else:
             prompts = [prompt]
 
+        # TODO: add special_stop_token
         sampling_params = {
             # "temperature": body.get("temperature", 1.0),
             "temperature": TEMPERATURE,
@@ -369,7 +381,7 @@ class ModelService:
             "max_tokens": MAX_OUTPUT_LEN,
             # "top_p": body.get("top_p", 1.0),
             "top_p": TOP_P,
-            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)) + ["<|fim_middle|>"],
+            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens))
         }
 
         all_responses, finish_reasons = await self.generate_with_tools(prompts, sampling_params)
@@ -421,12 +433,13 @@ class ModelService:
         else:
             prompts = [prompt]
 
+        # TODO: add special stop token
         sampling_params = {
             "temperature": TEMPERATURE,
             # "max_tokens": body.get("max_tokens", body.get("max_completion_tokens", 512)),
             "max_tokens": MAX_OUTPUT_LEN,
             "top_p": TOP_P,
-            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens)) + ["<|fim_middle|>"],
+            "stop": list(set(body.get("stop", []) + self.tool_config.action_stop_tokens))
         }
 
         all_responses, finish_reasons = await self.generate_with_tools(prompts, sampling_params)
@@ -449,6 +462,13 @@ class ModelService:
                 if matches:
                     last_code_block = matches[-1]
                     all_responses[i] = "```python" + last_code_block + "```"
+        
+        # if POST_PROCESS_BAD_TOKEN:
+        #     for i in range(len(all_responses)):
+        #         # remove all bad tokens in the response
+        #         all_responses[i] = all_responses[i].replace("<|fim_middle|>", "")
+        
+        # print(f"\n\n\nFinal responses: {all_responses}\n\n\n")
             
         # format the response into OpenAI-compliant format
         return {
