@@ -69,6 +69,28 @@ ray start --address='head_node_ip:6379' --block # start ray worker node
 # no need to run the training script on worker node
 ```
 
+### Agetn Config.py Explanation
++ `enable_agent`: Whether to enable the agent functionality.
++ `max_turns`: Maximum number of tool calling turns. 
++ `max_start_length`: Maximum length of initial prompt in each turn.
++ `max_prompt_length`: Maximum total prompt length.
++ `max_response_length`: Maximum length of generated response.
++ `max_obs_length`: Maximum length of observation from server.
++ `max_action_length`: Maximum length of action output.
++ `num_gpus`: Number of GPUs to use.
++ `tool_server_url`: URL of the external tool server.
++ `n`: Number of samples to generate per request.
++ `truncate_obs_side`: Side to truncate when observation exceeds limit (`left` or `right`).
++ `truncate_response_side`: Side to truncate when response exceeds limit (`left` or `right`).
++ `agent_records_dir`: Directory to save agent interaction logs.
++ `rolling_with_prompt`: Whether to keep system prompts across turns.  
++ `call_tool_first`: Whether to invoke the tool before generating response.
++ `min_action_num`: Minimum number of actions required in a session.
++ `action_stop_tokens`: Tokens that indicate the end of an action (e.g. ```output).
++ `additional_eos_token_ids`: Additional token IDs treated as end-of-sequence.
++ `mask_observations`: Whether to mask observations in the prompt.
+
+
 ## Evaluation
 We do all the evaluation by serving the model in an openai compatible api way. After launching the eval server, you can evaluate the model just like calling the openai api. See [eval_service/README.md](./eval_service/README.md) for more details. 
 
