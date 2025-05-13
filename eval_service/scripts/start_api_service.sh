@@ -14,6 +14,7 @@ max_turns=0
 api_host="0.0.0.0"
 api_port=5000
 action_stop_tokens="<|calling system for feedback|>"
+special_stop_tokens="``` ``` ```"
 tensor_parallel_size=1
 num_models=4 # number of vllm instances; num_models * tensor_parallel_size should be equal to the number of GPUs
 enable_mtrl=True
@@ -22,6 +23,11 @@ action_stop_tokens_file=$(mktemp)
 echo "$action_stop_tokens" > $action_stop_tokens_file
 echo "action_stop_tokens_file=$action_stop_tokens_file"
 
+# temp file for special stop tokens as verl cannot pass special strs as params
+special_stop_tokens_file=$(mktemp)
+echo "$special_stop_tokens" > $special_stop_tokens_file
+echo "special_stop_tokens_file=$special_stop_tokens_file"
+
 python eval_service/app.py \
     --host $api_host \
     --port $api_port \
@@ -29,6 +35,7 @@ python eval_service/app.py \
     --model $model_path \
     --max-turns $max_turns \
     --action_stop_tokens $action_stop_tokens_file \
+    --special_stop_tokens $special_stop_tokens_file \
     --tensor-parallel-size $tensor_parallel_size \
     --num-models $num_models \
     --enable_mtrl $enable_mtrl 

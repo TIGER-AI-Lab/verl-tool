@@ -20,7 +20,9 @@ class ToolConfig:
     enable_mtrl: bool=False
     mtrl_sep: str=None # "\n<|im_start|>system\n{obs}<|im_end|>\n<|im_start|>assistant\n"
     turn_end_token: str="<|im_end|>"
+    special_stop_tokens: str = None
     min_action_num: int=0
+    force_post_processing: bool=False
     
     def post_init(self):
         """
@@ -38,6 +40,19 @@ class ToolConfig:
         else:
             self.action_stop_tokens = None
         print(f"using action_stop_tokens: {self.action_stop_tokens}")
+        
+        # special_stop_tokens can be a string or a file path
+        if isinstance(self.special_stop_tokens, str):
+            if os.path.exists(self.special_stop_tokens):
+                with open(self.special_stop_tokens, "r") as f:
+                    self.special_stop_tokens = f.read().split(',')
+            else:
+                self.special_stop_tokens = self.special_stop_tokens.split(',')
+            self.special_stop_tokens = [token.strip('\n ') for token in self.special_stop_tokens]
+            self.special_stop_tokens = [token for token in self.special_stop_tokens if token]
+        else:
+            self.special_stop_tokens = []
+        print(f"using special_stop_tokens: {self.special_stop_tokens}")
 
 @dataclass
 class ServerConfig:
