@@ -1,10 +1,44 @@
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, _timer
+# Copyright 2024 Bytedance Ltd. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# MODIFIED: DAPOTrainer + AgentPPOTrainer ==(merging)== AgentDAPOTrainer
+
+import uuid
+from collections import defaultdict
+from copy import deepcopy
+from pprint import pprint
+
+import numpy as np
+import torch
+from tqdm import tqdm
+
+# DAPO dependencies
+# from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage
 from verl.trainer.ppo.ray_trainer import *
+
 from .metric_utils import (
     agent_compute_data_metrics as compute_data_metrics,
     compute_timing_metrics,
 )
-from tqdm import tqdm
+
+# DAPO used training metrics
+from verl.trainer.ppo.metric_utils import (
+    # compute_data_metrics,
+    # compute_timing_metrics,
+    compute_throughout_metrics,
+    reduce_metrics,
+)
 
 
 def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty='kl'):
@@ -51,7 +85,7 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
-class AgentRayPPOTrainer(RayPPOTrainer):
+class AgentRayDAPOTrainer(RayPPOTrainer):
 
     def index_select(self, batch: DataProto, indices: list):
         """
@@ -248,8 +282,8 @@ class AgentRayPPOTrainer(RayPPOTrainer):
         The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
         The light-weight advantage computation is done on the driver process.
         """
-        from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
+        from verl.utils.tracking import Tracking
 
         logger = Tracking(
             project_name=self.config.trainer.project_name,
@@ -333,47 +367,9 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                     # repeat to align with repeated responses in rollout
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
-
-                    if getattr(self.config.trainer, 'dynamic_filter', False):
-                        batch = self.dynamic_filter(batch, metrics)
-
-                    batch.batch['response_mask'] = compute_response_mask(batch)
-                    # balance the number of valid tokens on each dp rank.
-                    # Note that this breaks the order of data inside the batch.
-                    # Please take care when you implement group based adv computation such as GRPO and rloo
-                    if self.config.trainer.balance_batch:
-                        self._balance_batch(batch, metrics=metrics)
-
-                    # compute global_valid tokens
-                    batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
-
-                    # recompute old_log_probs
-                    with _timer('old_log_prob', timing_raw):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
-                        entropys = old_log_prob.batch["entropys"]
-                        response_masks = batch.batch["response_mask"]
-                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
-                        entropy_loss = agg_loss(
-                            loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode
-                        )
-                        old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
-                        metrics.update(old_log_prob_metrics)
-                        old_log_prob.batch.pop("entropys")
-                        batch = batch.union(old_log_prob)
-
-                    if self.use_reference_policy:
-                        # compute reference log_prob
-                        with _timer('ref', timing_raw):
-                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-                            batch = batch.union(ref_log_prob)
-
-                    # compute values
-                    if self.use_critic:
-                        with _timer('values', timing_raw):
-                            values = self.critic_wg.compute_values(batch)
-                            batch = batch.union(values)
-
-                    with _timer('adv', timing_raw):
+                    
+                    # TODO: DAPO: need to compute scores FIRST
+                    with _timer('reward', timing_raw):
                         # compute scores. Support both model and function-based.
                         # We first compute the scores using reward model. Then, we call reward_fn to combine
                         # the results from reward model and rule-based results.
@@ -418,17 +414,148 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                         else:
                             batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
 
-                        # compute advantages, executed on the driver process
-                        batch = compute_advantage(batch,
-                                                  adv_estimator=self.config.algorithm.adv_estimator,
-                                                  gamma=self.config.algorithm.gamma,
-                                                  lam=self.config.algorithm.lam,
-                                                  num_repeat=self.config.actor_rollout_ref.rollout.n)
-
                     if "info_mask" in batch.batch.keys():
                         # masking observations, instead of directly using original `attention_mask`
                         ori_attention_mask = batch.batch['attention_mask']
                         batch.batch['attention_mask'] = batch.batch['info_mask']
+                    
+                    if self.config.algorithm.get("filter_groups", {}).get("enable", False):
+                        
+                        allow_fallback = self.config.algorithm.filter_groups.get("allow_fallback", False)
+                        fallback_policy = self.config.algorithm.filter_groups.get("fallback_policy", "keep_all")
+                        
+                        # use DAPO filter groups
+                        metric_name = self.config.algorithm.filter_groups.metric
+                        
+                        # write the metrics to non_tensor_batch
+                        if metric_name == "seq_final_reward":
+                            batch.non_tensor_batch["seq_final_reward"] = batch.batch["token_level_rewards"].sum(dim=-1).numpy()
+                        elif metric_name == "seq_reward":
+                            batch.non_tensor_batch["seq_reward"] = batch.batch["token_level_scores"].sum(dim=-1).numpy()
+                    
+                        # compute the reward deviation among the same prompt's generations
+                        prompt_uid2metric_vals = defaultdict(list)
+                        for uid, metric_val in zip(batch.non_tensor_batch["uid"], batch.non_tensor_batch[metric_name]):
+                            prompt_uid2metric_vals[uid].append(metric_val)
+                        prompt_uid2metric_std = {prompt_uid: np.std(metric_vals) for prompt_uid, metric_vals in prompt_uid2metric_vals.items()}
+                        
+                        # keep the prompt generations which has std > 0 or only one generation (sample=1)
+
+                        kept_prompt_uids = [uid for uid, std in prompt_uid2metric_std.items() if std > 0 or len(prompt_uid2metric_vals[uid]) == 1]
+                        kept_traj_idxs = [idx for idx, uid in enumerate(batch.non_tensor_batch["uid"]) if uid in kept_prompt_uids]
+                        
+                        # filter once then accumulate the kept prompt generations to batch_pool
+                        # until the number of generations in batch_pool >= self.config.trainer.batch_size
+                        if not hasattr(self, "_batch_pool"):
+                            self._batch_pool = None
+                            self._num_prompt_generations_in_pool = 0
+                            self._num_gen_batches = 0
+                    
+                        kept_batch = batch[kept_traj_idxs]
+                        self._batch_pool = kept_batch if self._batch_pool is None else DataProto.concat([self._batch_pool, kept_batch])
+                        self._num_prompt_generations_in_pool += len(set(kept_prompt_uids))
+                        self._num_gen_batches += 1
+                    
+                        prompt_bsz = self.config.data.train_batch_size
+                        max_gen = self.config.algorithm.filter_groups.get("max_num_gen_batches", 0)
+
+                        # case: if the number of generations in batch_pool does exceed the required prompt generation batch size
+                        if self._num_prompt_generations_in_pool < prompt_bsz:
+                            # check if we need to continue sampling
+                            if max_gen <= 0 or self._num_gen_batches < max_gen:
+                                # continue sampling in the outer for loop
+                                continue
+                            else:
+                                # fall back and use current pool
+                                if allow_fallback:
+                                    if fallback_policy == "keep_all":
+                                        print("[DAPO WARNING] filter_groups exceeded max_num_gen_batches. using current pool without std filter")
+                                        batch = self._batch_pool
+                                        # failsafe: clear the batch pool, let the subsequent batches to be generated
+                                    # TODO: can implement random_sample, reduce_rollout, etc.
+                                    else: 
+                                        raise ValueError(f"[DAPO ERROR] Other fallback_policy not implemented")
+                                    
+                                    # TODO: this place might be problematic: unable to break?                                    
+                                    self._batch_pool = None
+                                    self._num_prompt_generations_in_pool = 0
+                                    self._num_gen_batches = 0
+                                    continue
+                                else:
+                                    raise ValueError("No enough prompt generations in batch_pool. Training stopped.")
+
+                        # case: if the number of generations in batch_pool does exceed the required prompt generation batch size
+                        # trim the total generated prompt outputs to the fixed size: prompt_bsz * rollout.n
+                        traj_bsz = self.config.actor_rollout_ref.rollout.n * prompt_bsz
+                        batch = self._batch_pool[:traj_bsz]
+                        
+                        # clear the batch pool
+                        self._batch_pool = None
+                        self._num_prompt_generations_in_pool = 0
+                        self._num_gen_batches = 0
+
+                    # otherwise use original one-time dynamic filter logic
+                    elif getattr(self.config.trainer, 'dynamic_filter', False):
+                        batch = self.dynamic_filter(batch, metrics)
+
+                    # then compute the response mask for masking
+                    batch.batch['response_mask'] = compute_response_mask(batch)
+                    
+                    # below is the original logics for critic, advantage and actor update
+                    
+                    # balance the number of valid tokens on each dp rank.
+                    # Note that this breaks the order of data inside the batch.
+                    # Please take care when you implement group based adv computation such as GRPO and rloo
+                    if self.config.trainer.balance_batch:
+                        self._balance_batch(batch, metrics=metrics)
+
+                    # compute global_valid tokens
+                    batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
+
+                    # recompute old_log_probs
+                    with _timer('old_log_prob', timing_raw):
+                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                        
+                        # compute the entropy loss
+                        entropys = old_log_prob.batch["entropys"]
+                        response_masks = batch.batch["response_mask"]
+                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+                        entropy_loss = agg_loss(
+                            loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode
+                        )
+                        old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
+                        metrics.update(old_log_prob_metrics)
+                        old_log_prob.batch.pop("entropys")
+                        
+                        batch = batch.union(old_log_prob)
+
+                    if self.use_reference_policy:
+                        # compute reference log_prob
+                        with _timer('ref', timing_raw):
+                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
+                            batch = batch.union(ref_log_prob)
+
+                    # compute values
+                    if self.use_critic:
+                        with _timer('values', timing_raw):
+                            values = self.critic_wg.compute_values(batch)
+                            batch = batch.union(values)
+
+                    # NEED TO MOVE REWARD COMPUTATION BEFORE FILTER GROUPS                        
+                    
+                    with _timer('adv', timing_raw):
+                        # TODO: not sure if the advantage needs to be computed here
+                        # compute advantages, executed on the driver process
+                        # norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)
+                        batch = compute_advantage(
+                            batch,
+                            adv_estimator=self.config.algorithm.adv_estimator,
+                            gamma=self.config.algorithm.gamma,
+                            lam=self.config.algorithm.lam,
+                            num_repeat=self.config.actor_rollout_ref.rollout.n
+                            # norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                        )
+                    
                     # update critic
                     if self.use_critic:
                         with _timer('update_critic', timing_raw):
@@ -443,6 +570,8 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
+                    
+                    # restore original attention mask if info_mask is used
                     if "info_mask" in batch.batch.keys():
                         # restore original attention mask
                         batch.batch['attention_mask'] = ori_attention_mask
