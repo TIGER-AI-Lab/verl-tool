@@ -11,6 +11,7 @@ class FinishTool(BaseTool):
     
     def __init__(self, num_workers=1, other_tools:list = []):
         super().__init__(num_workers)
+        print(f"=====> Other Tools", other_tools)
         self.other_tools = other_tools
     
     def get_usage_inst(self):

@@ -160,7 +160,6 @@ class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, metaclass=AgentA
             output = self.rollout_sharding_manager.postprocess_data(output)
 
         output = output.to('cpu')
-
         # clear kv cache
         log_gpu_memory_usage('After recompute log prob', logger=logger)
         return output

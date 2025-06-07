@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class AgentResponse(BaseModel):
     """Model for outgoing agent responses"""
-    observations: List[str]
+    observations: List[Union[str, dict]]
     dones: List[bool]
     valids: List[bool]
 

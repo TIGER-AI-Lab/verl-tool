@@ -161,7 +161,7 @@ class AgentActorManager:
             responses_str = self.tokenizer.batch_decode(
                 responses,
                 skip_special_tokens=True
-            )
+            )          
             for i, resp in enumerate(responses_str):
                 # resp = resp.strip(' \n')
                 has_action = False
@@ -175,6 +175,8 @@ class AgentActorManager:
                 if not has_action and action_step < self.config.min_turns:
                     has_action = True
                     responses_str[i] = resp + self.action_stop_tokens[0]
+                if not has_action and "```sql" in responses_str[i]:
+                    has_action = True 
                 do_actions.append(has_action)
             for i in range(len(responses_str)):
                 if not do_actions[i]:
@@ -223,10 +225,11 @@ class AgentActorManager:
     #         responses = responses[:, :self.config.max_action_length]
     #     return responses, responses_str, do_actions
 
-    def _process_next_obs(self, next_obs: List[str], dones: List[bool], valid_action: List[bool], finishs: List[bool]) -> torch.Tensor:
+    def _process_next_obs(self, next_obs, dones: List[bool], valid_action: List[bool], finishs: List[bool]) -> torch.Tensor:
         """Process next observations from environment."""
         mtrl_sep = self.config.mtrl_sep
         next_obs = [obs if not done else "" for obs, done in zip(next_obs, dones)]
+
         if self.config.truncate_obs_side == 'left':
             next_obs_ids = self.tokenizer(
                 next_obs,
@@ -439,7 +442,7 @@ class AgentActorManager:
         else:
             stop_token_ids = [ori_meta_info['eos_token_id']] + self.additional_eos_token_ids
         gen_batch = self._preprocess_inputs(gen_batch)
-
+        print(f"====> agent loop with batch saize {gen_batch.batch['input_ids'].shape} at rank{torch.distributed.get_rank()}")
         initial_input_ids = gen_batch.batch['input_ids'][:, -self.config.max_start_length:].clone()
 
         original_left_side = {'input_ids': initial_input_ids[:, -self.config.max_start_length:]}
@@ -516,12 +519,15 @@ class AgentActorManager:
             # End of Added Zhiheng
 
         # Main generation loop
+        # self.config.max_turns = 0
+        multiturn_obs = dict()
         for step in range(self.config.max_turns+1):
             if not active_mask.sum():
                 print("All trajectories are done.")
                 break
 
-            print(f"Action step {step}/{self.config.max_turns}")
+            # print(f"Action step {step}/{self.config.max_turns}")
+            print(f"====> starting iter{step} rollout @run_llm_loop")
             rollings.batch = self.tensor_fn.cut_to_effective_len(
                 rollings.batch,
                 keys=['input_ids', 'attention_mask', 'position_ids']
@@ -537,12 +543,19 @@ class AgentActorManager:
                 agent_sampling_params.pop('stop')
             with self.actor_rollout_wg.rollout.update_sampling_params(**agent_sampling_params):
                 gen_output = self.actor_rollout_wg.rollout.generate_sequences(rollings_active) # [active_size, response_length]
-
+            print(f"====> iter{step} rollout finished @run_llm_loop")
+            
             responses_ids, responses_str, do_actions = self._postprocess_responses(gen_output.batch['responses'], step) # [active_size, ...]
+            # if step==1:
+            #     aa = self.tokenizer.batch_decode(gen_output.batch['input_ids'], special_tokens=False)
+            #     bb = self.tokenizer.batch_decode(gen_output.batch['responses'], special_tokens=False)
+            #     # rollings_active
+            #     temp = self.tokenizer.batch_decode(rollings_active.batch['input_ids'], special_tokens=False)
+            #     import pdb; pdb.set_trace()
             responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask) # [bs*n, response_length]
 
-            print(f"Number of active trajectories: {active_mask.sum().item()}")
-            print(f"Length of responses: {responses_ids.shape[1]}")
+            # print(f"Number of active trajectories: {active_mask.sum().item()}")
+            # print(f"Length of responses: {responses_ids.shape[1]}")
 
             idx = 0
             for i, active in enumerate(active_mask):
@@ -553,13 +566,32 @@ class AgentActorManager:
                 else:
                     turns_stats_extra["action_lengths"][i].append(0)
 
-            # Execute in environment and process observations
+            # Execute in environment and process observations        
             active_uids = [traj_ids[i] for i in range(len(traj_ids)) if active_mask[i]]
             next_obs, dones, valid_action, finishs = self.interact_with_tool_server(
                 active_uids, responses_str, do_actions, active_mask,
                 extra_fields=rollings_active.non_tensor_batch.get('extra_info', None),
                 is_last_step=(step == self.config.max_turns)
             )
+            cnt = 0
+            for active, uid in zip(active_mask, traj_ids):
+                if active: 
+                    multiturn_obs[uid] = next_obs[cnt]
+                    cnt += 1
+
+            
+            new_obs = []
+            scores = []
+            codes = []
+            for entry in next_obs:
+                if isinstance(entry, dict):
+                    message = entry['message']
+                else: # when will the observation be empty string?
+                    message = entry 
+                new_obs.append(message)
+
+            next_obs = new_obs
+            
 
             # # for debug
             # with open(f"temp-{step}.json", 'w') as f:
@@ -609,7 +641,7 @@ class AgentActorManager:
             active_mask = active_mask * (~overlong_dones.to(active_mask.dtype).to(active_mask.device))
             # print("After overlong dones:", active_mask.sum().item())
             active_num_list.append(active_mask.sum().item())
-
+        print(f"====> multiturn completed @run_llm_loop")
         non_tensors = {
             'traj_ids': traj_ids.tolist(),
             'turns_stats': turns_stats.tolist(),
@@ -618,6 +650,34 @@ class AgentActorManager:
             'action_lengths': turns_stats_extra["action_lengths"],
             'obs_lengths': turns_stats_extra["obs_lengths"],
         }
+        extra_info = gen_batch.non_tensor_batch.get('extra_info', None)
+        is_sql = False 
+        if extra_info is not None and ("gt_sql" in extra_info[0]):
+            is_sql = True
+        # print(f"====> is_sql = {is_sql}")
+        if is_sql:
+            new_obs = []
+            scores = []
+            codes = []
+            for uid in traj_ids:
+                entry = multiturn_obs[uid]
+                if isinstance(entry, dict):
+                    correct = entry['correctness']
+                    message = entry['message']
+                    code = entry['extracted']
+                else: # when will the observation be empty string?
+                    correct = 0.0 
+                    message = entry 
+                    code = ""
+                new_obs.append(message)
+                scores.append(correct)
+                codes.append(code)
+                
+            # import pdb; pdb.set_trace()
+            non_tensors['sql_scores'] = scores
+            non_tensors['extracted'] = codes 
+            non_tensors['error_message'] = new_obs
+            print(f"====> acc = {np.mean(scores)} = {sum(scores)}/{len(scores)}")
 
         print("ACTIVE_TRAJ_NUM:", active_num_list)
 
@@ -720,7 +780,10 @@ class AgentActorManager:
             response: Response from the tool server
         """
         safe_payload = sanitize_request(batch_data)
+        print(f"====> Submit {len(safe_payload['trajectory_ids'])} Requests to Tool Server")
         response = requests.post(self.config.tool_server_url, json=safe_payload)
+        print(f"====> Received {len(safe_payload['trajectory_ids'])} responses")
+        
         if response.status_code != 200:
             with open("error_data.json", 'w') as f:
                 json.dump(batch_data, f, indent=4)
@@ -757,7 +820,7 @@ class AgentActorManager:
         active_mask=None,
         extra_fields=None,
         is_last_step=False,
-    ) -> List[str]:
+    ):
         """
         Call tool server for queries.
         Args:
@@ -779,7 +842,7 @@ class AgentActorManager:
         }
         if extra_fields is not None:
             batch_data['extra_fields'] = extra_fields.tolist() if isinstance(extra_fields, np.ndarray) else extra_fields
-        print(f" - Number of finished responses: {len([x for x in do_actions if not x])} / {len(do_actions)}")
+        # print(f" - Number of finished responses: {len([x for x in do_actions if not x])} / {len(do_actions)}")
         response = self.send_batch_requests(batch_data)
         active_observations = response['observations']
         active_dones = [int(x) for x in response['dones']]
