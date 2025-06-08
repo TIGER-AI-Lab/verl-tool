@@ -165,12 +165,12 @@ class AgentRayPPOTrainer(RayPPOTrainer):
             if "multi_modal_inputs" in test_batch.non_tensor_batch.keys():
                 test_gen_batch = test_batch.pop(
                     batch_keys=["input_ids", "attention_mask", "position_ids"],
-                    non_tensor_batch_keys=["raw_prompt_ids", "multi_modal_data", "multi_modal_inputs"],
+                    non_tensor_batch_keys=["raw_prompt_ids", "multi_modal_data", "multi_modal_inputs", "raw_prompt"],
                 )
             else:
                 test_gen_batch = test_batch.pop(
                     batch_keys=["input_ids", "attention_mask", "position_ids"],
-                    non_tensor_batch_keys=["raw_prompt_ids"],
+                    non_tensor_batch_keys=["raw_prompt_ids", "raw_prompt"],
                 )
             if 'agent' in self.config.actor_rollout_ref.actor.strategy:
                 additional_non_tensor_keys = ['extra_info']
@@ -297,12 +297,12 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                 if 'multi_modal_inputs' in batch.non_tensor_batch.keys():
                     gen_batch = batch.pop(
                         batch_keys=['input_ids', 'attention_mask', 'position_ids'],
-                        non_tensor_batch_keys=['raw_prompt_ids', 'multi_modal_data', 'multi_modal_inputs']
+                        non_tensor_batch_keys=['raw_prompt_ids', 'multi_modal_data', 'multi_modal_inputs', 'raw_prompt']
                     )
                 else:
                     gen_batch = batch.pop(
                         batch_keys=['input_ids', 'attention_mask', 'position_ids'],
-                        non_tensor_batch_keys=['raw_prompt_ids']
+                        non_tensor_batch_keys=['raw_prompt_ids', 'raw_prompt']
                     )
                 if 'agent' in self.config.actor_rollout_ref.actor.strategy: # TODO: update
                     additional_non_tensor_keys = ['extra_info']
