@@ -19,6 +19,7 @@ import sys
 import tempfile
 from contextlib import asynccontextmanager
 from typing import Any, Dict
+import itertools
 
 import aiohttp
 import fastapi
@@ -31,6 +32,9 @@ from openai.types.chat.chat_completion import ChatCompletion
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from verl.utils import hf_tokenizer, hf_processor
+import torch
+from tensordict import TensorDict
+from typing import List
 
 from verl_tool.agent_workers.tool_chat_completion_scheduler import NaiveChatCompletionScheduler
 from verl_tool.tests.async_rollout_utils import init_async_rollout_manager
@@ -69,17 +73,18 @@ class Sandbox:
         with open(temp_file, "w") as f:
             f.write(code)
 
-        try:
-            process = await asyncio.create_subprocess_exec(sys.executable, temp_file, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        return JSONResponse(content={"stdout": "No Result", "stderr": "No Result", "returncode": 0})
+        # try:
+        #     process = await asyncio.create_subprocess_exec(sys.executable, temp_file, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
-            stdout, stderr = await process.communicate()
+        #     stdout, stderr = await process.communicate()
 
-            return JSONResponse(content={"stdout": stdout.decode(), "stderr": stderr.decode(), "returncode": process.returncode})
-        finally:
-            try:
-                os.unlink(temp_file)
-            except:  # noqa: E722
-                pass
+        #     return JSONResponse(content={"stdout": stdout.decode(), "stderr": stderr.decode(), "returncode": process.returncode})
+        # finally:
+        #     try:
+        #         os.unlink(temp_file)
+        #     except:  # noqa: E722
+        #         pass
 
     async def _start_fastapi_server(self):
         @asynccontextmanager
@@ -154,25 +159,24 @@ class ToolChatCompletionScheduler(NaiveChatCompletionScheduler):
 
     async def generate_sequences(self, batch: DataProto, **sampling_params) -> DataProto:
         kwargs = dict(
-            n=self.config.n,
             max_completion_tokens=self.agent_config.max_action_length,
             temperature=self.config.temperature,
             top_p=self.config.top_p,
-            include_stop_str_in_output=True, # TODO: config
+            include_stop_str_in_output=self.agent_config.include_stop_str_in_output,
             stop=self.agent_config.action_stop_tokens, 
-            # extra_body={
-            # },
         )
 
-        do_sample = batch.meta_info.get("do_sample", True)
-        is_validate = batch.meta_info.get("validate", False)
-        if not do_sample or is_validate:
-            kwargs["n"] = 1
-            kwargs["temperature"] = 0
-
-        kwargs.update(sampling_params)
+        if batch.meta_info.get("validate", False):
+            kwargs["top_p"] = self.config.val_kwargs.top_p
+            kwargs["temperature"] = self.config.val_kwargs.temperature
+        
         print(f"[ToolChatCompletionScheduler] generate_sequences sampling params: {kwargs}")
-
+            
+            
+        # NOTE: For multi-turn rollout, repeat raw_prompt n times and process each prompt independently,
+        # validation dataset has already been repeated in `PPOTrainer._validate`.
+        n = 1 if batch.meta_info.get("validate", False) else self.config.n
+        kwargs.update(sampling_params)
 
         async def callback(completions: ChatCompletion, info: Dict[str, Any], exception: Exception):
             new_kwargs = {k: v for k, v in kwargs.items()}
@@ -207,11 +211,11 @@ class ToolChatCompletionScheduler(NaiveChatCompletionScheduler):
             stop_reason = completions.choices[0].stop_reason
 
             # STEP 3: execute code block in sandbox 
-            if finish_reason == "stop" and stop_reason is not None: # TODO: check
+            if finish_reason == "stop" and stop_reason is not None:
                 code = await self.parse_code_block(content) 
-                result = await self.sandbox_code_execution(code)
+                result = await self.sandbox_code_execution(code) # TODO: use `interact_with_tool_server`
                 stdout, stderr = result["stdout"], result["stderr"]
-                batch_conversations[batch_index].append({"role": "tool", "content": f"{stdout}{stderr}"}) # TODO: check whether works for qwen 
+                batch_conversations[batch_index].append({"role": "tool", "content": f"{stdout}{stderr}"}) 
 
             # STEP 4: resubmit chat completions with code block output 
             extra_headers = {"x-request-id": completions.id}
@@ -228,8 +232,8 @@ class ToolChatCompletionScheduler(NaiveChatCompletionScheduler):
                 **new_kwargs,
             )
 
-        tasks, batch_conversations = [], [None] * len(batch)
-        for batch_index, conversation in enumerate(batch.non_tensor_batch["raw_prompt"]): # TODO: include `raw_prompt` of gen_batch in `ray_trainer` 
+        tasks, batch_conversations = [], [None] * len(batch) * n
+        for batch_index, conversation in enumerate(batch.non_tensor_batch["raw_prompt"].repeat(n, axis=0)): 
             # raw_prompt: [{"role": "user", "content": ""}, ["role": "assistant", "content"], ...]
             batch_conversations[batch_index] = list(conversation)
             tasks.append(
@@ -239,7 +243,7 @@ class ToolChatCompletionScheduler(NaiveChatCompletionScheduler):
                         callback_additional_info={
                             "batch_conversations": batch_conversations,
                             "batch_index": batch_index,
-                            "turn": 1,
+                            "turn": 1, 
                         },
                         model=self.model_name,
                         messages=batch_conversations[batch_index],
@@ -250,29 +254,79 @@ class ToolChatCompletionScheduler(NaiveChatCompletionScheduler):
 
         await asyncio.gather(*tasks)
         print("[ToolChatCompletionScheduler] generate_sequences done")
+        
+        return self._postprocess(batch, batch_conversations, n) 
+    
+    
+    def _postprocess(self, batch: DataProto, batch_conversations: List[List[Dict[str, str]]], n: int) -> DataProto:
+        # NOTE: consistent with batch version of generate_sequences in vllm_rollout_spmd.py
+        # prompts: left pad
+        # responses: right pad
+        # input_ids: prompt + response
+        # attention_mask: [0,0,0,0,1,1,1,1, | 1,1,1,0,0,0,0,0]
+        # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
 
-        # _postprocess assumes n>=1
-        batch_conversations = [[conversation] for conversation in batch_conversations]
-        return self._postprocess(batch, batch_conversations, kwargs["n"])
+        # prompts: [prompt] from input dataset
+        prompts = [self.tokenizer.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False) for prompt in batch.non_tensor_batch["raw_prompt"]]
+        assert len(batch_conversations) == len(prompts) * n
 
+        # sequences: [prompt + response]
+        sequences = [self.tokenizer.apply_chat_template(conversation, add_generation_prompt=False, tokenize=False) for conversation in batch_conversations]
 
-# system_prompt = """
-# You are a helpful assistant. Let's solve math problem in following steps:
-# 1. Write a python code first and return the code to user, the code must be in following format:
+        # responses: [response]
+        responses = [sequence[len(prompts[i // n]) :] for i, sequence in enumerate(sequences)]
 
-# <code>
-# ```python
-# import os
+        prompts = self.tokenizer(prompts, return_tensors="pt", padding="longest", padding_side="left")
+        responses = self.tokenizer(responses, return_tensors="pt", padding="longest", padding_side="right")
+        if n > 1:
+            prompts["input_ids"] = prompts["input_ids"].repeat_interleave(n, dim=0)
+            prompts["attention_mask"] = prompts["attention_mask"].repeat_interleave(n, dim=0)
 
-# print(...)
-# ```
-# </code>
+        input_ids = torch.cat([prompts["input_ids"], responses["input_ids"]], dim=1)
+        attention_mask = torch.cat([prompts["attention_mask"], responses["attention_mask"]], dim=1)
+        position_ids = (attention_mask.cumsum(dim=1) - 1) * attention_mask
+        
+        return_batch = TensorDict(
+            {
+                "prompts": prompts["input_ids"],
+                "responses": responses["input_ids"],
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "position_ids": position_ids,
+            },
+            batch_size=len(input_ids),
+        )
 
-# The code must explictly print necessary output to stdout. Remember stop generation at </code> immediately and return the code.
-# 2. User will send the python code to a external sandbox to execute and get output from stdout.
-# 3. User will send the output in format <interpreter>output</interpreter> to you, and you should use the output to answer the question.
-# The answer format must be: <answer>\\boxed{'The final answer goes here.'}</answer>
-# """
+        if self.agent_config.mask_observations:
+            # Create tool mask directly from tokenized responses
+            tool_mask = torch.ones_like(responses["input_ids"])
+            tool_begin_tokens = self.tokenizer("<|im_start|>user\n<tool_response>\n", return_tensors="pt", add_special_tokens=False)["input_ids"] # TODO: update to config 
+            tool_end_tokens = self.tokenizer("</tool_response><|im_end|>\n", return_tensors="pt", add_special_tokens=False)["input_ids"] # TODO: update to config
+            
+            # Find and mask tool-related content in each response
+            for i in range(len(responses["input_ids"])):
+                response_tokens = responses["input_ids"][i]
+                pos = 0
+                while pos < len(response_tokens):
+                    # Look for tool start token
+                    if torch.equal(response_tokens[pos:pos+len(tool_begin_tokens[0])], tool_begin_tokens[0]):
+                        start_pos = pos
+                        # Look for tool end token
+                        pos += len(tool_begin_tokens)
+                        while pos < len(response_tokens):
+                            if torch.equal(response_tokens[pos:pos+len(tool_end_tokens[0])], tool_end_tokens[0]):
+                                end_pos = pos + len(tool_end_tokens[0])
+                                # Mask the entire tool block
+                                tool_mask[i, start_pos:end_pos] = False
+                                break
+                            pos += 1
+                    pos += 1
+                
+            response_mask = tool_mask * responses["attention_mask"]
+            info_mask = torch.cat([prompts["attention_mask"], response_mask], dim=1) # [bs, prompt_length + response_length]
+            return_batch["info_mask"] = info_mask
+        
+        return DataProto(batch=return_batch)
 
 
 def test_vllm_tool_calling():
@@ -294,7 +348,8 @@ def test_vllm_tool_calling():
     config.actor_rollout_ref.rollout.chat_scheduler = "verl_tool.tests.test_async_vllm_tool_calling.ToolChatCompletionScheduler"
     config.actor_rollout_ref.rollout.prompt_length = 1024
     config.actor_rollout_ref.rollout.response_length = 1024
-    config.trainer.n_gpus_per_node=2
+    config.actor_rollout_ref.rollout.n = 2
+    config.trainer.n_gpus_per_node = 2
     config.data.train_files = "./data/tests/aime24/train.parquet"
     config.data.return_raw_chat = True
 
@@ -304,8 +359,9 @@ def test_vllm_tool_calling():
             setattr(agent_config, key, config.agent[key])
     setattr(agent_config, 'n', config.actor_rollout_ref.rollout.n)
 
-    agent_config.max_action_length = 512 # TODO: check whther vllm padding
+    agent_config.max_action_length = 512
     agent_config.max_turns = 1
+    agent_config.include_stop_str_in_output = False
     agent_config.action_stop_tokens = ["```output"] # TODO: magic string delete after testing # TODO: use ```without python
     # if agent_config.action_stop_tokens is not None:
     #     if os.path.exists(agent_config.action_stop_tokens):
@@ -335,13 +391,14 @@ def test_vllm_tool_calling():
         },
     )
     result = async_rollout_manager.generate_sequences(prompts=gen_batch)
+
     print(result)
 
 
 if __name__ == "__main__":
     test_vllm_tool_calling()
 
-# TODO: 1. find a way to silence vllm logging
+# TODO: move to verl-tool 1. add `raw_prompt` 2. 
 """
 # preprocess aime24 data
 python examples/data_preprocess/aime24.py --local_dir ./data/tests/aime24 

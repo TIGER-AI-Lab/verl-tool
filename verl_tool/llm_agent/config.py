@@ -25,3 +25,4 @@ class AgentActorConfig:
     enable_mtrl: bool=False
     mtrl_sep: str=None # "\n<|im_start|>system\n{obs}<|im_end|>\n<|im_start|>assistant\n"
     turn_end_token: str="<|im_end|>"
+    include_stop_str_in_output: bool=True
