@@ -3,7 +3,7 @@ dataset_name1=acecoder_long/CodeDPO-AceCoderV2-150K-processed-Qwen32B-inference-
 dataset_name2=deepcoder/all-with-execution-prompt-complex
 dataset_name3=acecoderv2/AceCoderV2-122K-processed-filtered-with-execution-prompt-complex
 dataset_name4=acecoder_long/AceCoderV2-69K-with-execution-prompt-with-public-tests-complex
-dataset_name5=acecoder_custom/AceCoderV2-69K-system-prompt-12
+dataset_name5=acecoder_custom/AceCoderV2-69K-cleaned-system-prompt-13
 # train_data=[$(pwd)/data/${dataset_name1}/train.parquet,\
 # $(pwd)/data/${dataset_name2}/train.parquet]
 # val_data=[$(pwd)/data/${dataset_name1}/test.parquet,\
@@ -21,15 +21,15 @@ batch_size=128
 ppo_mini_batch_size=$batch_size
 max_prompt_length=1536
 max_response_length=3072
-max_obs_length=512
+max_obs_length=1024
 temperature=1.0
 top_p=1.0
-strategy="fsdp_agent" # remove _agent for normal verl behavior
-action_stop_tokens=''
+strategy="fsdp" # remove _agent for normal verl behavior
+action_stop_tokens="\n\`\`\`output,\`\`\`output"
 # action_stop_tokens="</python>"
-max_turns=3
-min_action_num=3
-mask_observations=True # mask observations for kl loss and gradient descent
+max_turns=0
+min_action_num=0
+mask_observations=False # mask observations for kl loss and gradient descent
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -39,17 +39,17 @@ reward_manager=acecoder
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
 tensor_model_parallel_size=2
-gpu_memory_utilization=0.6 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
+gpu_memory_utilization=0.5 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
 do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
 use_dynamic_bsz=True # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
-enable_mtrl=True # enable multi-turn training
+enable_mtrl=False # enable multi-turn training
 max_action_length=1536
 
 
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="-69k-sys12-mtrl-d1fo"
+run_name_postfix="-69k-sys13-wt-stage1"
 run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 export VERL_RUN_ID=$run_name
 export NCCL_DEBUG=INFO
@@ -63,7 +63,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -I | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "firejail_python_code" --workers_per_tool 4 --done_if_invalid True &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "firejail_python_code_with_test" --workers_per_tool 4 --done_if_invalid True &
 server_pid=$!
 echo "Server (pid=$server_pid) started at $tool_server_url"
 

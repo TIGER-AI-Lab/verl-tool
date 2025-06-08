@@ -72,7 +72,7 @@ class BaseTool:
         """
         self.env_cache[trajectory_id] = env
     
-    def update_env(self, trajectory_id, env, action, is_valid, extra_field, observation):
+    def update_env(self, trajectory_id, env, action, is_valid, extra_field, observation, **kwargs):
         """
         Update the environment for the given trajectory_id
         """
@@ -82,6 +82,7 @@ class BaseTool:
             "is_valid": is_valid,
             "observation": observation,
             "extra_field": extra_field,
+            **kwargs
         })
     
     def delete_env(self, trajectory_id):

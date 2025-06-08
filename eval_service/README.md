@@ -66,22 +66,22 @@ python eval_service/test/test_api.py
 
 ```bash
 backend=fsdp
-checkpoint_path=checkpoints/acecoder/acecoder-fsdp-xiaomimimo_mimo-7b-base-grpo-n16-b128-t1.0-lr1e-6-69k-sys3-no-tool/global_step_110/actor
-hf_upload_path=VerlTool/acecoder-fsdp-xiaomimimo_mimo-7b-base-grpo-n16-b128-t1.0-lr1e-6-69k-sys3-no-tool-110-step
+checkpoint_path=checkpoints/acecoder/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-instruct-grpo-n16-b128-t1.0-lr1e-6-69k-sys12-mtrl-d1fo/bak_global_step_280_bak/actor
+hf_upload_path=VerlTool/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-instruct-grpo-69k-sys12-mtrl-d1fo-280-step
 python3 verl/scripts/model_merger.py --backend $backend --hf_model_path $checkpoint_path/huggingface --hf_upload_path "$hf_upload_path" --local_dir $checkpoint_path --target_dir $checkpoint_path/huggingface
 
 # optional: also upload the step records to the model
-step_records_dir=verl_step_records/acecoder-fsdp-xiaomimimo_mimo-7b-base-grpo-n16-b128-t1.0-lr1e-6-69k-sys3-no-tool
-zip -r $step_records_dir/step_records.zip $step_records_dir 
+step_records_dir=verl_step_records/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-instruct-grpo-n16-b128-t1.0-lr1e-6-69k-sys12-mtrl-d1fo
+# zip -r $step_records_dir/step_records.zip $step_records_dir 
 huggingface-cli upload --repo-type model $hf_upload_path $step_records_dir/step_records.zip 
 
 backend=fsdp
-checkpoint_path=checkpoints/torl/torl-fsdp_agent-qwen_qwen2.5-math-7b-grpo-n16-b128-t1.0-lr1e-6-mtrl-v6/global_step_330/actor
-hf_upload_path=VerlTool/torl-fsdp_agent-qwen_qwen2.5-math-7b-grpo-n16-b128-t1.0-lr1e-6-mtrl-v6-330-step
+checkpoint_path=checkpoints/acecoder/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-instruct-grpo-n16-b128-t1.0-lr1e-6-69k-sys12-mtrl-d1fo/global_step_535/actor
+hf_upload_path=VerlTool/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-instruct-grpo-69k-sys12-mtrl-d1fo-535-step
 python3 verl/scripts/model_merger.py --backend $backend --hf_model_path $checkpoint_path/huggingface --hf_upload_path "$hf_upload_path" --local_dir $checkpoint_path --target_dir $checkpoint_path/huggingface
 
 # optional: also upload the step records to the model
-step_records_dir=verl_step_records/torl-fsdp_agent-qwen_qwen2.5-math-7b-grpo-n16-b128-t1.0-lr1e-6-mtrl-v6
+step_records_dir=verl_step_records/acecoder-fsdp_agent-qwen_qwen2.5-coder-1.5b-instruct-grpo-n16-b128-t1.0-lr1e-6-69k-sys12-mtrl-d1fo
 zip -r $step_records_dir/step_records.zip $step_records_dir 
 huggingface-cli upload --repo-type model $hf_upload_path $step_records_dir/step_records.zip 
 ```
