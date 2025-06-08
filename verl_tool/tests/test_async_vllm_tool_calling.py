@@ -197,10 +197,10 @@ class ToolChatCompletionScheduler(NaiveChatCompletionScheduler):
             elif turn == self.agent_config.max_turns:
                 # if we reach max turns + 1, remove code block stop token
                 print(f"[id={completions.id},turn={turn}] new_kwargs 1: {new_kwargs}")
-                new_kwargs.pop("stop")
+                new_kwargs.pop("stop") # TODO: `force_finish_for_last_turn`
                 print(f"[id={completions.id},turn={turn}] new_kwargs 2: {new_kwargs}")
 
-            # STEP 1: check if we got answer
+            # STEP 1: check if we got answer # TODO: update error 
             matches = boxed_pattern.findall(content)
             if matches:
                 print(f"[id={completions.id},turn={turn}] Got answer: {matches[0]}, done!")
@@ -212,6 +212,7 @@ class ToolChatCompletionScheduler(NaiveChatCompletionScheduler):
 
             # STEP 3: execute code block in sandbox 
             if finish_reason == "stop" and stop_reason is not None:
+                # TODO: send http request 
                 code = await self.parse_code_block(content) 
                 result = await self.sandbox_code_execution(code) # TODO: use `interact_with_tool_server`
                 stdout, stderr = result["stdout"], result["stderr"]
