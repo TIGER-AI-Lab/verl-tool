@@ -2,7 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+/Qwen2.5-Math-1.5B
+/DeepMath-103k
 # C extensions
 *.so
 

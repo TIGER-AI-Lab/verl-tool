@@ -423,10 +423,11 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                                                   lam=self.config.algorithm.lam,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
 
-                    if "info_mask" in batch.batch.keys():
+                    # if "info_mask" in batch.batch.keys():
                         # masking observations, instead of directly using original `attention_mask`
-                        ori_attention_mask = batch.batch['attention_mask']
-                        batch.batch['attention_mask'] = batch.batch['info_mask']
+                        # ori_attention_mask = batch.batch['attention_mask']
+                        # batch.batch['attention_mask'] = batch.batch['info_mask']
+
                     # update critic
                     if self.use_critic:
                         with _timer('update_critic', timing_raw):
@@ -441,9 +442,9 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
-                    if "info_mask" in batch.batch.keys():
-                        # restore original attention mask
-                        batch.batch['attention_mask'] = ori_attention_mask
+                    # if "info_mask" in batch.batch.keys():
+                    #     # restore original attention mask
+                    #     batch.batch['attention_mask'] = ori_attention_mask
 
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and \
