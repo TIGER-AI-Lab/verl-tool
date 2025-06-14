@@ -36,7 +36,7 @@ def test_python(
     print(_send_test_request(url, trajectory_id, action, "Python"))
     
     print("--- Testing 6 ---") # syntax error
-    action = """```<python>prnit('Hello from Python!')</python> ..."""
+    action = """```<python>print('Hello from Python!')</python> ..."""
     print(_send_test_request(url, trajectory_id, action, "Python"))
     
     return True
