@@ -14,9 +14,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .utils import hash_requests
 from collections import defaultdict
-
+from qwen_vl_utils import process_vision_info
 from .tools import get_tool_cls, ALL_TOOLS
-
+import debugpy
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class AgentResponse(BaseModel):
     """Model for outgoing agent responses"""
-    observations: List[str]
+    observations: List[Union[Dict, str]]
     dones: List[bool]
     valids: List[bool]
 
@@ -443,6 +443,10 @@ def main(
         tool_type: Tool type(s) to use (comma-separated string or tuple)
         log_level: Logging level (debug, info, warning, error)
     """
+    # debugpy.listen(("localhost", 5692))  # Use a different port for the worker
+    # print(f"Trainer worker: Waiting for debugger to attach on port 5692")
+    # debugpy.wait_for_client()
+    # print("Trainer worker: Debugger attached!")
     if workers_per_tool is None:
         workers_per_tool = max_concurrent_requests
     # Configure logging

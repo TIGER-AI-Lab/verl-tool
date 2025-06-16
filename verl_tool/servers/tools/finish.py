@@ -23,6 +23,7 @@ class FinishTool(BaseTool):
         return "", False # this is the end of the trajectory, not a real action
     
     def conduct_action(self, trajectory_id, action, extra_data):
+        # breakpoint()
         action, is_valid = self.parse_action(action)
         observation = ""
         done = True

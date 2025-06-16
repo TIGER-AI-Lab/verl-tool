@@ -8,6 +8,10 @@ from ..llm_agent.manager import AgentActorManager
 import inspect
 import re
 import textwrap
+import debugpy
+import os
+import ray
+import socket
 
 class AgentActorRolloutRefWorkerMeta(type):
     def __new__(mcs, name, bases, attrs):
@@ -119,6 +123,8 @@ class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, metaclass=AgentA
         print(f"AgentActorRolloutRefWorker: {self.agent_config}")
         self.model_path = self.config.model.path
         self.manager = AgentActorManager(self.model_path, self, self.agent_config)
+
+
     
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences(self, prompts: DataProto):
