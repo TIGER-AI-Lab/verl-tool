@@ -279,7 +279,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
 
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
-                print(f'epoch {epoch}, step {self.global_steps}')
+                print(f'epoch {epoch}, step {self.global_steps}, with {batch_dict["input_ids"].shape} samples')
                 metrics = {}
                 timing_raw = {}
 
@@ -307,9 +307,10 @@ class AgentRayPPOTrainer(RayPPOTrainer):
 
                 with _timer('step', timing_raw):
                     # generate a batch
+                    print(f"====> step{self.global_steps} starting rollouts")
                     with _timer('gen', timing_raw):
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
-
+                    print(f"====> rollout completed")
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         with _timer('gen_max', timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
@@ -344,7 +345,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
-
+                    print(f"====> Computing log probs")
                     # recompute old_log_probs
                     with _timer('old_log_prob', timing_raw):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
@@ -385,6 +386,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                         reward_extra_infos_dict: dict[str, list]
                         try:
                             reward_result = self.reward_fn(batch, return_dict=True)
+                            print(f"====> Done Rewards")
                             reward_tensor = reward_result['reward_tensor']
                             reward_extra_infos_dict = reward_result['reward_extra_info']
                             # update metrics of reward extra info
@@ -422,7 +424,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                                                   gamma=self.config.algorithm.gamma,
                                                   lam=self.config.algorithm.lam,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
-
+                        print(f"====> Done Adv")
                     if "info_mask" in batch.batch.keys():
                         # masking observations, instead of directly using original `attention_mask`
                         ori_attention_mask = batch.batch['attention_mask']
@@ -433,7 +435,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                             critic_output = self.critic_wg.update_critic(batch)
                         critic_output_metrics = reduce_metrics(critic_output.meta_info['metrics'])
                         metrics.update(critic_output_metrics)
-
+                    print(f"====> Policy Update")
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
@@ -441,6 +443,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
+                    print(f"====> Done Gradient")
                     if "info_mask" in batch.batch.keys():
                         # restore original attention mask
                         batch.batch['attention_mask'] = ori_attention_mask

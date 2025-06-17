@@ -108,7 +108,7 @@ class ModelService:
                 "valids": [False for _ in range(len(trajectory_ids))]
             }
     
-    async def post_process_observations(self, next_obs: List[str], dones: List[bool], valid_action: List[bool], finishs: List[bool]):
+    async def post_process_observations(self, next_obs, dones: List[bool], valid_action: List[bool], finishs: List[bool]):
         """Process observations using the tokenizer with proper async locks"""
         next_obs = [obs if not done else "" for obs, done in zip(next_obs, dones)]
         async with self.encode_lock:
