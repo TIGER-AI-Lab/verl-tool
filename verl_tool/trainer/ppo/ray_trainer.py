@@ -110,8 +110,10 @@ class AgentRayPPOTrainer(RayPPOTrainer):
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
-            # from verl.workers.rollout.async_server import AsyncLLMServerManager
-            from verl_tool.workers.rollout.async_server import VerlToolAsyncLLMServerManager as AsyncLLMServerManager # added by verl-tool
+            if self.config.actor_rollout_ref.actor.enable_agent:
+                from verl_tool.workers.rollout.async_server import VerlToolAsyncLLMServerManager as AsyncLLMServerManager # added by verl-tool
+            else:
+                from verl.workers.rollout.async_server import AsyncLLMServerManager
 
             self.async_rollout_mode = True
             self.async_rollout_manager = AsyncLLMServerManager(
