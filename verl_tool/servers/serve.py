@@ -34,7 +34,7 @@ class DictObservation:
     
 class AgentResponse(BaseModel):
     """Model for outgoing agent responses"""
-    observations: List[Union[str,  DictObservation]]
+    observations: List[Union[str,  dict]]
     dones: List[bool]
     valids: List[bool]
 

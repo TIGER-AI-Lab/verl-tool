@@ -826,9 +826,12 @@ class AgentActorManager:
             logging.error(f"Payload size: {len(str(safe_payload))} chars")
             
             # Save error data for debugging
-            os.mkdir('tmp', exist_ok=True)  # Ensure tmp directory exists
-            with open(f"tmp/error_data_{uuid.uuid4().hex[:8]}.json", 'w') as f:
+            if not os.path.exists('tmp'):
+                os.mkdir('tmp')  # Ensure tmp directory exists
+            error_file = f"tmp/error_data_{uuid.uuid4().hex[:8]}.json"
+            with open(error_file, 'w') as f:
                 json.dump(safe_payload, f, indent=2)
+            logging.error(f"Error data saved to {error_file} for debugging.")
             
             raise ValueError(f"Tool server communication failed: {e}")
         
@@ -906,6 +909,7 @@ class AgentActorManager:
         allowed_keys = ['obs', 'reward']
         for i, obs in enumerate(next_obs):
             if isinstance(obs, str):
+                # can be invalid
                 processed_next_obs.append(obs)
                 rewards.append(None)
                 tool_interact_info.append({})

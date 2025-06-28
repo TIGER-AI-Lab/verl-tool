@@ -13,7 +13,7 @@ we add DAPO support for training.
 - to mask the overlong trajectory (avoid training on it), add following config in your training script:
 
 ```bash
-    +actor_rollout_ref.agent.mask_overlong_loss=True \
+    actor_rollout_ref.agent.mask_overlong_loss=True \
 ```
 
 

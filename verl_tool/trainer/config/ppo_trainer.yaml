@@ -480,6 +480,34 @@ actor_rollout_ref:
 
       format: llama3_json
 
+  agent:
+    enable_agent: True
+    max_turns: 1  # 0 means no limit
+    min_turns: 0  # 0 means no limit
+    max_start_length: null  # Maximum length of the initial prompt
+    max_prompt_length: ${data.max_prompt_length}  # Maximum length of the prompt
+    max_response_length: ${data.max_response_length}  # Maximum length of the response
+    max_model_len: null  # Maximum model length, used for async rollout to limit the input length.
+    max_obs_length: null  # Maximum length of the observation
+    max_action_length: null  # Maximum length of the action
+    tool_server_url: null  # URL for the tool server, if any
+    n: ${actor_rollout_ref.rollout.n}  # Number of responses to generate in each rollout
+    truncate_obs_side: left  # Side to truncate observations if they exceed max_obs_length
+    truncate_response_side: left  # Side to truncate responses if they exceed max_response_length
+    rolling_with_prompt: False  # Whether to roll the prompt with the response
+    call_tool_first: False  # Whether to call the tool first in the multi-turn interaction
+    action_stop_tokens: null  # List of stop tokens for actions
+    additional_eos_token_ids: null  # Additional EOS token IDs to use
+    mask_observations: True  # Whether to mask observations for KL loss and gradient descent
+    force_finish_for_last_turn: False  # Whether to force finish the last turn
+    enable_mtrl: False  # Whether to enable multi-turn training
+    mtrl_role: user  # Role for multi-turn training, e.g., "user" or "assistant"
+    mtrl_sep: null  # Separator for multi-turn training, e.g., "\n<|im_start|>system\n{obs}<|im_end|>\n<|im_start|>assistant\n"
+    turn_end_token: "<|im_end|>"  # Token to indicate the end of a turn
+    rollout_mode: sync  # Rollout mode: "sync" or "async"
+    mask_overlong_loss: False  # Whether to mask the overlong trajectory to not train on it
+    
+
 # configs for the critic
 critic:
 

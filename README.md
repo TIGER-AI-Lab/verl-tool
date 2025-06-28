@@ -132,7 +132,7 @@ class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, metaclass=AgentA
 
 The `AgentActorManager` handles the multi-turn interaction between the model and the tool server, where the model can call tools and receive observations from the tool server. Please check the detailed design in [verl_tool/llm_agent/manager.py](verl_tool/llm_agent/manager.py).
 
-Configuration parameters are defined in the `AgentActorConfig` class in [verl_tool/llm_agent/config.py](verl_tool/llm_agent/config.py). You can set these parameters by adding `+actor_rollout_ref.agent.{param_name}=value` to the training command.
+Configuration parameters are defined in the `AgentActorConfig` class in [verl_tool/llm_agent/config.py](verl_tool/llm_agent/config.py). You can set these parameters by adding `actor_rollout_ref.agent.{param_name}=value` to the training command.
 
 ### AgentActorConfig Parameters
 

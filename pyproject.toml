@@ -15,6 +15,9 @@ dependencies = [
 packages = ["verl_tool"]  # Explicitly specify only the verl_tool package
 
 [project.optional-dependencies]
+vllm = [
+    "vllm<0.9.0",
+]
 tool_browser = [
     "mini_webarena @ git+https://github.com/cogito233/mini_webarena.git",
 ]
@@ -24,12 +27,11 @@ acecoder = [
 torl = [
     "math-verify",
 ]
-vllm = [
-    "vllm<0.9.0",
-]
-
 search_tool = [
     "google-api-python-client",
     "chardet",
     "bs4"
+]
+sql_tool = [
+    "sqlparse"
 ]

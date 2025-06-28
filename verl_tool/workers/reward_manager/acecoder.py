@@ -431,6 +431,7 @@ class AceCoderRewardManager:
                     "prompt": prompt_str[i],
                     "response": response_str[i],
                     "extracted_code": extracted_answers[i],
+                    'tool_interact_info': data[i].non_tensor_batch.get('tool_interact_info', None),
                     "ground_truth": "",
                     "score": scores[i],
                     'extra_info': data[i].non_tensor_batch.get('extra_info', None),

@@ -215,6 +215,7 @@ class ToRLRewardManager:
                 'ground_truth': ground_truth,
                 'score': score,
                 'reward': reward,
+                'tool_interact_info': data[i].non_tensor_batch.get('tool_interact_info', None),
                 'extra_info': data_item.non_tensor_batch.get('extra_info', None),
             })
             if "turns_stats" in data_item.non_tensor_batch:
