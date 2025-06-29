@@ -1,6 +1,7 @@
 from verl.workers.fsdp_workers import ActorRolloutRefWorker, Worker, DictConfig
 from verl.workers.fsdp_workers import *
 from verl.utils.debug.performance import _timer
+from verl.protocol import DataProto
 from ..llm_agent.config import AgentActorConfig
 from ..llm_agent.manager import AgentActorManager
 

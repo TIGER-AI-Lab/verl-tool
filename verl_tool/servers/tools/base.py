@@ -114,6 +114,20 @@ class BaseTool:
         valid = True
         return action, valid
     
+    def get_action_priority(self, action: str, extra_field: dict) -> int:
+        """
+        Get the priority for handling this action. Higher numbers = higher priority.
+        Return -1 if this tool cannot handle the action.
+        
+        Args:
+            action: The raw action string
+            extra_field: Extra fields associated with the action
+        Returns:
+            priority: Integer priority (-1 means cannot handle, 0 = default, positive = higher priority)
+        """
+        _, valid = self.parse_action(action)
+        return 0 if valid else -1
+    
     def conduct_action(self, trajectory_id, action, extra_field):
         """
         Conduct the action on the environment and return the observation

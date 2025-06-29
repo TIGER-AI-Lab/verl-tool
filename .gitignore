@@ -308,3 +308,5 @@ verl_step_records/
 /test*
 /*.json
 /*.txt
+/tensorboard_log
+/tensorboard_log/*
