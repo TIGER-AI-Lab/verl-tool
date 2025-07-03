@@ -36,6 +36,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         self.agent_actor_manager = AgentActorManager(self.model_path, self, self.agent_config)
         self.max_model_len = self.agent_actor_manager.max_model_len
         self.max_response_length = self.agent_config.max_response_length
+        self.max_concurrent_trajectories = self.agent_config.max_concurrent_trajectories
 
         self.tokenizer = self.agent_actor_manager.tokenizer
         print(f"AgentActorManager initialized with config: {self.agent_config}")
@@ -204,15 +205,30 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         logger.info(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")
         tasks = []
         if self.agent_config.enable_agent:
-            for batch_index in range(len(repeated_chunk_batch)):
-                tasks.append(
-                    asyncio.create_task(
-                        self.agent_actor_manager.run_llm_loop_async(
+            if self.max_concurrent_trajectories is not None and self.max_concurrent_trajectories > 0:
+                semaphore = asyncio.Semaphore(self.max_concurrent_trajectories)
+                async def run_with_semaphore(batch_index):
+                    async with semaphore:
+                        return await self.agent_actor_manager.run_llm_loop_async(
                             repeated_chunk_batch[batch_index],
                             **kwargs
                         )
+                for batch_index in range(len(repeated_chunk_batch)):
+                    tasks.append(
+                        asyncio.create_task(
+                            run_with_semaphore(batch_index)
+                        )
                     )
-                )
+            else:
+                for batch_index in range(len(repeated_chunk_batch)):
+                    tasks.append(
+                        asyncio.create_task(
+                            self.agent_actor_manager.run_llm_loop_async(
+                                repeated_chunk_batch[batch_index],
+                                **kwargs
+                            )
+                        )
+                    )
             # gen_outputs = await asyncio.gather(*tasks)
             gen_outputs = await tqdm.gather(*tasks, total=len(tasks), desc="Async Generating sequences")
             output_batch = DataProto.concat(gen_outputs)

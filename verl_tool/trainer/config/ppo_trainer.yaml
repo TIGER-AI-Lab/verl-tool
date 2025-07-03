@@ -506,6 +506,7 @@ actor_rollout_ref:
     turn_end_token: "<|im_end|>"  # Token to indicate the end of a turn
     rollout_mode: sync  # Rollout mode: "sync" or "async"
     mask_overlong_loss: False  # Whether to mask the overlong trajectory to not train on it
+    max_concurrent_trajectories: null
     
 
 # configs for the critic

@@ -162,6 +162,7 @@ Configuration parameters are defined in the `AgentActorConfig` class in [verl_to
 | `mtrl_role` | str | `user` | If `enable_mtrl` is enabled, this determines the role of the observation chat turn |
 | `mtrl_sep` | str | `None` | In mtrl mode, this defines a special token that if present in the model's action, indicates it wants to interact with the tool server |
 | `turn_end_token` | str | `"<\|im_end\|>"` | Token used to mark the end of each turn |
+| `max_concurrent_trajectories` | int | `None` | Maximum number of concurrent trajectories for async rollout to avoid crash if too high concurrency. If None, no limit is applied. |
 
 ### Configuration Examples
 
