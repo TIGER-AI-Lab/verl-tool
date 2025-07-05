@@ -3,6 +3,13 @@ from pathlib import Path
 from tqdm import tqdm
 registered_tools = {}
 ALL_TOOLS = []
+use_tqdm = True
+def set_use_tqdm(value: bool):
+    """
+    Set whether to use tqdm for progress bars.
+    """
+    global use_tqdm
+    use_tqdm = value
 
 def get_tool_cls(tool_type):
     if tool_type in ALL_TOOLS:
@@ -29,6 +36,7 @@ def register_tool(cls):
     tool_type = getattr(cls, 'tool_type', cls.__name__)
     registered_tools[tool_type] = cls
     return cls
+
 
 class BaseTool:
     tool_type = __name__
@@ -91,8 +99,6 @@ class BaseTool:
         """
         # import json
         if trajectory_id in self.env_cache:
-            # with open(f"env_cache/{trajectory_id}.json", "w") as f:
-                # json.dump(self.env_cache[trajectory_id], f)
             del self.env_cache[trajectory_id]
     
     def parse_action(self, action:str):
@@ -107,6 +113,20 @@ class BaseTool:
         action = action[:10]
         valid = True
         return action, valid
+    
+    def get_action_priority(self, action: str, extra_field: dict) -> int:
+        """
+        Get the priority for handling this action. Higher numbers = higher priority.
+        Return -1 if this tool cannot handle the action.
+        
+        Args:
+            action: The raw action string
+            extra_field: Extra fields associated with the action
+        Returns:
+            priority: Integer priority (-1 means cannot handle, 0 = default, positive = higher priority)
+        """
+        _, valid = self.parse_action(action)
+        return 0 if valid else -1
     
     def conduct_action(self, trajectory_id, action, extra_field):
         """
@@ -145,14 +165,24 @@ class BaseTool:
             dones: The list of done flags
             valids: The list of valid flags
         """
-        with ThreadPoolExecutor(max_workers=min(self.num_workers, len(trajectory_ids))) as executor:
-            results = list(tqdm(executor.map(self.conduct_action, trajectory_ids, actions, extra_fields),
-                                            total=len(trajectory_ids), desc=f"Getting observations using tool {self.tool_type}", 
-                                            disable=False))
-        for i in range(len(trajectory_ids)):
-            if extra_fields[i].get('is_last_step', False):
-                self.delete_env(trajectory_ids[i])
+        if len(trajectory_ids) <= 4: # heuristic to use single-threaded execution for small number of trajectories
+            results = []
+            for i in tqdm(range(len(trajectory_ids)), desc=f"Getting observations using tool {self.tool_type}", disable=not use_tqdm):
+                trajectory_id = trajectory_ids[i]
+                action = actions[i]
+                extra_field = extra_fields[i]
+                results.append(self.conduct_action(trajectory_id, action, extra_field))
+        else:
+            with ThreadPoolExecutor(max_workers=min(self.num_workers, len(trajectory_ids))) as executor:
+                results = list(tqdm(executor.map(self.conduct_action, trajectory_ids, actions, extra_fields),
+                                                total=len(trajectory_ids), desc=f"Getting observations using tool {self.tool_type}", 
+                                                disable=not use_tqdm))
+        
         observations, dones, valids = zip(*results)
+        for i in range(len(trajectory_ids)):
+            if extra_fields[i].get('is_last_step', False) or dones[i]:
+                # delete the environment if it's the last step or done by the tool
+                self.delete_env(trajectory_ids[i])
         return observations, dones, valids
 
 # go through all files in the tools directory and register them

@@ -178,7 +178,7 @@ class ModelService:
                 if self.tool_config.enable_mtrl:
                     active_responses[i] += self.tool_config.turn_end_token
                 finish = False
-            if finish and self.tool_config.min_action_num > action_step:
+            if finish and self.tool_config.min_turns > action_step:
                 finish = False
                 if self.tool_config.enable_mtrl:
                     if self.tool_config.action_stop_tokens:

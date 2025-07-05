@@ -117,7 +117,7 @@ class CropImageTool(BaseTool):
                 cropped_img = crop(img_to_crop, parsed_action['arguments']['bbox_2d'])
       
                 observation = {
-                    'text': "Here is the cropped image.<|vision_start|><|image_pad|><|vision_end|>",
+                    'obs': "Here is the cropped image.<|vision_start|><|image_pad|><|vision_end|>",
                     'image': cropped_img
                 }
             except:

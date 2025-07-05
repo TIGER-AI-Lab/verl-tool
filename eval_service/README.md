@@ -38,7 +38,7 @@ model_path=Qwen/Qwen2.5-Coder-7B-Instruct
 max_turns=4
 
 # this is the minimum number of tool-calling activities enforced by the server. When set to a specific number, even if the LLM did not actively asking for tool calling, the tool server will still try to extract Python code from its output.
-min_action_num=4
+min_turns=4
 
 # this is the action token that your LLM shall produce when it is asking for a tool calling round.
 action_stop_tokens="<python>"

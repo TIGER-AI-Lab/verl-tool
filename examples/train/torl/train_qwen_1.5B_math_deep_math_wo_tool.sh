@@ -6,7 +6,7 @@ val_data=[$(pwd)/data/${dataset_name}/test.parquet,\
 $(pwd)/data/${dataset_name}/math500_test.parquet,\
 $(pwd)/data/${dataset_name}/aime24_test.parquet,\
 $(pwd)/data/${dataset_name}/aime25_test.parquet]
-model_name=/map-vepfs/models/Qwen2.5-Math-1.5B
+model_name=Qwen/Qwen2.5-Math-1.5B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
@@ -18,7 +18,7 @@ max_response_length=3072
 max_obs_length=512
 temperature=1.0
 top_p=1.0
-strategy="fsdp" # remove _agent for normal verl behavior
+strategy="fsdp"
 action_stop_tokens='<|calling system for feedback|>,```output'
 max_turns=1
 kl_loss_coef=0.0

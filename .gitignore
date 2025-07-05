@@ -2,8 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-/Qwen2.5-Math-1.5B
-/DeepMath-103k
+
 # C extensions
 *.so
 
@@ -309,3 +308,5 @@ verl_step_records/
 /test*
 /*.json
 /*.txt
+/tensorboard_log
+/tensorboard_log/*

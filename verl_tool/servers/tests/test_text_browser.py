@@ -3,7 +3,7 @@
 Structured smoke-test for the Text-Browser tool server.
 
 Run the server first, e.g.:
-    python -m verl_tool.servers.ray_serve \
+    python -m verl_tool.servers.serve \
         --tool_type text_browser \
         --url=http://localhost:5000/get_observation
 

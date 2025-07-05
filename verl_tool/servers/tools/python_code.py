@@ -1,19 +1,22 @@
+"""
+add-apt-repository ppa:deki/firejail
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get -y install firejail firejail-profiles
+"""
+import ray
 from .base import BaseTool, register_tool
 import regex as re
 import subprocess
 import os
-import signal
-import sys
-import json
 import uuid
-import hashlib
-from typing import Tuple, Dict, Any, Optional
-from ..utils import kill_python_subprocess_processes
-
-import random
+import shutil
+import resource
+from typing import Tuple, Dict, Any, Optional, Union, List
 
 # Timeout for code execution in seconds
-TIMEOUT = 5
+TIMEOUT = 10
+PRE_IMPORT_LIBS = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(6*10**5)\n\n"
+filejail_command_exists = shutil.which("firejail") is not None
 
 def check_forbidden_imports(code: str) -> bool:
     """
@@ -47,10 +50,112 @@ def check_forbidden_imports(code: str) -> bool:
             return True
     
     return False
-    
-def execute_python(code: str, timeout: int=TIMEOUT, stdin: Optional[str] = None) -> Tuple[str, bool]:
+
+def wrap_code_blocks(code: Union[str, List[str]]) -> str:
     """
-    Execute Python code with a timeout.
+    Wraps the provided code blocks with try-except to handle exceptions including syntax errors.
+    For previous codes, redirect stdout and stderr to null and export defined functions and variables.
+    
+    Args:
+        code: List of code strings to wrap
+        
+    Returns:
+        Wrapped code string
+    """
+    wrapped_code = ""
+    
+    # Convert single string to list for consistent handling
+    if isinstance(code, str):
+        code = [code]
+    
+    # Import needed at the top
+    wrapped_code += "import sys, os, io, ast\n\n"
+    
+    # Add the safe_exec_with_exports function
+    wrapped_code += """
+def parse_and_exec_salvageable(code_string):
+    # Split the code into lines
+    lines = code_string.splitlines()
+    
+    # Try to execute code incrementally, line by line or in blocks
+    current_block = ""
+    local_namespace = {}
+    
+    for line in lines:
+        # Add the current line to our accumulating block
+        if current_block:
+            current_block += "\\n" + line
+        else:
+            current_block = line
+            
+        # Skip empty lines or comments
+        if not line.strip() or line.strip().startswith('#'):
+            continue
+            
+        # Try to parse the current block to check for syntax
+        try:
+            ast.parse(current_block)
+            
+            # If it parses successfully, try to execute it
+            try:
+                # Create a new local namespace for this execution
+                exec(current_block, globals(), local_namespace)
+                
+                # Clear the block after successful execution
+                current_block = ""
+            except Exception as e:
+                print(f"Runtime error in block: {e}")
+                current_block = ""  # Reset the block after a runtime error
+                
+        except SyntaxError:
+            # If we have a syntax error in the accumulated block,
+            # don't reset yet - we might need more lines to complete the syntax
+            pass
+    
+    return local_namespace
+"""
+    
+    for i, block in enumerate(code):
+        is_last_block = i == len(code) - 1
+        
+        # For all blocks except the last, use safe_exec_with_exports
+        if not is_last_block:
+            wrapped_block = (
+                f"\n# Code block {i+1} (previous)\n"
+                f"original_stdout, original_stderr = sys.stdout, sys.stderr\n"
+                f"sys.stdout, sys.stderr = io.StringIO(), io.StringIO()\n"
+                f"try:\n"
+                f"    exported_vars = parse_and_exec_salvageable('''{block}''')\n"
+                f"finally:\n"
+                f"    sys.stdout, sys.stderr = original_stdout, original_stderr\n\n"
+                f"    for name, value in exported_vars.items():\n"
+                f"        globals()[name] = value\n"
+            )
+        else:
+            # For the last (current) block, just include the code directly
+            wrapped_block = f"\n# Code block {i+1} (current)\n{block}\n"
+        
+        wrapped_code += wrapped_block
+    
+    return wrapped_code
+
+def clean_traceback(text, base_path):
+    # Replace file paths in traceback
+    pattern = re.compile(re.escape('File "' + base_path + "/"))
+    return pattern.sub('File "', text)
+
+# Set resource limits directly
+def set_limits():
+    # Memory limit (8GB)
+    resource.setrlimit(resource.RLIMIT_AS, (4 * 1024**3, resource.RLIM_INFINITY))
+    # # Process limit
+    resource.setrlimit(resource.RLIMIT_CPU, (TIMEOUT, resource.RLIM_INFINITY))
+    # File size limit (500 MB)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (500*1024*1024, 500*1024*1024))
+
+def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Optional[str] = None, python_path: str = None, pre_import_lib: bool = False, use_firejail: bool=False) -> Tuple[str, bool]:
+    """
+    Execute Python code in a Firejail sandbox with a timeout.
     
     Args:
         code: Python code string to execute
@@ -61,81 +166,109 @@ def execute_python(code: str, timeout: int=TIMEOUT, stdin: Optional[str] = None)
     """
     # Check for forbidden imports first
     if check_forbidden_imports(code):
-        return "Execution blocked: Code contains potentially dangerous operations or imports.", True
+        return "", "Execution blocked: Code contains potentially dangerous operations or imports.", True
     
     # Create a minimal environment instead of copying everything
     original_env = os.environ.copy()
-    env = {}
     
-    # Core system variables
-    essential_vars = [
-        "PATH", "HOME", "USER", "SHELL", 
-        "LANG", "LC_ALL", "LC_CTYPE", "TERM",
-        # Python-specific
-        "PYTHONIOENCODING", "PYTHONUNBUFFERED", "PYTHONHASHSEED", "PYTHONDONTWRITEBYTECODE",
-        # Runtime optimization
-        "MKL_NUM_THREADS", "OMP_NUM_THREADS", "NUMEXPR_NUM_THREADS",
-        # Temp directories
-        "TMPDIR", "TEMP", "TMP",
-        # Display if needed
-        "DISPLAY", "XAUTHORITY"
-    ]
-    
-    # Copy only essential variables if they exist
-    for var in essential_vars:
-        if var in original_env:
-            env[var] = original_env[var]
-    
-    # Explicitly set optimization variables
-    env["OPENBLAS_NUM_THREADS"] = "1"
-    
-    if "PYTHONPATH" in env:
-        del env["PYTHONPATH"]
-
     # set cwd to be a temp dir
-    command = []
-    cwd = "/tmp/python_code"
+    cwd = os.path.join(os.getcwd(), "tmp/firejail", str(uuid.uuid4().hex)) # local tmp dir
     if not os.path.exists(cwd):
         os.makedirs(cwd, exist_ok=True)
     # write code to a temp file
-    # file_name = f"code_{hashlib.md5(code.encode()).hexdigest()}.py"
-    file_name = f"code_{uuid.uuid4().hex}.py"
+    file_name = "main.py"
     file_path = os.path.join(cwd, file_name)
+    code = wrap_code_blocks(code)
     with open(file_path, "w") as f:
         f.write(code)
+    if pre_import_lib:
+        code = PRE_IMPORT_LIBS + code
     # command.extend(["python3", "-c", code])
-    command.extend(["python3", file_path])
+    # command.extend(["python3", file_path])
+    if not python_path:
+        python_path = "python3"
+    else:
+        assert os.path.exists(python_path), f"Python path {python_path} does not exist."
+    
+    if use_firejail and filejail_command_exists:
+        env = {}
+        # Core system variables
+        essential_vars = [
+            "PATH", "HOME", "USER", "SHELL", 
+            "LANG", "LC_ALL", "LC_CTYPE", "TERM",
+            # Python-specific
+            "PYTHONIOENCODING", "PYTHONUNBUFFERED", "PYTHONHASHSEED", "PYTHONDONTWRITEBYTECODE",
+            # Runtime optimization
+            "MKL_NUM_THREADS", "OMP_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+            # Temp directories
+            "TMPDIR", "TEMP", "TMP",
+            # Display if needed
+            "DISPLAY", "XAUTHORITY"
+        ]
+        
+        # Copy only essential variables if they exist
+        for var in essential_vars:
+            if var in original_env:
+                env[var] = original_env[var]
+        
+        # Explicitly set optimization variables
+        env["OPENBLAS_NUM_THREADS"] = "1"
+        
+        if "PYTHONPATH" in env:
+            del env["PYTHONPATH"]
+        # Build the firejail command with resource limits
+        command = [
+            "firejail",
+            "--quiet",
+            "--seccomp=socket",
+            "--noprofile",
+            "--rlimit-nproc=32",
+            "--rlimit-nofile=32",
+            "--rlimit-fsize=2m",  # Limit file size
+            "--rlimit-as=1096m"  # Limit address space
+        ]
+        command.extend([python_path, file_path])
+        subprocess_cwd = cwd
+    else:
+        env = original_env
+        command = [python_path, file_name]
+        subprocess_cwd = cwd  # Use the temporary directory as the current working directory
+
     has_error = False
     try:
-        # Execute the command
         result = subprocess.run(
             command,
             input=stdin if stdin else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
             env=env,
             text=True,
+            capture_output=True,
+            preexec_fn=set_limits,
             timeout=timeout,
-            cwd=cwd,
+            cwd=subprocess_cwd,
         )
-        
-        stdout = result.stdout
-        stderr = result.stderr.strip()
+        # Clean both stdout and stderr
+        stdout = clean_traceback(result.stdout, cwd)
+        stderr = clean_traceback(result.stderr, cwd)
+        stderr = stderr if stderr else ""
         if stderr:
             has_error = True
-        
-        result = f"{stdout}\nError:\n{stderr}" if stderr else stdout
-        if result:
-            result = result.strip()
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         has_error = True
-        result = f"Execution timed out after {timeout} seconds.\n"
+        stdout = e.stdout if e.stdout else ""
+        stderr = e.stderr if e.stderr else ""
+        stdout = stdout.decode('utf-8') if isinstance(stdout, bytes) else stdout
+        stderr = stderr.decode('utf-8') if isinstance(stderr, bytes) else stderr
+        stderr += f"Execution timed out after {timeout} seconds.\n"
     # Clean up the temporary file
     try:
-        os.remove(file_path)
+        # remove cwd
+        if os.path.exists(cwd):
+            shutil.rmtree(cwd)
     except Exception as e:
         pass
-    return result, has_error
+    assert isinstance(stdout, str), f"Expected stdout to be a string, got {type(stdout)}"
+    assert isinstance(stderr, str), f"Expected stderr to be a string, got {type(stderr)}"
+    return stdout, stderr, has_error
 
 @register_tool
 class PythonCodeTool(BaseTool):
@@ -143,11 +276,61 @@ class PythonCodeTool(BaseTool):
     timeout = TIMEOUT
     stop_tokens = ["```output", "<output>", "<tool_call>"]
     enable_history_code_execution = False
-    enable_mannual_reflection = False
-    force_run_test_cases = False
     done_without_error = False
+    python_path = None
+    pre_import_lib = False
+    use_firejail = True
+    
     def get_usage_inst(self):
-        return "You are able to write and execute Python code."
+        return "You are able to write and execute Python code securely inside a Firejail sandbox."
+    
+    def has_env(self, trajectory_id):
+        """
+        Check if the environment for the given trajectory_id exists
+        """
+        return trajectory_id in self.env_cache
+    
+    def load_env(self, trajectory_id):
+        """
+        Load the environment for the given trajectory_id
+        """
+        env = self.env_cache.get(trajectory_id)
+        if env == None:
+            env = {
+                "trajectory_id": trajectory_id,
+                "metadata": {
+                    "turns": 0,
+                },
+                "previous_obs": [],
+            }
+        return env
+    
+    def save_env(self, trajectory_id, env):
+        """
+        Save the environment for the given trajectory_id
+        """
+        self.env_cache[trajectory_id] = env
+    
+    def update_env(self, trajectory_id, env, action, is_valid, extra_field, observation, **kwargs):
+        """
+        Update the environment for the given trajectory_id
+        """
+        env["metadata"]["turns"] += 1
+        env["previous_obs"].append({
+            "action": action,
+            "is_valid": is_valid,
+            "observation": observation,
+            "extra_field": extra_field,
+            **kwargs
+        })
+    
+    def delete_env(self, trajectory_id):
+        """
+        Delete the environment for the given trajectory_id
+        """
+        # import json
+        if trajectory_id in self.env_cache:
+            del self.env_cache[trajectory_id]
     
     def parse_action(self, action: str) -> Tuple[str, bool]:
         """
@@ -182,7 +365,7 @@ class PythonCodeTool(BaseTool):
     
     def conduct_action(self, trajectory_id, action, extra_field):
         """
-        Execute the parsed action
+        Execute the parsed action in a Firejail sandbox.
         
         Args:
             trajectory_id: ID for tracking the action
@@ -194,34 +377,6 @@ class PythonCodeTool(BaseTool):
         """
         parsed_action, is_valid = self.parse_action(action)
         env = self.load_env(trajectory_id)
-        
-        heuristic_sentences = {
-            "empty": [
-                "Hmm, no output at all. Since nothing broke, I'll draft a few edge-case inputs to see if the function ever emits data:",
-                "The run is silent—no errors, no text. I'll broaden the test suite and watch for any change in behaviour:",
-                "Blank output suggests the happy path passed; I'll now probe unusual parameters to confirm:",
-                "Nothing was printed, yet the call completed. Let me invent some stress tests to check hidden branches:",
-                "Zero output but no crash: time to craft randomized cases and observe whether output appears under different conditions:"
-            ], # normally when there is just a function of code, that's the coding question most of the time
-            "timeout": [
-                "The call never returned—likely stuck in a heavy loop. I'll scan the control flow and think about where it could stall.",
-                "Timeout reached. That hints at an expensive section or possible infinite recursion; I'll trace the algorithm paths and rethink them.",
-                "Execution exceeded the limit. I'll review the data size assumptions and consider simpler test inputs first.",
-                "Ran out of time—maybe I'm missing a termination condition. I'll inspect loops and add safeguards before retrying.",
-                "Process froze long enough to trigger a timeout; I'll look for bottlenecks and refactor the slow part."
-            ],
-            "error": [
-                "The code seems crashed. I'll read the stack trace, locate the failing line, and reason out a fix. Based on the error, I think",
-                "Wait, I got some errors of my previous code, I'll double-check code logic and try to fix the root cause. Based on the error, I think",
-                "Oops, the code crashed. I'll analyze the error message and see if I can fix it. Based on the error, I think",
-            ],
-            "success": [
-                "Code executed successfully! I'll cross-check it with expectations and decide if more cases are needed. Based on the output, I think",
-                "Now I have the execution result. After checking the output, I think",
-                "Good, the code run successfully without error. However, are there any more corner cases that didn't cover?",
-                "It looks like the code is working! But does this match my expected output?",
-            ]
-        }
         
         if not is_valid:
             # observation = "No valid Python code found. Please provide code in either <python>...</python> tags or ```python...``` code blocks."
@@ -237,35 +392,19 @@ class PythonCodeTool(BaseTool):
             if len(test_input) > 0:
                 stdin = test_input[0].strip()
             
+            new_code = parsed_action # 
             if self.enable_history_code_execution:
-                # Execute the code
-                previous_parsed_code = [obs["action"] for obs in env["previous_obs"] if obs["is_valid"] and "error:" not in obs["observation"].lower()]
-                code_to_execute = "\n".join(previous_parsed_code) + "\n" + parsed_action
-                execution_result, has_error = execute_python(code_to_execute, self.timeout, stdin)
-                # print("------")
-                # print(code_to_execute)
-                # print("------")
-                # print("------")
-                # print(execution_result)
-                # print("------")
-                # print("----") 
-                # print([obs["observation"] for obs in env["previous_obs"]])
-                # print("----")
-                for previous_obs in env["previous_obs"]:
-                    if previous_obs["is_valid"] and "error:" not in previous_obs["observation"].lower():
-                        execution_result = execution_result.replace(previous_obs["observation"], "", 1)
+                previous_parsed_code = [obs["action"] for obs in env["previous_obs"]]
+                code_to_execute = previous_parsed_code + [parsed_action]
             else:
                 code_to_execute = parsed_action
-                execution_result, has_error = execute_python(code_to_execute, self.timeout, stdin)
-                
-            execution_result = execution_result.lstrip(' \n')
-                        
-            # Format the result
-            if "Execution timed out" in execution_result:
-                observation = execution_result
-            else:
-                observation = f"{execution_result}"
             
+            stdout, stderr, has_error = execute_python(code_to_execute, self.timeout, stdin, self.python_path, self.pre_import_lib, self.use_firejail)
+            execution_result = stdout + "\n" + stderr
+            execution_result = execution_result.strip(' \n')
+            observation = execution_result
+            
+            # format the observation based on the action type
             if action.endswith("```output"):
                 observation = "\n" + observation + "\n```\n"
             elif action.endswith("</tool_call>"):
@@ -288,71 +427,6 @@ class PythonCodeTool(BaseTool):
                     observation = "output\n" + observation + "\n```\n"
             else:
                 observation = "\n" + observation + "\n"
-            
-            if self.force_run_test_cases and not has_error:
-                test_cases = extra_field.get("public_tests", None) if extra_field else None
-                if test_cases:
-                    if isinstance(test_cases, str):
-                        test_cases = json.loads(test_cases)
-                    # execute the public test cases
-                    if isinstance(test_cases, list):
-                        # list of assert
-                        test_cases_code = "\n".join(test_cases)
-                        if test_cases_code in code_to_execute:
-                            # already tested, pass
-                            test_result = ""
-                        else:
-                            test_codes = code_to_execute + "\n" + test_cases_code
-                            test_execution_result, has_error = execute_python(test_codes, self.timeout, stdin)
-                            test_execution_result = test_execution_result.replace(execution_result, "", 1)
-                            test_result = f"Testing the above code with the following test cases:\n```python\n{test_cases_code}\n```\n\nTest result:\n```output\n{test_execution_result}\n```\n"
-                            if not test_execution_result:
-                                test_result += "\nAll public test cases passed!\n"
-                            elif has_error:
-                                test_result += "Some test cases did not pass, now think and then fix them with a new program and test again.\n"
-                            else:
-                                test_result += "Now check the test cases and see if they are correct.\n"
-                    elif isinstance(test_cases, dict):
-                        assert "inputs" in test_cases and "outputs" in test_cases, f"Invalid test cases format: {test_cases.keys()}"
-                        test_result = ""
-                        test_cases_passed = True
-                        for i in range(len(test_cases["inputs"])):
-                            input_case = test_cases["inputs"][i]
-                            output_case = test_cases["outputs"][i]
-                            test_codes = code_to_execute
-                            test_stdin = (stdin + "\n" + input_case)
-                            test_execution_result, has_error = execute_python(test_codes, self.timeout, test_stdin)
-                            test_execution_result = test_execution_result.replace(execution_result, "", 1)
-                            test_case_output_match = test_execution_result == output_case
-                            if not test_case_output_match:
-                                test_cases_passed = False
-                            test_result += f"Testing the above code with the following test case:\n```python\n{test_codes}\n```\n\nTest input:\n```input\n{input_case}\n```\n\nExpected output:\n```expected_output\n{output_case}\n```\n\nTest result:\n```output\n{test_execution_result}\n```\nMatching expected output: {test_case_output_match}\n"
-                        if test_cases_passed:
-                            test_result += "All public test cases passed!\n"
-                    else:
-                        raise ValueError(f"Invalid test cases format: {test_cases}")
-                    observation = observation + "\n" + test_result
-            if self.enable_mannual_reflection:
-                # case: empty (correctly runned or the test case does not have output, need to check)
-                if execution_result == "":
-                    # randomly select a sentence from the empty heuristic sentences
-                    idx = random.randint(0, len(heuristic_sentences["empty"]) - 1)
-                    observation += heuristic_sentences["empty"][idx]
-                # case: execution timed out, need to check if the code is correct
-                elif "execution timed out" in observation.lower():
-                    # observation = execution_result
-                    idx = random.randint(0, len(heuristic_sentences["timeout"]) - 1)
-                    observation += heuristic_sentences["timeout"][idx]
-                # case: execution ends with error, need to look back and fix the bug
-                elif has_error:
-                    # observation = f"Execution completed with errors:\n{execution_result}"
-                    idx = random.randint(0, len(heuristic_sentences["error"]) - 1)
-                    observation += heuristic_sentences["error"][idx]     
-                # case: generated output without error, need to check the code's output
-                else:
-                    # observation = f"Execution result:\n{execution_result}"
-                    idx = random.randint(0, len(heuristic_sentences["success"]) - 1)
-                    observation += heuristic_sentences["success"][idx]
 
             if self.done_without_error:
                 if has_error:

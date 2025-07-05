@@ -14,9 +14,9 @@ def _compute_response_info(batch: DataProto) -> Dict[str, Any]:
     response_length = batch.batch['responses'].shape[-1]
 
     # use observation-masked attention masks
-    if 'info_mask' in batch.batch.keys():
-        prompt_mask = batch.batch['info_mask'][:, :-response_length]
-        response_mask = batch.batch['info_mask'][:, -response_length:]
+    if 'loss_mask' in batch.batch.keys():
+        prompt_mask = batch.batch['loss_mask'][:, :-response_length]
+        response_mask = batch.batch['loss_mask'][:, -response_length:]
     else:
         prompt_mask = batch.batch['attention_mask'][:, :-response_length]
         response_mask = batch.batch['attention_mask'][:, -response_length:]
