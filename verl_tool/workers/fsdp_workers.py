@@ -103,7 +103,7 @@ class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, metaclass=AgentA
         print(f"AgentActorRolloutRefWorker: {self.agent_config}")
         self.model_path = self.config.model.path
         self.manager = AgentActorManager(self.model_path, self, self.agent_config)
-    
+        
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences(self, prompts: DataProto):
         # Support all hardwares

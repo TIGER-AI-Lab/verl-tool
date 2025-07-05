@@ -1,6 +1,7 @@
 import torch
 import os
 import re
+import io
 import time
 import ray
 import uuid
@@ -9,6 +10,7 @@ import random
 import logging
 import asyncio
 import aiohttp
+import base64
 import regex as re
 import numpy as np
 import requests
@@ -18,13 +20,20 @@ from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
 from verl import DataProto
 from verl.utils.tracking import Tracking
-from verl.utils import hf_tokenizer
+from verl.utils import hf_tokenizer, hf_processor
+from qwen_vl_utils import process_vision_info, fetch_image
 from verl.utils.model import get_generation_config
 from tqdm import tqdm
 from typing import List, Union
 from .config import AgentActorConfig
+from transformers import  Qwen2_5_VLProcessor
 from .tensor_helper import TensorHelper, TensorConfig
+from tensordict import TensorDict
+from PIL import Image
 from .utils import PerformanceTimer
+from verl.utils.dataset.vision_utils import process_image, process_video
+from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
+
 logger = logging.getLogger(__file__)
 
 # 1) A sanitizer that strips all embedded NULs (and, optionally, any
@@ -34,6 +43,17 @@ CONTROL_CHAR_RE = re.compile(
     r'[\x00-\x08\x0B\x0C\x0E-\x1F]'
 )
 
+def encode_image(img):
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    return img_str
+def decode_image(img_str):
+    img_data = base64.b64decode(img_str)
+    img = Image.open(io.BytesIO(img_data))
+    return img
+
+#added muze: use deepcopy to repeat batch to prevent reference bug
 def sanitize_request(obj: Any) -> Any:
     """
     Recursively walk through obj and:
@@ -51,8 +71,11 @@ def sanitize_request(obj: Any) -> Any:
     elif isinstance(obj, str):
         # strip NUL (\x00) and other C0 control chars
         return CONTROL_CHAR_RE.sub('', obj)
+    elif isinstance(obj,Image.Image):
+        return encode_image(obj)
     else:
         return obj
+
 
 class AgentActorManager:
     def __init__(
@@ -64,6 +87,7 @@ class AgentActorManager:
     ):
         self.model_path = model_path
         self.tokenizer = hf_tokenizer(self.model_path)
+        self.processor = hf_processor(self.model_path)
         self.generation_config = get_generation_config(self.model_path)
         self.actor_rollout_wg = actor_rollout_wg
         self.config = config
@@ -101,7 +125,14 @@ class AgentActorManager:
         self.max_action_length = self.config.max_action_length if self.config.max_action_length is not None else 0
         self.max_model_len = int(config.max_model_len or config.max_prompt_length + config.max_response_length)
         self.tokenizer_lock = asyncio.Lock()
-
+        # for multimodal processing
+        if self.processor:
+            self.mm_prefix, self.mm_postfix = self.processor.apply_chat_template(
+                [{"role": "system", "content": [{"type": "text", "text": "|||"}]}],
+                tokenize=False, add_generation_prompt=False).split("|||") # this is used to create the correct multi-modal prompt
+        else:
+            self.mm_prefix = ""
+            self.mm_postfix = ""
         if self.config.rollout_mode == "sync":
             logger.setLevel(logging.INFO)
         else:
@@ -115,7 +146,7 @@ class AgentActorManager:
             return_tensors='pt',
             padding="longest"
         )['input_ids']
-
+    
     def repeat_inputs_by_n(self, inputs: DataProto):
         """
         this version verl do not repeat the input by n times, so we manually repeat the input by n times
@@ -132,6 +163,7 @@ class AgentActorManager:
             n = 1
         else:
             n = self.config.n
+
             inputs = inputs.repeat(n, interleave=True)
         # add "_{i}" for each trajectory to the traj_ids
         for i in range(ori_len):
@@ -222,8 +254,19 @@ class AgentActorManager:
                 do_actions[i] = False
         return responses, responses_str, do_actions
 
-    async def _process_next_obs(self, next_obs: List[str], dones: List[bool], valid_action: List[bool], finishs: List[bool]) -> torch.Tensor:
-        """Process next observations from environment."""
+    async def _process_next_obs(self, next_obs: List[str], dones: List[bool], valid_action: List[bool], finishs: List[bool], tool_interact_info: List[dict], has_multi_modal_data: bool=False) -> torch.Tensor:
+        """Process next observations from environment.
+        Args:
+            next_obs (List[str]): List of next observations, only the text part.
+            dones (List[bool]): List of done flags for each observation.
+            valid_action (List[bool]): List of valid action flags for each observation.
+            finishs (List[bool]): List of finish flags for each observation.
+            tool_interact_info (List[dict]): List of tool interaction information for each observation, also include multi modal keys like 'image' and 'video'.
+            has_multi_modal_data (bool): Whether the observations contain multi-modal data.
+        Returns:
+            next_obs_ids (torch.Tensor): Tokenized next observations.
+            mm_data_list (List[dict]): List of multi-modal data dictionaries, {'video': [...], 'image': [...]}, if has_multi_modal_data is True.
+        """
         async with self.tokenizer_lock:
             mtrl_sep = self.config.mtrl_sep
             next_obs = [obs if not done else "" for obs, done in zip(next_obs, dones)]
@@ -251,33 +294,86 @@ class AgentActorManager:
                     next_obs_ids = next_obs_ids[:, :self.config.max_obs_length]
             else:
                 raise ValueError(f"Invalid truncate_obs_side: {self.config.truncate_obs_side}")
-            if self.config.enable_mtrl:
+            if not has_multi_modal_data:
+                if self.config.enable_mtrl:
+                    next_obs = self.tokenizer.batch_decode(
+                        next_obs_ids,
+                        skip_special_tokens=True
+                    )
+                    processed_next_obs = []
+                    for i in range(len(next_obs)):
+                        if finishs[i] or dones[i]:
+                            # do action is false
+                            assert next_obs[i] == "", f"next_obs should be empty when finishs is True, but got {next_obs[i]}"
+                            processed_next_obs.append("")
+                        elif valid_action[i]:
+                            processed_next_obs.append(mtrl_sep.format(obs=next_obs[i]))
+                        else:
+                            processed_next_obs.append(mtrl_sep.format(obs="Your action is not valid, please check the format and try again." + next_obs[i]))
+                    next_obs = processed_next_obs
+                    next_obs_ids = self.tokenizer(
+                        next_obs,
+                        padding='longest',
+                        return_tensors='pt',
+                        add_special_tokens=False,  # Prevents adding special tokens
+                    )['input_ids'].to(torch.int64)
+                mm_data_list = None
+            else:
                 next_obs = self.tokenizer.batch_decode(
                     next_obs_ids,
                     skip_special_tokens=True
                 )
-                processed_next_obs = []
-                for i in range(len(next_obs)):
-                    if finishs[i] or dones[i]:
-                        # do action is false
-                        assert next_obs[i] == "", f"next_obs should be empty when finishs is True, but got {next_obs[i]}"
-                        processed_next_obs.append("")
-                    elif valid_action[i]:
-                        processed_next_obs.append(mtrl_sep.format(obs=next_obs[i]))
-                    else:
-                        processed_next_obs.append(mtrl_sep.format(obs="Your action is not valid, please check the format and try again." + next_obs[i]))
-                next_obs = processed_next_obs
-                next_obs_ids = self.tokenizer(
-                    next_obs,
+                
+                mm_data_list = []
+                raw_prompts = []
+                
+                for k, tool_interact_info_k in enumerate(tool_interact_info):
+                    multi_modal_data = {}
+                    next_obs_image = tool_interact_info_k.get('image', [])
+                    if not isinstance(next_obs_image, list):
+                        next_obs_image = [next_obs_image]
+                    next_obs_image = [process_image(decode_image(img)) for img in next_obs_image]
+                    multi_modal_data["image"] = next_obs_image
+                    
+                    next_obs_video = tool_interact_info_k.get('video', [])
+                    if not isinstance(next_obs_video, list):
+                        next_obs_video = [next_obs_video]
+                    next_obs_video = [process_video(video) for video in next_obs_video]
+                    multi_modal_data["video"] = [video.numpy() for video in next_obs_video]
+
+                    content_list = []
+                    content_list.append({"type": "text", "text": next_obs[k]['text']})
+                    if next_obs_image:
+                        content_list.extend([{"type": "image", "image": img} for img in next_obs_image])
+                    if next_obs_video:
+                        content_list.extend([{"type": "video", "video": video} for video in next_obs_video])
+                    next_obs_message = [{"role": "system", "content": content_list}]
+                    
+                    raw_prompt = self.processor.apply_chat_template(
+                        next_obs_message, add_generation_prompt=True, tokenize=False
+                    )
+                    # remove mm_prefix and mm_postfix
+                    raw_prompt = raw_prompt.replace(self.mm_prefix, "").replace(self.mm_postfix, "")
+                    
+                    mm_data_list.append(multi_modal_data)
+                    raw_prompts.append(raw_prompt)
+                    
+                next_obs_ids = self.processor(
+                    text=raw_prompts, 
+                    images=[mm_data_list[i].get('image', []) for i in range(len(mm_data_list))],
+                    videos=[mm_data_list[i].get('video', []) for i in range(len(mm_data_list))],
                     padding='longest',
                     return_tensors='pt',
                     add_special_tokens=False,  # Prevents adding special tokens
                 )['input_ids'].to(torch.int64)
+                
+        return next_obs_ids, mm_data_list
 
-        return next_obs_ids
-
-    def _update_rolling_state(self, left_side, rollings, cur_responses: torch.Tensor,
-                              next_obs_ids: torch.Tensor) -> Dict:
+    def _update_rolling_state(self, left_side, rollings, 
+            cur_responses: torch.Tensor,
+            next_obs_ids: torch.Tensor,
+            next_mm_data_list: List[dict] = None
+        ) -> Dict:
         """Update rolling state with new responses and observations."""
 
         # Concatenate and handle padding
@@ -287,7 +383,7 @@ class AgentActorManager:
             next_obs_ids
         ])
 
-        # Create attention mask and position ids
+     # Create attention mask and position ids
         new_attention_mask = self.tensor_fn.create_attention_mask(new_input_ids)
         new_position_ids = self.tensor_fn.create_position_ids(new_attention_mask)
 
@@ -337,6 +433,13 @@ class AgentActorManager:
         new_rollings.non_tensor_batch = rollings.non_tensor_batch.copy()
         new_rollings.meta_info.update(rollings.meta_info)
         
+        if next_mm_data_list is not None and "multi_modal_data" not in new_rollings.non_tensor_batch:
+            for i in range(len(new_rollings.non_tensor_batch['multi_modal_data'])):
+                next_mm_data_i = next_mm_data_list[i]
+                if 'image' in next_mm_data_i and next_mm_data_i['image'] is not None:
+                    new_rollings.non_tensor_batch['multi_modal_data'][i]['image'].extend(next_mm_data_i['image'])
+                if 'video' in next_mm_data_i and next_mm_data_i['video'] is not None:
+                    new_rollings.non_tensor_batch['multi_modal_data'][i]['video'].extend(next_mm_data_i['video'])
         # update raw_prompt_ids, required for vllm inference
         ray_prompt_ids = []
         for i in range(new_rollings.batch['input_ids'].size(0)):
@@ -470,6 +573,10 @@ class AgentActorManager:
         active_num_list = [active_mask.sum().item()]
         rollings = gen_batch
         traj_ids = gen_batch.non_tensor_batch['traj_ids']
+        if "multi_modal_data" in rollings.non_tensor_batch:
+            has_multi_modal_data = True
+        else:
+            has_multi_modal_data = False
 
         turns_stats_extra_keys = ['action_lengths', 'obs_lengths', 'rewards', 'tool_interact_info']
         turns_stats_extra = {}
@@ -512,7 +619,7 @@ class AgentActorManager:
             active_num_list.append(self._update_active_mask_inplace(active_mask, curr_active_mask))
             # turns_stats[curr_active_mask] += 1
             valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
-            next_obs_ids = await self._process_next_obs(next_obs, dones, valid_action, finishs) # [active_size, obs_length]
+            next_obs_ids, next_mm_data_list = await self._process_next_obs(next_obs, dones, valid_action, finishs, tool_interact_info, has_multi_modal_data)
 
             obs_idx = 0
             for i, active in enumerate(active_mask):
@@ -529,7 +636,8 @@ class AgentActorManager:
                 original_left_side,
                 rollings,
                 responses_ids,
-                next_obs_ids
+                next_obs_ids,
+                next_mm_data_list if has_multi_modal_data else None
             )
             original_right_side = self._update_right_side(
                 original_right_side,
@@ -612,7 +720,7 @@ class AgentActorManager:
             turns_stats[curr_active_mask] += 1
             valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
 
-            next_obs_ids = await self._process_next_obs(next_obs, dones, valid_action, finishs) # [active_size, obs_length]
+            next_obs_ids, next_mm_data_list = await self._process_next_obs(next_obs, dones, valid_action, finishs, tool_interact_info, has_multi_modal_data)
 
             obs_idx = 0
             for i, active in enumerate(active_mask):
@@ -630,7 +738,8 @@ class AgentActorManager:
                 original_left_side,
                 rollings,
                 responses_ids,
-                next_obs_ids
+                next_obs_ids,
+                next_mm_data_list if has_multi_modal_data else None
             )
             original_right_side = self._update_right_side(
                 original_right_side,
@@ -645,7 +754,7 @@ class AgentActorManager:
             perf_timer.end(step_timer_key)
 
         perf_timer.end('main_generation_loop')
-
+        
         perf_timer.start('final_composition')
         non_tensors = {
             'traj_ids': traj_ids.tolist(),
@@ -659,6 +768,10 @@ class AgentActorManager:
         }
 
         logger.info(f"ACTIVE_TRAJ_NUM: {active_num_list}")
+        
+        if has_multi_modal_data:
+            mm_inputs = self.get_final_mm_inputs(rollings)
+            non_tensors['multi_modal_inputs'] = mm_inputs # used for policy gradient updates
 
         results = self._compose_final_output(original_left_side, original_right_side, non_tensors, ori_meta_info)
         perf_timer.end('final_composition')
@@ -673,6 +786,21 @@ class AgentActorManager:
     def run_llm_loop(self, gen_batch: DataProto, **sampling_params: Dict[str, Any]) -> Tuple[Dict, Dict]:
         return asyncio.run(self.run_llm_loop_async(gen_batch, **sampling_params))
 
+    def get_final_mm_inputs(self, rollings: DataProto):
+        mm_inputs = []
+        texts =  self.tokenizer.batch_decode(rollings.non_tensor_batch['raw_prompt_ids'])
+        for i in range(rollings.batch['input_ids'].shape[0]):
+            text = texts[i]
+            images = rollings.non_tensor_batch['multi_modal_data'][i].get('image', None)
+            videos = rollings.non_tensor_batch['multi_modal_data'][i].get('video', None)
+            model_inputs = self.processor(text=[text], images=images, videos=videos, return_tensors="pt")
+            model_inputs.pop('input_ids')
+            model_inputs.pop('attention_mask')
+            if "second_per_grid_ts" in model_inputs:
+                model_inputs.pop('second_per_grid_ts')
+            mm_inputs.append(dict(model_inputs))
+        return mm_inputs
+    
     def _compose_final_output(
         self,
         left_side: Dict,
