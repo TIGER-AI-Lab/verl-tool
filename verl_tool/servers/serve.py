@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
 from tqdm import tqdm
 import regex as re
-
+import json
 import fire
 import uvicorn
 from fastapi import FastAPI, Request, BackgroundTasks
@@ -117,7 +117,28 @@ class AsyncToolManager:
         # If only one tool available, use it
         if len(self.tools) == 1:
             return list(self.tools.keys())[0]
-            
+        
+        # special case for MCP format
+        # <tool_call>{"name": <function-name>, "arguments": <args-json-object>}</tool_call>
+        try:
+            if action.endswith("</tool_call>"):
+                # Extract the JSON part from the action
+                json_part = re.search(r"<tool_call>(.*?)</tool_call>", action, re.DOTALL)
+                if json_part:
+                    action = json_part.group(1)
+                    action = action.strip()
+                    # Parse the JSON string
+                    action = json.loads(action)
+                    assert "name" in action, "Action JSON must contain 'name' field"
+                    assert "arguments" in action, "Action JSON must contain 'arguments' field"
+                    action_name = action["name"]
+                    if action_name not in self.tools:
+                        raise ValueError(f"Tool '{action_name}' not found in available tools. Fall back to default tool identification.")
+                    return action_name
+        except Exception as e:
+            # logger.warning(f"Failed to parse action from tool call: {e}")
+            pass
+          
         # Try to find matching tool (excluding finish tool)
         for tool_type, tool in self.tools.items():
             if tool_type == "finish":

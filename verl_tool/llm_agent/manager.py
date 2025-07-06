@@ -3,7 +3,6 @@ import os
 import re
 import io
 import time
-import ray
 import uuid
 import json
 import random
@@ -21,18 +20,14 @@ from dataclasses import dataclass
 from verl import DataProto
 from verl.utils.tracking import Tracking
 from verl.utils import hf_tokenizer, hf_processor
-from qwen_vl_utils import process_vision_info, fetch_image
 from verl.utils.model import get_generation_config
 from tqdm import tqdm
 from typing import List, Union
 from .config import AgentActorConfig
-from transformers import  Qwen2_5_VLProcessor
 from .tensor_helper import TensorHelper, TensorConfig
-from tensordict import TensorDict
 from PIL import Image
 from .utils import PerformanceTimer
 from verl.utils.dataset.vision_utils import process_image, process_video
-from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
 
 logger = logging.getLogger(__file__)
 
@@ -876,6 +871,9 @@ class AgentActorManager:
             ], dim=1) # [bs*n, prompt_length + max_response_length]
         else:
             final_output['loss_mask'] = final_output['attention_mask']
+        # recent (from July 2025) verl uses response_mask for loss_mask
+        response_length = final_output['responses'].shape[1]
+        final_output['response_mask'] = final_output['loss_mask'][:, -response_length:]  # [bs*n, max_response_length]
         
         # if mask overlong trajectory is enabled, we need to mask the overlong trajectory
         if self.config.mask_overlong_loss:

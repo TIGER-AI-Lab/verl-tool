@@ -59,7 +59,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
             ) as resp:
                 data = await resp.json()
                 if resp.status != 200:
-                    raise ValueError(f"Request failed with status {data['code']}: {data}")
+                    raise ValueError(f"Request failed with status {data.get('code', 'unknown')}: {data}")
                 return Completion(**data)
         finally:
             await session.close()
