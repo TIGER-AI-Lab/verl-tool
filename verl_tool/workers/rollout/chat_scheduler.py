@@ -6,6 +6,7 @@ import torch
 from tqdm.asyncio import tqdm
 from verl.workers.rollout.chat_scheduler import ChatCompletionScheduler, logger, DictConfig
 from openai.types import Completion
+from openai.types.chat.chat_completion import ChatCompletion
 from openai import AsyncOpenAI
 from typing import Union, List, Dict, Any, Iterable
 from verl.protocol import DataProto
@@ -41,6 +42,29 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         self.tokenizer = self.agent_actor_manager.tokenizer
         print(f"AgentActorManager initialized with config: {self.agent_config}")
     
+    async def _chat_completions_openai(self, address: str, **chat_complete_request) -> ChatCompletion:
+        client = AsyncOpenAI(base_url=f"http://{address}/v1", api_key="token-abc123", timeout=None, max_retries=0)
+        return await client.chat.completions.create(**chat_complete_request)
+
+    async def _chat_completions_aiohttp(self, address: str, **chat_complete_request) -> ChatCompletion:
+        try:
+            extra_body = chat_complete_request.pop("extra_body", {})
+            chat_complete_request.update(extra_body or {})
+            extra_headers = chat_complete_request.pop("extra_headers")
+            timeout = aiohttp.ClientTimeout(total=None)
+            session = aiohttp.ClientSession(timeout=timeout)
+            async with session.post(
+                url=f"http://{address}/v1/chat/completions",
+                headers={"Authorization": "Bearer token-abc123", **extra_headers},
+                json=chat_complete_request,
+            ) as resp:
+                data = await resp.json()
+                if resp.status != 200:
+                    raise ValueError(f"Request failed with status {data.get('code', 'unknown')}: {data}")
+                return ChatCompletion(**data)
+        finally:
+            await session.close()
+
     async def _completions_openai(self, address: str, **complete_request) -> Completion:
         client = AsyncOpenAI(base_url=f"http://{address}/v1", api_key="token-abc123", timeout=None, max_retries=0)
         return await client.completions.create(**complete_request)
@@ -107,7 +131,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 address,
                 prompt=prompt,
                 extra_body=extra_body,
-                extra_headers={"x-request-id": request_id},
+                extra_headers={"x-request-id": request_id + f"-{time.time()}"},  # add a unique request id to avoid random duplicate request_id problem, seems to be a bug in VLLM
                 **sampling_params,
             )
         except Exception as e:
@@ -125,6 +149,79 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
             info["__done__"].set()
         
         return completion.choices[0].text
+
+    async def _submit_chat_completions(
+        self,
+        messages: List[Dict[str, str]], 
+        request_id: str, 
+        info: Dict[str, Any]
+    ):
+        """Submit chat completion request, wait request finish and do callback."""
+        if request_id:
+            request_id = request_id.removeprefix("chatcmpl-")
+            if request_id not in self.request_id_to_address:
+                address = self.weighted_addresses[0][1]
+                self.weighted_addresses[0][0] += 1
+                heapq.heapreplace(self.weighted_addresses, self.weighted_addresses[0])
+                self.request_id_to_address[request_id] = address
+            assert request_id in self.request_id_to_address
+            address = self.request_id_to_address.pop(request_id)
+        else:
+            raise ValueError("request_id must be provided for chat completion requests.")
+
+        # use new request_id to avoid duplicate request_id problem
+        self.request_id_to_address[request_id] = address
+        openai_chat_completion_allowed_keys = [
+            "model", "messages", "audio", "frequency_penalty",
+            "function_call", "functions", "logit_bias", "logprobs",
+            "max_completion_tokens", "max_tokens", "metadata", "modalities",
+            "n", "parallel_tool_calls", "prediction", "presence_penalty",
+            "reasoning_effort", "response_format", "seed", "service_tier",
+            "stop", "store", "stream", "stream_options", "temperature",
+            "tool_choice", "tools", "top_logprobs", "top_p", "user",
+            "web_search_options", "extra_headers", "extra_query",
+            "extra_body", "timeout"
+        ]
+
+        sampling_params = {k: v for k, v in info["__sampling_params__"].items() if k in openai_chat_completion_allowed_keys}
+        extra_body = {k: v for k, v in info["__sampling_params__"].items() if k not in openai_chat_completion_allowed_keys}
+        chat_completion, exception = None, None
+
+        if messages[-1]["role"] == self.agent_config.assistant_role:
+            extra_body['continue_final_message'] = True
+            extra_body['add_generation_prompt'] = False
+        
+        try:
+            # NOTE: OpenAI client uses httpx, seems to have performance issue in high concurrency requests.
+            chat_completion = await self._chat_completions_aiohttp(
+                address,
+                messages=messages,
+                extra_body=extra_body,
+                extra_headers={"x-request-id": request_id + f"-{time.time()}"},  # add a unique request id to avoid random duplicate request_id problem, seems to be a bug in VLLM
+                **sampling_params,
+            )
+        except Exception as e:
+            with open("error_messages.json", 'w') as f:
+                import json
+                json.dump(messages, f, indent=4)
+            print(messages)
+            # Let user handle the exception
+            exception = e
+            raise e 
+
+        info["__depth__"] -= 1
+
+        if exception is not None:
+            logger.exception(f"chat completion failed with exception: {exception}")
+
+        # No more ongoing completion requests
+        if info["__depth__"] == 0:
+            info["__done__"].set()
+
+        if not isinstance(chat_completion, ChatCompletion):
+            raise ValueError(f"Expected ChatCompletion, got {type(chat_completion)}")
+        
+        return chat_completion.choices[0].message.content if chat_completion.choices else None
 
     def simple_postprocess(self, batch: DataProto, responses: List[str]) -> DataProto:
         prompt_ids = batch.batch["input_ids"]
@@ -164,8 +261,8 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
 
         tasks = []
         for batch_index in range(len(batch)):
-            prompt = batch.non_tensor_batch["raw_prompt_ids"][batch_index]
-            prompt = list(prompt)
+            prompt = list(batch.non_tensor_batch["raw_prompt_ids"][batch_index]) # change ndarray to list
+            rollout_messages = batch.non_tensor_batch["rollout_messages"][batch_index].tolist() # change RolloutMessagesMixin to list
             request_id = batch.non_tensor_batch["traj_ids"][batch_index]
             info = {
                 "__sampling_params__": kwargs,
@@ -174,11 +271,8 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
             }
             tasks.append(
                 asyncio.create_task(
-                    self._submit_completions(
-                        prompt=prompt,
-                        request_id=request_id,
-                        info=info,
-                    )
+                    # self._submit_completions(prompt=prompt, request_id=request_id, info=info)
+                    self._submit_chat_completions(messages=rollout_messages, request_id=request_id, info=info)
                 )
             )
         responses = await tqdm.gather(*tasks, total=len(tasks), desc="Simple generating sequences", disable=len(tasks) < 10)

@@ -117,5 +117,5 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     2>&1 | tee tmp.log
 
 
-# pkill -P -9 $server_pid
-# kill -9 $kill $server_pid
+pkill -P -9 $server_pid
+kill -9 $kill $server_pid

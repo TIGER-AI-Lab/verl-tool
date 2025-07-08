@@ -23,6 +23,8 @@ from verl.utils import hf_tokenizer, hf_processor
 from verl.utils.model import get_generation_config
 from tqdm import tqdm
 from typing import List, Union
+from pathlib import Path
+from copy import deepcopy
 from .config import AgentActorConfig
 from .tensor_helper import TensorHelper, TensorConfig
 from PIL import Image
@@ -43,6 +45,7 @@ def encode_image(img):
     img.save(buffered, format="JPEG")
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return img_str
+
 def decode_image(img_str):
     img_data = base64.b64decode(img_str)
     img = Image.open(io.BytesIO(img_data))
@@ -164,19 +167,47 @@ class AgentActorManager:
         for i in range(ori_len):
             for j in range(n):
                 inputs.non_tensor_batch['traj_ids'][i*n+j] += f"_{j}"
+                # deepcopy to avoid reference bug
+                for key in inputs.non_tensor_batch.keys():
+                    # # check if it's the same reference as the inputs.non_tensor_batch[key][i]
+                    # if inputs.non_tensor_batch[key][i*n+j] is inputs.non_tensor_batch[key][i*n]:
+                    inputs.non_tensor_batch[key][i*n+j] = deepcopy(inputs.non_tensor_batch[key][i*n])
+
         inputs.meta_info['is_repeated_by_n'] = True
         return inputs
 
-    async def _postprocess_responses(self, responses: Union[torch.Tensor, List[str]], action_step: int) -> torch.Tensor:
-        """Process responses to stop at python operation or answer operation."""
+    async def _postprocess_responses(self, responses: Union[torch.Tensor, List[str]], action_step: int, rollings: DataProto) -> torch.Tensor:
+        """Process responses to stop at python operation or answer operation.
+        Args:
+            responses (Union[torch.Tensor, List[str]]): Responses from the model, either as a tensor or a list of strings.
+            action_step (int): Current action step in the interaction.
+            rollings (DataProto): Current rolling state containing input_ids, position_ids, attention_mask, and non_tensor_batch.
+        Returns:
+            responses (torch.Tensor): Processed responses as a tensor.
+            responses_str (List[str]): List of processed response strings.
+            do_actions (List[bool]): List indicating whether to perform actions based on the responses.
+            rollings (DataProto): Updated rolling state with new responses.
+        """
         effective_lens = self.tensor_fn.create_attention_mask(responses).sum(dim=1)
         do_actions = []
         async with self.tokenizer_lock:
+            if isinstance(responses, torch.Tensor):
+                responses_str = self.tokenizer.batch_decode(
+                    responses,
+                    skip_special_tokens=True
+                )
+            else:
+                responses_str = responses
+            # update messages with new responses
+            if "rollout_messages" in rollings.non_tensor_batch:
+                for i in range(len(responses_str)):
+                    rollings.non_tensor_batch['rollout_messages'][i].update_rollout_messages(
+                        {
+                            "role": self.config.assistant_role,
+                            "content": responses_str[i]
+                        }
+                    )
             if self.config.enable_mtrl:
-                if isinstance(responses, torch.Tensor):
-                    responses_str = [self.tokenizer.decode(responses[i][:effective_lens[i]], skip_special_tokens=False) for i in range(responses.shape[0])]
-                else:
-                    responses_str = responses
                 for i in range(len(responses_str)):
                     if action_step >= self.config.min_turns:
                         if self.action_stop_tokens:
@@ -211,13 +242,6 @@ class AgentActorManager:
                         do_action = True
                     do_actions.append(do_action)
             else:
-                if isinstance(responses, torch.Tensor):
-                    responses_str = self.tokenizer.batch_decode(
-                        responses,
-                        skip_special_tokens=True
-                    )
-                else:
-                    responses_str = responses
                 for i, resp in enumerate(responses_str):
                     # resp = resp.strip(' \n')
                     has_action = False
@@ -241,15 +265,9 @@ class AgentActorManager:
             #         "do_action": do_actions[i],
             #     } for i in range(len(responses_str))], f, indent=4)
             responses = self._batch_tokenize(responses_str).to(torch.int64)
-        # overlong dones
-        effective_lens = self.tensor_fn.create_attention_mask(responses).sum(dim=1)
-        for i in range(len(responses_str)):
-            if effective_lens[i] >= self.config.max_response_length:
-                logger.warning(f"[WARNING] Response too long, consider changing your config, {effective_lens[i]} & {self.config.max_response_length}")
-                do_actions[i] = False
-        return responses, responses_str, do_actions
+        return responses, responses_str, do_actions, rollings
 
-    async def _process_next_obs(self, next_obs: List[str], dones: List[bool], valid_action: List[bool], finishs: List[bool], tool_interact_info: List[dict], has_multi_modal_data: bool=False) -> torch.Tensor:
+    async def _process_next_obs(self, next_obs: List[str], dones: List[bool], valid_action: List[bool], finishs: List[bool], tool_interact_info: List[dict], rollings: DataProto) -> Tuple[torch.Tensor, List[dict]]:
         """Process next observations from environment.
         Args:
             next_obs (List[str]): List of next observations, only the text part.
@@ -257,11 +275,13 @@ class AgentActorManager:
             valid_action (List[bool]): List of valid action flags for each observation.
             finishs (List[bool]): List of finish flags for each observation.
             tool_interact_info (List[dict]): List of tool interaction information for each observation, also include multi modal keys like 'image' and 'video'.
-            has_multi_modal_data (bool): Whether the observations contain multi-modal data.
+            rollings (DataProto): Current rolling state containing input_ids, position_ids, attention_mask, and non_tensor_batch.
         Returns:
             next_obs_ids (torch.Tensor): Tokenized next observations.
-            mm_data_list (List[dict]): List of multi-modal data dictionaries, {'video': [...], 'image': [...]}, if has_multi_modal_data is True.
+            rollings (DataProto): Updated rolling state with new observations.
         """
+        has_multi_modal_data = "multi_modal_data" in rollings.non_tensor_batch and rollings.non_tensor_batch['multi_modal_data'] is not None
+        mm_data_list = None
         async with self.tokenizer_lock:
             mtrl_sep = self.config.mtrl_sep
             next_obs = [obs if not done else "" for obs, done in zip(next_obs, dones)]
@@ -289,12 +309,12 @@ class AgentActorManager:
                     next_obs_ids = next_obs_ids[:, :self.config.max_obs_length]
             else:
                 raise ValueError(f"Invalid truncate_obs_side: {self.config.truncate_obs_side}")
+            next_obs = self.tokenizer.batch_decode(
+                next_obs_ids,
+                skip_special_tokens=True
+            )
             if not has_multi_modal_data:
                 if self.config.enable_mtrl:
-                    next_obs = self.tokenizer.batch_decode(
-                        next_obs_ids,
-                        skip_special_tokens=True
-                    )
                     processed_next_obs = []
                     for i in range(len(next_obs)):
                         if finishs[i] or dones[i]:
@@ -312,13 +332,18 @@ class AgentActorManager:
                         return_tensors='pt',
                         add_special_tokens=False,  # Prevents adding special tokens
                     )['input_ids'].to(torch.int64)
-                mm_data_list = None
+
+                # update rollout messages with next_obs
+                if "rollout_messages" in rollings.non_tensor_batch:
+                    for i in range(len(next_obs)):
+                        if next_obs[i]:
+                            rollings.non_tensor_batch['rollout_messages'][i].update_rollout_messages(
+                                {
+                                    "role": self.config.mtrl_role if self.config.enable_mtrl else self.config.assistant_role,
+                                    "content": next_obs[i]
+                                }
+                            )
             else:
-                next_obs = self.tokenizer.batch_decode(
-                    next_obs_ids,
-                    skip_special_tokens=True
-                )
-                
                 mm_data_list = []
                 raw_prompts = []
                 
@@ -361,14 +386,40 @@ class AgentActorManager:
                     return_tensors='pt',
                     add_special_tokens=False,  # Prevents adding special tokens
                 )['input_ids'].to(torch.int64)
-                
-        return next_obs_ids, mm_data_list
 
-    def _update_rolling_state(self, left_side, rollings, 
-            cur_responses: torch.Tensor,
-            next_obs_ids: torch.Tensor,
-            next_mm_data_list: List[dict] = None
-        ) -> Dict:
+                # update rollout messages with next_obs
+                if "rollout_messages" in rollings.non_tensor_batch:
+                    for i in range(len(next_obs)):
+                        content_list = [{"type": "text", "text": next_obs[i]}]
+                        if 'image' in mm_data_list[i] and mm_data_list[i]['image']:
+                            content_list.extend([{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(img)}"}} for img in mm_data_list[i]['image']])
+                        if 'video' in mm_data_list[i] and mm_data_list[i]['video']:
+                            content_list.extend([{"type": "video_url", "video_url": {"url": video, "type": "mp4"}} for video in mm_data_list[i]['video']])
+                            assert all([Path(video).suffix == '.mp4' and Path(video).exists() for video in mm_data_list[i]['video']]), f"video should be a valid mp4 file path, but got {mm_data_list[i]['video']}"
+                        rollings.non_tensor_batch['rollout_messages'][i].update_rollout_messages(
+                            {
+                                "role": self.config.mtrl_role if self.config.enable_mtrl else self.config.assistant_role,
+                                "content": content_list
+                            }
+                        )
+        
+        if mm_data_list is not None and "multi_modal_data" not in rollings.non_tensor_batch:
+            for i in range(len(rollings.non_tensor_batch['multi_modal_data'])):
+                next_mm_data_i = mm_data_list[i]
+                if 'image' in next_mm_data_i and next_mm_data_i['image'] is not None:
+                    rollings.non_tensor_batch['multi_modal_data'][i]['image'].extend(next_mm_data_i['image'])
+                if 'video' in next_mm_data_i and next_mm_data_i['video'] is not None:
+                    rollings.non_tensor_batch['multi_modal_data'][i]['video'].extend(next_mm_data_i['video'])
+
+        return next_obs_ids, rollings
+
+    def _update_rolling_state(self, 
+        left_side, 
+        rollings, 
+        cur_responses: torch.Tensor,
+        next_obs_ids: torch.Tensor,
+        active_mask: torch.Tensor
+    ) -> Dict:
         """Update rolling state with new responses and observations."""
 
         # Concatenate and handle padding
@@ -376,22 +427,12 @@ class AgentActorManager:
             rollings.batch['input_ids'],
             cur_responses,
             next_obs_ids
-        ])
+        ], pad_to_left=False)
 
-     # Create attention mask and position ids
-        new_attention_mask = self.tensor_fn.create_attention_mask(new_input_ids)
-        new_position_ids = self.tensor_fn.create_position_ids(new_attention_mask)
-
-        # Cut to appropriate length
-        effective_lens = new_attention_mask.sum(dim=1)
-        effective_len = effective_lens.max()
-        min_effective_len = effective_lens.min().item()
-        # max_len = min(self.config.max_prompt_length, effective_len)
-        max_len = min(self.config.max_prompt_length+self.config.max_response_length, effective_len)
-        available_context_budget = max(0, self.config.max_prompt_length+self.config.max_response_length - min_effective_len)
-        assert isinstance(available_context_budget, int), f"available_context_budget should be int, but got {type(available_context_budget)}"
+        max_len = self.max_model_len
+        
         if getattr(self.config, "rolling_with_prompt", False):
-            # if rolling_with_prompt is True, then we need to keep the system prompt
+            # if rolling_with_prompt is True, then we need to keep the system prompt, and keep the right side
             if isinstance(left_side, dict):
                 left_ids = left_side["input_ids"]
             else:
@@ -399,6 +440,7 @@ class AgentActorManager:
 
             left_len = left_ids.size(1)
 
+            new_input_ids, _ = self.tensor_fn.convert_pad_structure(new_input_ids, pad_to_left=True)
             if left_len >= max_len:
                 final_input_ids = left_ids[:, -max_len:]
             else:
@@ -417,24 +459,23 @@ class AgentActorManager:
                     "attention_mask": final_attention_mask,
                 }
             )
-        else: # By default keep the right side
+        else: 
+            # By default keep the left side
+            new_input_ids = new_input_ids[:, :max_len]  # Truncate to max_len
+            new_input_ids, _ = self.tensor_fn.convert_pad_structure(new_input_ids, pad_to_left=True)
+            # Create attention mask and position ids
+            new_attention_mask = self.tensor_fn.create_attention_mask(new_input_ids)
+            new_position_ids = self.tensor_fn.create_position_ids(new_attention_mask)
             new_rollings = DataProto.from_dict(
                 {
-                    "input_ids": new_input_ids[:, -max_len:],
-                    "position_ids": new_position_ids[:, -max_len:],
-                    "attention_mask": new_attention_mask[:, -max_len:],
+                    "input_ids": new_input_ids,
+                    "position_ids": new_position_ids,
+                    "attention_mask": new_attention_mask,
                 }
             )
         new_rollings.non_tensor_batch = rollings.non_tensor_batch.copy()
         new_rollings.meta_info.update(rollings.meta_info)
         
-        if next_mm_data_list is not None and "multi_modal_data" not in new_rollings.non_tensor_batch:
-            for i in range(len(new_rollings.non_tensor_batch['multi_modal_data'])):
-                next_mm_data_i = next_mm_data_list[i]
-                if 'image' in next_mm_data_i and next_mm_data_i['image'] is not None:
-                    new_rollings.non_tensor_batch['multi_modal_data'][i]['image'].extend(next_mm_data_i['image'])
-                if 'video' in next_mm_data_i and next_mm_data_i['video'] is not None:
-                    new_rollings.non_tensor_batch['multi_modal_data'][i]['video'].extend(next_mm_data_i['video'])
         # update raw_prompt_ids, required for vllm inference
         ray_prompt_ids = []
         for i in range(new_rollings.batch['input_ids'].size(0)):
@@ -442,6 +483,14 @@ class AgentActorManager:
             ray_prompt_ids.append(new_rollings.batch['input_ids'][i][non_pad_index:].tolist())
         new_rollings.non_tensor_batch['raw_prompt_ids'] = np.array(ray_prompt_ids, dtype=object)
 
+        effective_lens = new_attention_mask.sum(dim=1)
+        min_effective_len = effective_lens.min().item()
+        overlong_traj_mask = (effective_lens >= max_len).numpy()
+        if overlong_traj_mask.sum() > 0:
+            overlong_traj_ids = rollings.non_tensor_batch['traj_ids'][overlong_traj_mask]
+            self.close_traj_tool_threads(overlong_traj_ids)
+            self._update_active_mask_inplace(active_mask, ~overlong_traj_mask)
+        available_context_budget = max(0, self.max_model_len - min_effective_len)
         return new_rollings, available_context_budget
 
     def _loss_masked_concatenate_with_padding(self,
@@ -537,7 +586,7 @@ class AgentActorManager:
 
     # Instead of creating new masks repeatedly
     def _update_active_mask_inplace(self, active_mask: torch.Tensor, new_conditions: torch.Tensor):
-        """Update active mask in-place to avoid memory allocation"""
+        """Update active mask in-place to avoid memory allocation, return the count of active trajectories."""
         active_mask &= new_conditions
         return active_mask.sum().item()  # Return count for logging
 
@@ -568,10 +617,6 @@ class AgentActorManager:
         active_num_list = [active_mask.sum().item()]
         rollings = gen_batch
         traj_ids = gen_batch.non_tensor_batch['traj_ids']
-        if "multi_modal_data" in rollings.non_tensor_batch:
-            has_multi_modal_data = True
-        else:
-            has_multi_modal_data = False
 
         turns_stats_extra_keys = ['action_lengths', 'obs_lengths', 'rewards', 'tool_interact_info']
         turns_stats_extra = {}
@@ -614,7 +659,7 @@ class AgentActorManager:
             active_num_list.append(self._update_active_mask_inplace(active_mask, curr_active_mask))
             # turns_stats[curr_active_mask] += 1
             valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
-            next_obs_ids, next_mm_data_list = await self._process_next_obs(next_obs, dones, valid_action, finishs, tool_interact_info, has_multi_modal_data)
+            next_obs_ids, rollings = await self._process_next_obs(next_obs, dones, valid_action, finishs, tool_interact_info, rollings)
 
             obs_idx = 0
             for i, active in enumerate(active_mask):
@@ -632,14 +677,15 @@ class AgentActorManager:
                 rollings,
                 responses_ids,
                 next_obs_ids,
-                next_mm_data_list if has_multi_modal_data else None
+                active_mask
             )
             original_right_side = self._update_right_side(
                 original_right_side,
                 responses_ids,
                 next_obs_ids
             )
-            agent_sampling_params['max_tokens'] = available_context_budget
+            agent_sampling_params['max_tokens'] = available_context_budget # for vllm
+            agent_sampling_params['max_new_tokens'] = available_context_budget # for sglang
             active_num_list.append(active_mask.sum().item())
             perf_timer.end('initial_tool_call')
 
@@ -676,7 +722,7 @@ class AgentActorManager:
 
             # Time the postprocessing
             perf_timer.start(f'step_{step}_postprocess')
-            responses_ids, responses_str, do_actions = await self._postprocess_responses(gen_output.batch['responses'], step) # [active_size, ...]
+            responses_ids, responses_str, do_actions, rollings = await self._postprocess_responses(gen_output.batch['responses'], step, rollings) # [active_size, ...]
             responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask) # [bs*n, response_length]
             perf_timer.end(f'step_{step}_postprocess')
 
@@ -715,7 +761,7 @@ class AgentActorManager:
             turns_stats[curr_active_mask] += 1
             valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
 
-            next_obs_ids, next_mm_data_list = await self._process_next_obs(next_obs, dones, valid_action, finishs, tool_interact_info, has_multi_modal_data)
+            next_obs_ids, rollings = await self._process_next_obs(next_obs, dones, valid_action, finishs, tool_interact_info, rollings)
 
             obs_idx = 0
             for i, active in enumerate(active_mask):
@@ -734,7 +780,7 @@ class AgentActorManager:
                 rollings,
                 responses_ids,
                 next_obs_ids,
-                next_mm_data_list if has_multi_modal_data else None
+                active_mask
             )
             original_right_side = self._update_right_side(
                 original_right_side,
@@ -764,7 +810,7 @@ class AgentActorManager:
 
         logger.info(f"ACTIVE_TRAJ_NUM: {active_num_list}")
         
-        if has_multi_modal_data:
+        if "multi_modal_data" in rollings.non_tensor_batch:
             mm_inputs = self.get_final_mm_inputs(rollings)
             non_tensors['multi_modal_inputs'] = mm_inputs # used for policy gradient updates
 
@@ -881,7 +927,7 @@ class AgentActorManager:
             effective_lens = self.tensor_fn.create_attention_mask(final_output['responses']).sum(dim=1)
             overlong_mask = effective_lens >= self.config.max_response_length
             final_output['loss_mask'][overlong_mask] = 0
-            logger.debug(f"Masked {overlong_mask.sum().item()}/{final_output['loss_mask'].shape[0]} overlong trajectories.")
+            logger.warning(f"Masked {overlong_mask.sum().item()}/{final_output['loss_mask'].shape[0]} overlong trajectories.")
 
         # Create position ids
         final_output['position_ids'] = self.tensor_fn.create_position_ids(
@@ -960,6 +1006,29 @@ class AgentActorManager:
             logging.error(f"Error data saved to {error_file} for debugging.")
             
             raise ValueError(f"Tool server communication failed: {e}")
+    
+    async def close_traj_tool_threads(
+        self,
+        active_uids:Union[List[str], np.ndarray]
+    ):
+        """
+            This function is used to close the trajectories that are overlong and clean up the tool server for corresponding tool threads.
+        """
+        if isinstance(active_uids, np.ndarray):
+            active_uids = active_uids.tolist()
+        if isinstance(active_uids, str):
+            active_uids = [active_uids]
+        finishs = [True for _ in active_uids] # all trajectories are finished
+        actions = [''] * len(active_uids) # no actions, just finish the trajectories
+        is_last_step = True # this is the last step
+        batch_data = {
+            "trajectory_ids": active_uids,
+            "actions": actions,
+            "finish": finishs, # if do_action is False, then it is a finish action, finishing the trajectory,
+            "is_last_step": [is_last_step] * len(finishs)
+        }
+        response = await self.send_batch_requests_async(batch_data)
+        return 
         
     async def interact_with_tool_server(
         self,
@@ -1053,23 +1122,3 @@ class AgentActorManager:
                 raise ValueError(f"Invalid observation type: {type(obs)}. Expected str or dict.")
         next_obs = processed_next_obs
         return next_obs, dones, valid_action, _finishs, rewards, tool_interact_info
-
-     # Step 4: Add cleanup method (optional but recommended)
-    async def cleanup(self):
-        """Clean up HTTP session"""
-        if self._http_session:
-            await self._http_session.close()
-            self._http_session = None
-    
-    def __del__(self):
-        """Ensure session is closed when object is destroyed"""
-        if self._http_session and not self._http_session.closed:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(self._http_session.close())
-                else:
-                    loop.run_until_complete(self._http_session.close())
-            except:
-                pass  # Best effort cleanup

@@ -200,7 +200,8 @@ def create_rl_dataset(data_paths, data_config, tokenizer, processor):
     """
     from torch.utils.data import Dataset
 
-    from verl.utils.dataset.rl_dataset import RLHFDataset
+    # from verl.utils.dataset.rl_dataset import RLHFDataset
+    from verl_tool.utils.dataset.rl_dataset import VerlToolRLHFDataset as RLHFDataset
 
     # Check if a custom dataset class is specified in the data configuration
     # and if the path to the custom class is provided
