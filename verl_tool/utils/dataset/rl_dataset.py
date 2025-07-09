@@ -6,11 +6,11 @@ from verl.utils.dataset.rl_dataset import RLHFDataset
 from pathlib import Path
 from typing import List
 
-def encode_image(img):
-    buffered = io.BytesIO()
-    img.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
-    return img_str
+def encode_image(img_path: str) -> str:
+    with open(img_path, "rb") as image_file:
+        encoded_bytes = base64.b64encode(image_file.read())
+        encoded_str = encoded_bytes.decode("utf-8")
+        return encoded_str
 
 class RolloutMessagesMixin:
     """Mixin class to handle rollout messages in reinforcement learning datasets.

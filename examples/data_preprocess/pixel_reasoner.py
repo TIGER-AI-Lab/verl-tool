@@ -18,6 +18,9 @@ import fire
 import os
 import datasets
 import zipfile
+import cv2
+import os
+from glob import glob
 from pathlib import Path
 from huggingface_hub import hf_hub_download
 
@@ -38,6 +41,26 @@ For each function call, return a json object with function name and arguments wi
 {"name": <function-name>, "arguments": <args-json-object>}
 </tool_call>
 """
+
+def images_to_video(image_folder, output_path, fps=24):
+    images = sorted(glob(os.path.join(image_folder, "*.jpg")))
+    if not images:
+        raise ValueError("No .jpg images found in folder.")
+
+    # Read the first image to get size
+    frame = cv2.imread(images[0])
+    height, width, _ = frame.shape
+
+    # Define the codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    for img_path in images:
+        frame = cv2.imread(img_path)
+        out.write(frame)
+    out.release()
+    print(f"Video saved to {output_path}")
+
 def main(
     dataset_path: str = 'TIGER-Lab/PixelReasoner-RL-Data',
     local_dir: str = 'data/pixel_reasoner',
@@ -93,10 +116,11 @@ def main(
             # we use absolute paths for images and videos
             if is_video:
                 assert all((video_dir / video).exists() for video in image), f"Some video files do not exist in {video_dir}"
-                mm_content = {"type": "video", "video": [(video_dir / video).absolute().as_posix() for video in image]}
+                # mm_content = [{"type": "video", "video": [(video_dir / video).absolute().as_posix() for video in image]}]
+                mm_content = [{"type": "image", "image": (video_dir / video).absolute().as_posix()} for video in image]
             else:
                 assert (image_dir / image[0]).exists(), f"Image file {image[0]} does not exist in {image_dir}"
-                mm_content = {"type": "image", "image": (image_dir / image[0]).absolute().as_posix()}
+                mm_content = [{"type": "image", "image": (image_dir / image[0]).absolute().as_posix()}]
 
             data = {
                 "data_source": dataset_path,
@@ -109,7 +133,7 @@ def main(
                         "role": "user",
                         "content": [
                             {"type": "text", "text": question_raw},
-                            mm_content
+                            *mm_content,
                         ],
                     }
                 ],
