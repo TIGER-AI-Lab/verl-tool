@@ -135,7 +135,21 @@ class AgentActorManager:
             logger.setLevel(logging.INFO)
         else:
             logger.setLevel(logging.WARNING)
-        
+
+    @classmethod
+    def from_rollout_config(cls, actor_rollout_wg, rollout_config, rollout_mode="async"):
+        agent_config = AgentActorConfig()
+        for key in getattr(rollout_config, 'agent', {}).keys():
+            if key in agent_config.__dict__.keys():
+                setattr(agent_config, key, rollout_config.agent[key])
+        setattr(agent_config, 'n', rollout_config.rollout.n)
+        setattr(agent_config, 'max_model_len', rollout_config.rollout.max_model_len)
+        model_path = rollout_config.model.path
+        agent_config.rollout_mode = rollout_mode
+        print(f"AgentAsyncActorRolloutRefWorker: {agent_config}")
+        agent_actor_manager = cls(model_path, actor_rollout_wg, agent_config)
+        return agent_actor_manager
+    
     def _batch_tokenize(self, responses: List[str]) -> torch.Tensor:
         """Tokenize a batch of responses."""
         return self.tokenizer(
@@ -296,7 +310,7 @@ class AgentActorManager:
                 if next_obs_ids.shape[1] > self.config.max_obs_length:
                     logger.warning(f"[WARNING] OBSERVATION TOO LONG, CONSIDER CHANGING YOUR CONFIG, {next_obs_ids.shape[1]} & {self.config.max_obs_length}")
                     next_obs_ids = next_obs_ids[:, -self.config.max_obs_length:]
-            elif self.config.truncate_obs_side == 'right':
+            elif self.config.truncate_obs_side == 'right': 
                 next_obs_ids = self.tokenizer(
                     next_obs,
                     padding='longest',
@@ -352,17 +366,23 @@ class AgentActorManager:
                     next_obs_image = tool_interact_info_k.get('image', [])
                     if not isinstance(next_obs_image, list):
                         next_obs_image = [next_obs_image]
+                    multi_modal_data['image_url'] = next_obs_image
+                    assert all([isinstance(img, str) and Path(img).exists() for img in next_obs_image]), \
+                        f"Image file paths should be valid, but got {next_obs_image}"
                     next_obs_image = [process_image(decode_image(img)) for img in next_obs_image]
                     multi_modal_data["image"] = next_obs_image
                     
                     next_obs_video = tool_interact_info_k.get('video', [])
                     if not isinstance(next_obs_video, list):
                         next_obs_video = [next_obs_video]
+                    multi_modal_data['video_url'] = next_obs_video
+                    assert all([isinstance(video, str) and Path(video).suffix == '.mp4' and Path(video).exists() for video in next_obs_video]), \
+                        f"Video file paths should be valid mp4 files, but got {next_obs_video}"
                     next_obs_video = [process_video(video) for video in next_obs_video]
                     multi_modal_data["video"] = [video.numpy() for video in next_obs_video]
 
                     content_list = []
-                    content_list.append({"type": "text", "text": next_obs[k]['text']})
+                    content_list.append({"type": "text", "text": next_obs[k]})
                     if next_obs_image:
                         content_list.extend([{"type": "image", "image": img} for img in next_obs_image])
                     if next_obs_video:
@@ -380,8 +400,8 @@ class AgentActorManager:
                     
                 next_obs_ids = self.processor(
                     text=raw_prompts, 
-                    images=[mm_data_list[i].get('image', []) for i in range(len(mm_data_list))],
-                    videos=[mm_data_list[i].get('video', []) for i in range(len(mm_data_list))],
+                    images=[mm_data_list[i]['image'] for i in range(len(mm_data_list)) if 'image' in mm_data_list[i] and mm_data_list[i]['image']] or None,
+                    videos=[mm_data_list[i]['video'] for i in range(len(mm_data_list)) if 'video' in mm_data_list[i] and mm_data_list[i]['video']] or None,
                     padding='longest',
                     return_tensors='pt',
                     add_special_tokens=False,  # Prevents adding special tokens
@@ -393,8 +413,10 @@ class AgentActorManager:
                         content_list = [{"type": "text", "text": next_obs[i]}]
                         if 'image' in mm_data_list[i] and mm_data_list[i]['image']:
                             content_list.extend([{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(img)}"}} for img in mm_data_list[i]['image']])
+                            # content_list.extend([{"type": "image_url", "image_url": {"url": f"file://{img_url}"}} for img_url in mm_data_list[i]['image_url']])
                         if 'video' in mm_data_list[i] and mm_data_list[i]['video']:
-                            content_list.extend([{"type": "video_url", "video_url": {"url": video, "type": "mp4"}} for video in mm_data_list[i]['video']])
+                            content_list.extend([{"type": "video_url", "video_url": {"url": f"data:video/mp4;base64,{base64.b64encode(video).decode()}"}} for video in mm_data_list[i]['video']])
+                            # content_list.extend([{"type": "video_url", "video_url": {"url": f"file://{video_url}"}} for video_url in mm_data_list[i]['video_url']])
                             assert all([Path(video).suffix == '.mp4' and Path(video).exists() for video in mm_data_list[i]['video']]), f"video should be a valid mp4 file path, but got {mm_data_list[i]['video']}"
                         rollings.non_tensor_batch['rollout_messages'][i].update_rollout_messages(
                             {
@@ -410,6 +432,10 @@ class AgentActorManager:
                     rollings.non_tensor_batch['multi_modal_data'][i]['image'].extend(next_mm_data_i['image'])
                 if 'video' in next_mm_data_i and next_mm_data_i['video'] is not None:
                     rollings.non_tensor_batch['multi_modal_data'][i]['video'].extend(next_mm_data_i['video'])
+        for mm_data in mm_data_list:
+            # pop image_url and video_url from mm_data
+            mm_data.pop('image_url', None)
+            mm_data.pop('video_url', None)
 
         return next_obs_ids, rollings
 
@@ -592,7 +618,7 @@ class AgentActorManager:
 
     async def run_llm_loop_async(self, gen_batch: DataProto, **sampling_params: Dict[str, Any]) -> Tuple[Dict, Dict]:
         """Run main LLM generation loop."""
-        perf_timer = PerformanceTimer(do_timer=False)
+        perf_timer = PerformanceTimer(do_timer=True)
         perf_timer.start('run_llm_loop_total')
         perf_timer.start('initialization')
         

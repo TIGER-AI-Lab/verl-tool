@@ -65,6 +65,8 @@ def main(
     dataset_path: str = 'TIGER-Lab/PixelReasoner-RL-Data',
     local_dir: str = 'data/pixel_reasoner',
     seed: int = 42,
+    image_sep = "<image>",
+    video_sep = "<video>",
 ):
     local_dir = Path(local_dir)
     local_dir = local_dir / (dataset_path.split('/')[-1].replace('-', '_'))
@@ -74,7 +76,7 @@ def main(
 
     # 500 examples for testing
     
-    dataset = dataset.train_test_split(test_size=500, seed=42)
+    dataset = dataset.train_test_split(test_size=50, seed=42)
     train_dataset = dataset['train']
     val_dataset = dataset['test']
     
@@ -116,27 +118,25 @@ def main(
             # we use absolute paths for images and videos
             if is_video:
                 assert all((video_dir / video).exists() for video in image), f"Some video files do not exist in {video_dir}"
-                # mm_content = [{"type": "video", "video": [(video_dir / video).absolute().as_posix() for video in image]}]
-                mm_content = [{"type": "image", "image": (video_dir / video).absolute().as_posix()} for video in image]
+                extra_info_images = [(video_dir / video).absolute().as_posix() for video in image]
             else:
                 assert (image_dir / image[0]).exists(), f"Image file {image[0]} does not exist in {image_dir}"
-                mm_content = [{"type": "image", "image": (image_dir / image[0]).absolute().as_posix()}]
+                extra_info_images = [(image_dir / image[0]).absolute().as_posix()]
+            mm_content = image_sep * len(extra_info_images) + question_raw
 
             data = {
                 "data_source": dataset_path,
                 "prompt": [
                     {
                         "role": "system",
-                        "content": [{"type": "text", "text": system_prompt}],
+                        "content": system_prompt,
                     },
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": question_raw},
-                            *mm_content,
-                        ],
+                        "content": mm_content,
                     }
                 ],
+                "images": [{"image": image} for image in extra_info_images],
                 "ability": "visual_reasoning",
                 "reward_model": {
                     "style": "rule",
@@ -146,7 +146,8 @@ def main(
                     'split': split,
                     'index': idx,
                     'qid': example.get('qid', f'{split}_{idx}'),
-                    'is_video': bool(is_video)
+                    'is_video': bool(is_video),
+                    'images': extra_info_images,
                 }
             }
             return data

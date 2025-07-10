@@ -1,16 +1,27 @@
 from .base import BaseTool, register_tool
+import shutil
 import regex as re
 import requests
 import json
 from typing import Dict, List, Any, Optional, Tuple
 import os
+
+import base64
+import io
+from PIL import Image
+from pathlib import Path
 def crop( str_image, bbox_2d,padding=(0.1,0.1)):
     """
     Crop the image based on the bounding box coordinates.
     """
     if isinstance(str_image,list):
         str_image = str_image[0]
-    image = decode_image(str_image)
+    if isinstance(str_image, Path) and str_image.exists() or \
+        isinstance(str_image, str) and os.path.exists(str_image):
+        # If the image is a file path, open it directly
+        image = Image.open(str_image)
+    else:
+        image = decode_image(str_image)
     img_x, img_y = image.size
     padding_tr = (600.0/img_x,600.0/img_y)
     padding = (min(padding[0],padding_tr[0]),min(padding[1],padding_tr[1]))
@@ -25,16 +36,8 @@ def crop( str_image, bbox_2d,padding=(0.1,0.1)):
     normalized_x2 =min(max(0, normalized_x2), 1)
     normalized_y2 =min(max(0, normalized_y2), 1)
     cropped_img = image.crop((int(normalized_x1*img_x), int(normalized_y1*img_y), int(normalized_x2*img_x), int(normalized_y2*img_y)))
-    str_cropped_img = encode_image(cropped_img)
+    return cropped_img
 
-    # assert w > 28 and h > 28, f"Cropped image is too small: {w}x{h}"
-
-
-    return str_cropped_img  
-
-import base64
-import io
-from PIL import Image
 
 #only when doing cropping the image is converted to pil
 def encode_image(img):
@@ -77,7 +80,66 @@ class CropImageTool(BaseTool):
             return "", False
         
         return call, True
+
+    def load_env(self, trajectory_id):
+        """
+        Load the environment for the given trajectory_id
+        """
+        env = self.env_cache.get(trajectory_id)
+        if env == None:
+            env = {
+                "trajectory_id": trajectory_id,
+                "metadata": {
+                    "turns": 0,
+                },
+                "previous_obs": [],
+                "images": None,
+                "temporary_images": [],
+                "temporary_image_folder": Path(f"tmp/crop_images/{trajectory_id}"),
+            }
+            env['temporary_image_folder'].mkdir(parents=True, exist_ok=True)
+        return env
     
+    def update_env(self, trajectory_id, env, action, is_valid, extra_field, observation, **kwargs):
+        """
+        Update the environment for the given trajectory_id
+        """
+        # save image
+        if isinstance(observation, dict) and 'image' in observation:
+            observation['image'] = self.save_image_to_env(trajectory_id, observation['image'])
+            env['images'].append(observation['image'])
+        print(observation)
+        env["metadata"]["turns"] += 1
+        env["previous_obs"].append({
+            "action": action,
+            "is_valid": is_valid,
+            "observation": observation,
+            "extra_field": extra_field,
+            **kwargs
+        })
+    
+    def delete_env(self, trajectory_id):
+        """
+        Delete the environment for the given trajectory_id
+        """
+        # import json
+        if trajectory_id in self.env_cache:
+            if self.env_cache[trajectory_id]['temporary_image_folder'].exists():
+                shutil.rmtree(self.env_cache[trajectory_id]['temporary_image_folder'])
+            del self.env_cache[trajectory_id]
+
+    def save_image_to_env(self, trajectory_id, image: Image.Image):
+        """
+        Save the image to the environment for the given trajectory_id
+        """
+        env = self.load_env(trajectory_id)
+        temporary_image_folder = env['temporary_image_folder']
+        image_path = temporary_image_folder / f"image_{len(env['temporary_images'])}.jpg"
+        image.save(image_path)
+        env['temporary_images'].append(image_path)
+        self.save_env(trajectory_id, env)
+        return str(image_path.absolute())
+
     def conduct_action(self, trajectory_id, action, extra_field):
         """
         Execute the parsed action
@@ -93,36 +155,28 @@ class CropImageTool(BaseTool):
 
         parsed_action, is_valid = self.parse_action(action)
         env = self.load_env(trajectory_id)
-        if not env['previous_obs'] :
-            env["previous_obs"].append({
-            "action": None,
-            "is_valid": None,
-            "observation": {'image':extra_field ['image']},
-            "extra_field": extra_field,
-            
-        })
-        
-
+        if env['images'] is None:
+            env['images'] = [Path(x) for x in extra_field["images"]]
         
         if not is_valid:
-
             observation = ""
-            execution_result = ""
             done = False
             valid = False
         else:
             has_error = False
             try:
-                img_to_crop = env['previous_obs'][parsed_action['arguments']['target_image']-1]['observation']['image']
+                previous_images = env['images']
+                img_to_crop = previous_images[parsed_action['arguments']['target_image']-1]
                 cropped_img = crop(img_to_crop, parsed_action['arguments']['bbox_2d'])
-      
+                encoded_cropped_img = encode_image(cropped_img)
                 observation = {
-                    'obs': "Here is the cropped image.<|vision_start|><|image_pad|><|vision_end|>",
-                    'image': cropped_img
+                    'obs': "Here is the cropped image.",
+                    'image': encoded_cropped_img,
                 }
-            except:
+            except Exception as e:
                 observation = ""
                 has_error = True
+                raise e
 
 
             if self.done_without_error:

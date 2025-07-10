@@ -2,9 +2,12 @@ import io
 import base64
 import numpy as np
 import regex as re
+import time
 from verl.utils.dataset.rl_dataset import RLHFDataset
 from pathlib import Path
 from typing import List
+from copy import deepcopy
+from collections import defaultdict
 
 def encode_image(img_path: str) -> str:
     with open(img_path, "rb") as image_file:
@@ -54,13 +57,17 @@ class VerlToolRLHFDataset(RLHFDataset):
         Note that we also return the raw_input_ids so that it can be combined with other chat template
         """
         row_dict: dict = self.dataframe[item]
+        start = time.time()
         rollout_messages = self._build_rollout_messages(row_dict)
+        print(f'finish getting {item}-th item rollout messages in {time.time() - start} seconds')
+        start = time.time()
         result = super().__getitem__(item)
         result['rollout_messages'] = rollout_messages
+        print(f'finish getting {item}-th item in {time.time() - start} seconds')
         return result
     
     def _build_rollout_messages(self, example: dict):
-        messages = example[self.prompt_key]
+        messages = deepcopy(example[self.prompt_key])
 
         if self.image_key in example or self.video_key in example:
             for message in messages:
@@ -68,16 +75,20 @@ class VerlToolRLHFDataset(RLHFDataset):
                 content_list = []
                 segments = re.split("(<image>|<video>)", content)
                 segments = [item for item in segments if item != ""]
+                segment_idx = defaultdict(int)
                 for segment in segments:
                     if segment == "<image>":
-                        content_list.append({"type": "image"})
+                        content_list.append({"type": "image", "image": example[self.image_key][segment_idx[segment]]["image"]})
+                        segment_idx[segment] += 1
                     elif segment == "<video>":
-                        content_list.append({"type": "video"})
+                        content_list.append({"type": "video", "video": example[self.video_key][segment_idx[segment]]["video"]})
+                        segment_idx[segment] += 1
                     else:
                         content_list.append({"type": "text", "text": segment})
 
                 message["content"] = content_list
 
+        
         for i, message in enumerate(messages):
             if isinstance(message['content'], list):
                 for j in range(len(message['content'])):
@@ -86,14 +97,17 @@ class VerlToolRLHFDataset(RLHFDataset):
                         message['content'][j] = {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/jpeg;base64,{encode_image(content['image'])}"
+                                "url": f"file://{content['image']}" if not content['image'].startswith("file://") else content['image'],
+                                # "url": f"data:image/jpeg;base64,{encode_image(content['image'])}" if not content['image'].startswith("data:image/jpeg;base64,") else content['image'],
                             }
                         }
+                        assert Path(content['image']).exists(), f"Image file {content['image']} does not exist."
                     elif content['type'] == 'video':
                         message['content'][j] = {
                             "type": "video_url",
                             "video_url": {
-                                "url": content['video'],
+                                "url": f"file://{content['video']}" if not content['video'].startswith("file://") else content['video'],
+                                # "url": f"data:video/mp4;base64,{base64.b64encode(open(content['video'], 'rb').read()).decode()}" if not content['video'].startswith("data:video/mp4;base64,") else content['video'],
                             }
                         }
                         assert Path(content['video']).exists(), f"Video file {content['video']} does not exist."

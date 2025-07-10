@@ -12,6 +12,17 @@ from typing import Union, List, Dict, Any, Iterable
 from verl.protocol import DataProto
 from verl_tool.llm_agent import AgentActorManager, AgentActorConfig
 
+def print_messages(messages):
+    from copy import deepcopy
+    messages = deepcopy(messages)
+    for message in messages:
+        for content in message['content']:
+            if content['type'] == 'image_url':
+                content['image_url']['url'] = content['image_url']['url'][:100] + "..." if len(content['image_url']['url']) > 100 else content['image_url']['url']
+            if content['type'] == 'video_url':
+                content['video_url']['url'] = content['video_url']['url'][:100] + "..." if len(content['video_url']['url']) > 100 else content['video_url']['url']
+    print(messages)
+
 class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
     """A chat completion scheduler for verl-tool, which is a wrapper around the ChatCompletionScheduler."""
 
@@ -22,23 +33,12 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         max_cache_size: int = 10000,
     ):
         super().__init__(config, server_addresses)
-
-        self.agent_config = AgentActorConfig()
-        # for key in get(self.config.agent_config
         rollout_config = config.actor_rollout_ref
-        for key in getattr(rollout_config, 'agent', {}).keys():
-            if key in self.agent_config.__dict__.keys():
-                setattr(self.agent_config, key, rollout_config.agent[key])
-        setattr(self.agent_config, 'n', rollout_config.rollout.n)
-        setattr(self.agent_config, 'max_model_len', rollout_config.rollout.max_model_len)
-        print(f"AgentAsyncActorRolloutRefWorker: {self.agent_config}")
-        self.model_path = rollout_config.model.path
-        self.agent_config.rollout_mode = "async"
-        self.agent_actor_manager = AgentActorManager(self.model_path, self, self.agent_config)
+        self.agent_actor_manager = AgentActorManager.from_rollout_config(self, rollout_config, rollout_mode="async")
+        self.agent_config = self.agent_actor_manager.config
         self.max_model_len = self.agent_actor_manager.max_model_len
         self.max_response_length = self.agent_config.max_response_length
         self.max_concurrent_trajectories = self.agent_config.max_concurrent_trajectories
-
         self.tokenizer = self.agent_actor_manager.tokenizer
         print(f"AgentActorManager initialized with config: {self.agent_config}")
     
@@ -204,7 +204,6 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
             with open("error_messages.json", 'w') as f:
                 import json
                 json.dump(messages, f, indent=4)
-            print(messages)
             # Let user handle the exception
             exception = e
             raise e 
@@ -269,6 +268,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 "__depth__": 1,
                 "__done__": asyncio.Event(),
             }
+            print(rollout_messages)
             tasks.append(
                 asyncio.create_task(
                     # self._submit_completions(prompt=prompt, request_id=request_id, info=info)
@@ -296,7 +296,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
         repeated_chunk_batch = repeated_batch.chunk(len(repeated_batch))
         # repeated_batch = [repeated_batch] # for debug
-        logger.info(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")
+        logger.warning(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")
         tasks = []
         if self.agent_config.enable_agent:
             if self.max_concurrent_trajectories is not None and self.max_concurrent_trajectories > 0:

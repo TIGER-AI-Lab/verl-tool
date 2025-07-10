@@ -20,15 +20,7 @@ class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, SiblingMarker, m
     def __init__(self, config: DictConfig, role: str):
         self.config = config
         self.role = role
-        self.agent_config = AgentActorConfig()
-        # for key in get(self.config.agent_config
-        for key in getattr(self.config, 'agent', {}).keys():
-            if key in self.agent_config.__dict__.keys():
-                setattr(self.agent_config, key, self.config.agent[key])
-        setattr(self.agent_config, 'n', self.config.rollout.n)
-        print(f"AgentActorRolloutRefWorker: {self.agent_config}")
-        self.model_path = self.config.model.path
-        self.manager = AgentActorManager(self.model_path, self, self.agent_config)
+        self.manager = AgentActorManager.from_rollout_config(self, self.config, rollout_mode="sync")
         
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences(self, prompts: DataProto):

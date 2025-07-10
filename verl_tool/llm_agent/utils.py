@@ -13,12 +13,14 @@ class PerformanceTimer:
         """Start timing an operation"""
         if not self.do_timer:
             return
+        print(f"Starting timer for operation: {operation}")
         self.start_times[operation] = time.perf_counter()
     
     def end(self, operation: str):
         """End timing an operation and record the duration"""
         if not self.do_timer:
             return
+        print(f"Ending timer for operation: {operation}")
         if operation in self.start_times:
             duration = time.perf_counter() - self.start_times[operation]
             self.timings[operation].append(duration)
