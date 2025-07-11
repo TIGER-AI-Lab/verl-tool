@@ -220,6 +220,9 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         if not isinstance(chat_completion, ChatCompletion):
             raise ValueError(f"Expected ChatCompletion, got {type(chat_completion)}")
         
+        if extra_body.get("continue_final_message", False):
+            print_messages(messages)
+            print(f"Chat completion response: {chat_completion.choices[0].message.content}")
         return chat_completion.choices[0].message.content if chat_completion.choices else None
 
     def simple_postprocess(self, batch: DataProto, responses: List[str]) -> DataProto:
@@ -268,7 +271,6 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 "__depth__": 1,
                 "__done__": asyncio.Event(),
             }
-            # print_messages(rollout_messages)
             tasks.append(
                 asyncio.create_task(
                     # self._submit_completions(prompt=prompt, request_id=request_id, info=info)

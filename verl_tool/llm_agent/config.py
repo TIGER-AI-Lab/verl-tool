@@ -28,5 +28,5 @@ class AgentActorConfig:
     turn_end_token: str="<|im_end|>"
     rollout_mode: str="sync" # "sync" or "async"
     mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
-    max_concurrent_trajectories: int=None # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
+    max_concurrent_trajectories: int=100 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     

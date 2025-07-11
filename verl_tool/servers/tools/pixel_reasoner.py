@@ -1,7 +1,5 @@
 from .base import BaseTool, register_tool
-import shutil
 import regex as re
-import requests
 import json
 from typing import Tuple, Union
 import os
@@ -42,6 +40,9 @@ def crop( str_image, bbox_2d,padding=(0.1,0.1)):
 #only when doing cropping the image is converted to pil
 def encode_image(img: Image.Image) -> str:
     buffered = io.BytesIO()
+    # convert the image to RGB if it is not already
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
     img.save(buffered, format="JPEG")
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return img_str
@@ -61,6 +62,14 @@ def decode_image_url(img_str):
     if img_str.startswith("data:image/jpeg;base64,"):
         img_str = img_str.split("data:image/jpeg;base64,")[1]
     return decode_image(img_str)
+
+def rm_tree(pth: Path):
+    for child in pth.iterdir():
+        if child.is_file():
+            child.unlink()
+        else:
+            rm_tree(child)
+    pth.rmdir()
 
 @register_tool
 class PixelReaonerTool(BaseTool):
@@ -137,8 +146,10 @@ class PixelReaonerTool(BaseTool):
         """
         # import json
         if trajectory_id in self.env_cache:
-            if self.env_cache[trajectory_id]['temporary_image_folder'].exists():
-                shutil.rmtree(self.env_cache[trajectory_id]['temporary_image_folder'])
+            temporary_image_folder = self.env_cache[trajectory_id]['temporary_image_folder']
+            if temporary_image_folder.exists():
+                rm_tree(temporary_image_folder)
+            # remove the trajectory_id from the env_cache
             del self.env_cache[trajectory_id]
 
     def save_image_to_env(self, trajectory_id, image: Union[Image.Image,str]) -> str:
@@ -148,6 +159,7 @@ class PixelReaonerTool(BaseTool):
         env = self.load_env(trajectory_id)
         temporary_image_folder = env['temporary_image_folder']
         image_path = temporary_image_folder / f"image_{len(env['temporary_images'])}.jpg"
+        image_path.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(image, str):
             # If the image is a base64 string, decode it
             image = decode_image_url(image)
@@ -171,6 +183,7 @@ class PixelReaonerTool(BaseTool):
         Returns:
             Tuple containing observation, done flag, and validity flag
         """
+        valid = False
         missing_parameters = []
         if 'bbox_2d' not in parameters:
             missing_parameters.append('bbox_2d')
@@ -180,6 +193,8 @@ class PixelReaonerTool(BaseTool):
             observation = f"Missing parameters: {', '.join(missing_parameters)}"
         elif not isinstance(parameters['bbox_2d'], list) or len(parameters['bbox_2d']) != 4:
             observation = "Invalid bbox_2d format. It should be a list of four numbers."
+        elif not all(float(x) >= 0 and float(x) <= 1 for x in parameters['bbox_2d']):
+            observation = "Invalid bbox_2d values. They should be normalized coordinates within [0.0, 1.0]."
         elif not isinstance(parameters['target_image'], int) or parameters['target_image'] <= 0 or parameters['target_image'] > len(env['images']):
             observation = f"Invalid target_image index. It should be an integer between 1 and the number of previous images ({len(env['images'])})."
         else:
@@ -192,15 +207,17 @@ class PixelReaonerTool(BaseTool):
                     'obs': "Here is the cropped image.\n<image>",
                     'image': encoded_cropped_img,
                 }
+                valid = True
             except Exception as e:
-                print(parameters)
                 with open('test.json', 'w') as f:
                     json.dump(parameters, f, indent=4)
-                observation = ""
-                raise e
-        return observation
+                observation = f"Error processing image: {str(e)}"
+                print(f"Error processing zoom-in action: {str(e)}; parameters: {parameters}")
+                # raise e
+        return observation, valid
     
     def conduct_select_frames_action(self, parameters, env):
+        valid = False
         missing_parameters = []
         if 'target_frames' not in parameters:
             missing_parameters.append('target_frames')
@@ -211,12 +228,20 @@ class PixelReaonerTool(BaseTool):
         elif not all(isinstance(frame, int) and 1 <= frame <= len(env['images']) for frame in parameters['target_frames']):
             observation = f"Invalid target_frames indices. Each index should be an integer between 1 and the number of previous images ({len(env['images'])})."
         else:
-            target_frames = [env['images'][frame - 1] for frame in parameters['target_frames']]
-            observation = {
-                'obs': "Here are the selected frames.\n"+"<image>"*len(target_frames),
-                'images': [encode_image_url(crop(img, (0, 0, 1, 1))) for img in target_frames],
-            }
-        return observation
+            try:
+                target_frames = [env['images'][frame - 1] for frame in parameters['target_frames']]
+                observation = {
+                    'obs': "Here are the selected frames.\n"+"<image>"*len(target_frames),
+                    'image': [encode_image_url(crop(img, (0, 0, 1, 1))) for img in target_frames],
+                }
+                valid = True
+            except Exception as e:
+                observation = f"Error processing frames: {str(e)}"
+                with open('test.json', 'w') as f:
+                    json.dump(parameters, f, indent=4)
+                print(f"Error processing select frames action: {str(e)}; parameters: {parameters}")
+                # raise e
+        return observation, valid
 
     def conduct_action(self, trajectory_id, action, extra_field):
         """
@@ -241,12 +266,21 @@ class PixelReaonerTool(BaseTool):
             done = False
             valid = False
         else:
-            if parsed_action['name'] == 'zoom_in':
-                observation = self.conduct_zoom_in_action(parsed_action['arguments'], env)
+            done = False
+            valid = True
+            if 'arguments' not in parsed_action:
+                observation = "Missing 'arguments' in the tool call."
+                valid = False
+            elif not isinstance(parsed_action['arguments'], dict):
+                observation = f"'arguments' should be a dictionary of parameters key-value pairs, got {type(parsed_action['arguments'])}."
+                valid = False
+            elif parsed_action['name'] == 'zoom_in':
+                observation, valid = self.conduct_zoom_in_action(parsed_action['arguments'], env)
             elif parsed_action['name'] == 'select_frames':
-                observation = self.conduct_select_frames_action(parsed_action['arguments'], env)
+                observation, valid = self.conduct_select_frames_action(parsed_action['arguments'], env)
             else:
                 observation = "Unknown action name."
+                valid = False
             # warp with <tool_response> and </tool_response>
             if isinstance(observation, dict):
                 observation['obs'] = f"\n<tool_response>{observation['obs']}</tool_response>"
@@ -254,8 +288,6 @@ class PixelReaonerTool(BaseTool):
                 observation = f"\n<tool_response>{observation}</tool_response>"
             else:
                 raise ValueError("Observation must be a string or a dictionary.")
-            done = False
-            valid = True
 
         self.update_env(trajectory_id, env, parsed_action, is_valid, extra_field, observation)
         self.save_env(trajectory_id, env)

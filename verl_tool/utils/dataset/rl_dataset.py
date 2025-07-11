@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List
 from copy import deepcopy
 from collections import defaultdict
+import os
 
 def encode_image(img_path: str) -> str:
     with open(img_path, "rb") as image_file:

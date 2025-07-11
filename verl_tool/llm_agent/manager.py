@@ -43,6 +43,9 @@ CONTROL_CHAR_RE = re.compile(
 def encode_image(img: Image.Image) -> str:
     if isinstance(img, Image.Image):
         buffered = io.BytesIO()
+        # convert the image to RGB if it is not already
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
         img.save(buffered, format="JPEG")
         img_str = base64.b64encode(buffered.getvalue()).decode()
         return img_str
@@ -431,7 +434,6 @@ class AgentActorManager:
                             content_list.append({"type": "text", "text": segment})
                     if content_list:
                         next_obs_message = [{"role": "system", "content": content_list}]
-                        print(f"next_obs_message: {next_obs_message}")
                         
                         raw_prompt = self.processor.apply_chat_template(
                             next_obs_message, add_generation_prompt=False, tokenize=False, continue_final_message=True
@@ -440,8 +442,6 @@ class AgentActorManager:
                         raw_prompt = raw_prompt.replace(self.mm_prefix, "")
                     else:
                         raw_prompt = ""
-                    # print("next_obs_raw_prompt:", raw_prompt)
-                    # print("content_list:", content_list)
 
                     # udpate rollout messages with next_obs
                     if "rollout_messages" in rollings.non_tensor_batch and raw_prompt:
@@ -449,10 +449,10 @@ class AgentActorManager:
                         segment_idx = defaultdict(int)
                         for segment in segments:
                             if segment == "<image>":
-                                content_list.append({"type": "image_url", "image_url": {"url": encode_image_url(next_obs_image[segment_idx[segment]]["image"])}})
+                                content_list.append({"type": "image_url", "image_url": {"url": encode_image_url(next_obs_image[segment_idx[segment]])}})
                                 segment_idx[segment] += 1
                             elif segment == "<video>":
-                                content_list.append({"type": "video_url", "video_url": {"url": encode_video_url(next_obs_video[segment_idx[segment]]["video"])}})
+                                content_list.append({"type": "video_url", "video_url": {"url": encode_video_url(next_obs_video[segment_idx[segment]])}})
                                 segment_idx[segment] += 1
                             else:
                                 content_list.append({"type": "text", "text": segment})
@@ -477,9 +477,9 @@ class AgentActorManager:
         if mm_data_list is not None and "multi_modal_data" in rollings.non_tensor_batch:
             for i in range(len(rollings.non_tensor_batch['multi_modal_data'])):
                 next_mm_data_i = mm_data_list[i]
-                if 'image' in next_mm_data_i and next_mm_data_i['image'] is not None:
+                if 'image' in next_mm_data_i and next_mm_data_i['image'] :
                     rollings.non_tensor_batch['multi_modal_data'][i]['image'].extend(next_mm_data_i['image'])
-                if 'video' in next_mm_data_i and next_mm_data_i['video'] is not None:
+                if 'video' in next_mm_data_i and next_mm_data_i['video']:
                     rollings.non_tensor_batch['multi_modal_data'][i]['video'].extend(next_mm_data_i['video'])
 
         return next_obs_ids, rollings
@@ -912,8 +912,8 @@ class AgentActorManager:
                     print("images:", images)
                     print("videos:", videos)
                     raise e
-                model_inputs.pop('input_ids')
-                model_inputs.pop('attention_mask')
+                input_ids = model_inputs.pop('input_ids')
+                attention_mask = model_inputs.pop('attention_mask')
                 if "second_per_grid_ts" in model_inputs:
                     model_inputs.pop('second_per_grid_ts')
                 mm_inputs.append(dict(model_inputs))
@@ -1007,9 +1007,28 @@ class AgentActorManager:
             logger.warning(f"Masked {overlong_mask.sum().item()}/{final_output['loss_mask'].shape[0]} overlong trajectories.")
 
         # Create position ids
-        final_output['position_ids'] = self.tensor_fn.create_position_ids(
-            final_output['attention_mask']
-        ) # [bs*n, prompt_length + max_response_length]
+        if "multi_modal_inputs" in non_tensors and \
+            self.processor is not None and "Qwen2VLImageProcessor" in self.processor.image_processor.__class__.__name__:
+            from verl.models.transformers.qwen2_vl import get_rope_index
+            position_ids = []
+            for i in range(len(non_tensors['multi_modal_inputs'])):
+                model_inputs = non_tensors['multi_modal_inputs'][i]
+                input_ids_i = final_output['input_ids'][i]
+                attention_mask_i = final_output['attention_mask'][i]
+                _position_ids = get_rope_index(
+                        self.processor,
+                        input_ids=input_ids_i,
+                        image_grid_thw=model_inputs.get("image_grid_thw"),
+                        video_grid_thw=model_inputs.get("video_grid_thw"),
+                        second_per_grid_ts=model_inputs.get("second_per_grid_ts"),
+                        attention_mask=attention_mask_i
+                    )
+                position_ids.append(_position_ids)  # (3, seq_len)
+            final_output['position_ids'] = torch.stack(position_ids, dim=0)  #
+        else:
+            final_output['position_ids'] = self.tensor_fn.create_position_ids(
+                final_output['attention_mask']
+            ) # [bs*n, prompt_length + max_response_length]
 
         # ---------- 3. Create and return DataProto ----------
         final_output = DataProto.from_dict(final_output, non_tensors=non_tensors)
