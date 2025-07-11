@@ -24,5 +24,6 @@ for file in current_dir.glob("*.py"):
         # import
         module = __import__(f"verl_tool.workers.reward_manager.{file.stem}", fromlist=[file.stem])
     except ImportError as e:
-        print(f"[Warning] Failed to import {file.stem} reward manager due to ImportError: {e}")
+        pass
+        # print(f"[Warning] Failed to import {file.stem} reward manager due to ImportError: {e}")
         # raise e

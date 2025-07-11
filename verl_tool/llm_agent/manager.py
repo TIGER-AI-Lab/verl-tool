@@ -22,7 +22,7 @@ from verl.utils.tracking import Tracking
 from verl.utils import hf_tokenizer, hf_processor
 from verl.utils.model import get_generation_config
 from tqdm import tqdm
-from typing import List, Union
+from typing import List, Union, Optional, Any
 from pathlib import Path
 from copy import deepcopy
 from .config import AgentActorConfig
@@ -40,18 +40,43 @@ CONTROL_CHAR_RE = re.compile(
     r'[\x00-\x08\x0B\x0C\x0E-\x1F]'
 )
 
-def encode_image(img):
-    buffered = io.BytesIO()
-    img.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
-    return img_str
+def encode_image(img: Image.Image) -> str:
+    if isinstance(img, Image.Image):
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG")
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        return img_str
+    else:
+        raise ValueError(f"Unsupported image type: {type(img)}. Expected str or PIL Image, got {type(img)}.")
 
 def decode_image(img_str):
     img_data = base64.b64decode(img_str)
     img = Image.open(io.BytesIO(img_data))
     return img
 
-#added muze: use deepcopy to repeat batch to prevent reference bug
+def encode_image_url(img: Union[str, Image.Image]) -> str:
+    encoded_img = encode_image(process_image({"image": img}))
+    return f"data:image/jpeg;base64,{encoded_img}"  # Assume img is a base64 string or file path
+
+def encode_video_url(
+    video: Union[str, np.ndarray], 
+    nframes: Optional[int] = None,
+    fps: Optional[float] = None,
+    fps_min_frames: Optional[int] = None,
+    fps_max_frames: Optional[int] = None
+) -> str:
+    if isinstance(video, list):
+        if all(isinstance(frame, np.ndarray) for frame in video) or \
+        isinstance(video, np.ndarray) and video.ndim == 4:  # Assuming video is a list of numpy arrays or a 4D numpy array
+            # load from numpy arrays
+            frames = [Image.fromarray(frame) for frame in video]
+        else:
+            frames = [process_image({"image": frame}) for frame in video]
+    else:
+        frames = process_video(video, nframes=nframes, fps=fps, fps_min_frames=fps_min_frames, fps_max_frames=fps_max_frames)
+    encoded_frames = [encode_image(frame) for frame in frames]
+    return f"data:video/jpeg;base64,{','.join(encoded_frames)}"  # Assume video is a list of processed images
+
 def sanitize_request(obj: Any) -> Any:
     """
     Recursively walk through obj and:
@@ -327,25 +352,26 @@ class AgentActorManager:
                 next_obs_ids,
                 skip_special_tokens=True
             )
+            if self.config.enable_mtrl:
+                processed_next_obs = []
+                for i in range(len(next_obs)):
+                    if finishs[i] or dones[i]:
+                        # do action is false
+                        assert next_obs[i] == "", f"next_obs should be empty when finishs is True, but got {next_obs[i]}"
+                        processed_next_obs.append("")
+                    elif valid_action[i]:
+                        processed_next_obs.append(mtrl_sep.format(obs=next_obs[i]))
+                    else:
+                        processed_next_obs.append(mtrl_sep.format(obs="Your action is not valid, please check the format and try again." + next_obs[i]))
+                next_obs = processed_next_obs
+
             if not has_multi_modal_data:
-                if self.config.enable_mtrl:
-                    processed_next_obs = []
-                    for i in range(len(next_obs)):
-                        if finishs[i] or dones[i]:
-                            # do action is false
-                            assert next_obs[i] == "", f"next_obs should be empty when finishs is True, but got {next_obs[i]}"
-                            processed_next_obs.append("")
-                        elif valid_action[i]:
-                            processed_next_obs.append(mtrl_sep.format(obs=next_obs[i]))
-                        else:
-                            processed_next_obs.append(mtrl_sep.format(obs="Your action is not valid, please check the format and try again." + next_obs[i]))
-                    next_obs = processed_next_obs
-                    next_obs_ids = self.tokenizer(
-                        next_obs,
-                        padding='longest',
-                        return_tensors='pt',
-                        add_special_tokens=False,  # Prevents adding special tokens
-                    )['input_ids'].to(torch.int64)
+                next_obs_ids = self.tokenizer(
+                    next_obs,
+                    padding='longest',
+                    return_tensors='pt',
+                    add_special_tokens=False,  # Prevents adding special tokens
+                )['input_ids'].to(torch.int64)
 
                 # update rollout messages with next_obs
                 if "rollout_messages" in rollings.non_tensor_batch:
@@ -366,35 +392,76 @@ class AgentActorManager:
                     next_obs_image = tool_interact_info_k.get('image', [])
                     if not isinstance(next_obs_image, list):
                         next_obs_image = [next_obs_image]
-                    multi_modal_data['image_url'] = next_obs_image
-                    assert all([isinstance(img, str) and Path(img).exists() for img in next_obs_image]), \
-                        f"Image file paths should be valid, but got {next_obs_image}"
-                    next_obs_image = [process_image(decode_image(img)) for img in next_obs_image]
+                    next_obs_image = [process_image({"image": img}) for img in next_obs_image]
                     multi_modal_data["image"] = next_obs_image
                     
                     next_obs_video = tool_interact_info_k.get('video', [])
                     if not isinstance(next_obs_video, list):
                         next_obs_video = [next_obs_video]
-                    multi_modal_data['video_url'] = next_obs_video
-                    assert all([isinstance(video, str) and Path(video).suffix == '.mp4' and Path(video).exists() for video in next_obs_video]), \
-                        f"Video file paths should be valid mp4 files, but got {next_obs_video}"
-                    next_obs_video = [process_video(video) for video in next_obs_video]
+                    next_obs_video = [process_video({"video": video}) for video in next_obs_video]
                     multi_modal_data["video"] = [video.numpy() for video in next_obs_video]
 
-                    content_list = []
-                    content_list.append({"type": "text", "text": next_obs[k]})
+                    # add additional <image> and <video> placeholder to next_obs[k]
+                    next_obs_k = next_obs[k]
                     if next_obs_image:
-                        content_list.extend([{"type": "image", "image": img} for img in next_obs_image])
+                        image_placeholder_count = next_obs_k.count("<image>")
+                        if image_placeholder_count < len(next_obs_image):
+                            next_obs_k = "<image>" * (len(next_obs_image) - image_placeholder_count) + next_obs_k
+                        elif image_placeholder_count > len(next_obs_image):
+                            next_obs_k = next_obs_k.replace("<image>", "", image_placeholder_count - len(next_obs_image))
                     if next_obs_video:
-                        content_list.extend([{"type": "video", "video": video} for video in next_obs_video])
-                    next_obs_message = [{"role": "system", "content": content_list}]
+                        video_placeholder_count = next_obs_k.count("<video>")
+                        if video_placeholder_count < len(next_obs_video):
+                            next_obs_k = "<video>" * (len(next_obs_video) - video_placeholder_count) + next_obs_k
+                        elif video_placeholder_count > len(next_obs_video):
+                            next_obs_k = next_obs_k.replace("<video>", "", video_placeholder_count - len(next_obs_video))
                     
-                    raw_prompt = self.processor.apply_chat_template(
-                        next_obs_message, add_generation_prompt=True, tokenize=False
-                    )
-                    # remove mm_prefix and mm_postfix
-                    raw_prompt = raw_prompt.replace(self.mm_prefix, "").replace(self.mm_postfix, "")
-                    
+                    content_list = []
+                    segments = re.split("(<image>|<video>)", next_obs_k)
+                    segments = [item for item in segments if item != ""]
+                    segment_idx = defaultdict(int)
+                    for segment in segments:
+                        if segment == "<image>":
+                            content_list.append({"type": "image"})
+                            segment_idx[segment] += 1
+                        elif segment == "<video>":
+                            content_list.append({"type": "video"})
+                            segment_idx[segment] += 1
+                        else:
+                            content_list.append({"type": "text", "text": segment})
+                    if content_list:
+                        next_obs_message = [{"role": "system", "content": content_list}]
+                        print(f"next_obs_message: {next_obs_message}")
+                        
+                        raw_prompt = self.processor.apply_chat_template(
+                            next_obs_message, add_generation_prompt=False, tokenize=False, continue_final_message=True
+                        )
+                        # remove mm_prefix and mm_postfix
+                        raw_prompt = raw_prompt.replace(self.mm_prefix, "")
+                    else:
+                        raw_prompt = ""
+                    # print("next_obs_raw_prompt:", raw_prompt)
+                    # print("content_list:", content_list)
+
+                    # udpate rollout messages with next_obs
+                    if "rollout_messages" in rollings.non_tensor_batch and raw_prompt:
+                        content_list = []
+                        segment_idx = defaultdict(int)
+                        for segment in segments:
+                            if segment == "<image>":
+                                content_list.append({"type": "image_url", "image_url": {"url": encode_image_url(next_obs_image[segment_idx[segment]]["image"])}})
+                                segment_idx[segment] += 1
+                            elif segment == "<video>":
+                                content_list.append({"type": "video_url", "video_url": {"url": encode_video_url(next_obs_video[segment_idx[segment]]["video"])}})
+                                segment_idx[segment] += 1
+                            else:
+                                content_list.append({"type": "text", "text": segment})
+                        rollings.non_tensor_batch['rollout_messages'][k].update_rollout_messages(
+                            {
+                                "role": self.config.mtrl_role if self.config.enable_mtrl else self.config.assistant_role,
+                                "content": content_list
+                            }
+                        )   
                     mm_data_list.append(multi_modal_data)
                     raw_prompts.append(raw_prompt)
                     
@@ -406,36 +473,14 @@ class AgentActorManager:
                     return_tensors='pt',
                     add_special_tokens=False,  # Prevents adding special tokens
                 )['input_ids'].to(torch.int64)
-
-                # update rollout messages with next_obs
-                if "rollout_messages" in rollings.non_tensor_batch:
-                    for i in range(len(next_obs)):
-                        content_list = [{"type": "text", "text": next_obs[i]}]
-                        if 'image' in mm_data_list[i] and mm_data_list[i]['image']:
-                            content_list.extend([{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(img)}"}} for img in mm_data_list[i]['image']])
-                            # content_list.extend([{"type": "image_url", "image_url": {"url": f"file://{img_url}"}} for img_url in mm_data_list[i]['image_url']])
-                        if 'video' in mm_data_list[i] and mm_data_list[i]['video']:
-                            content_list.extend([{"type": "video_url", "video_url": {"url": f"data:video/mp4;base64,{base64.b64encode(video).decode()}"}} for video in mm_data_list[i]['video']])
-                            # content_list.extend([{"type": "video_url", "video_url": {"url": f"file://{video_url}"}} for video_url in mm_data_list[i]['video_url']])
-                            assert all([Path(video).suffix == '.mp4' and Path(video).exists() for video in mm_data_list[i]['video']]), f"video should be a valid mp4 file path, but got {mm_data_list[i]['video']}"
-                        rollings.non_tensor_batch['rollout_messages'][i].update_rollout_messages(
-                            {
-                                "role": self.config.mtrl_role if self.config.enable_mtrl else self.config.assistant_role,
-                                "content": content_list
-                            }
-                        )
         
-        if mm_data_list is not None and "multi_modal_data" not in rollings.non_tensor_batch:
+        if mm_data_list is not None and "multi_modal_data" in rollings.non_tensor_batch:
             for i in range(len(rollings.non_tensor_batch['multi_modal_data'])):
                 next_mm_data_i = mm_data_list[i]
                 if 'image' in next_mm_data_i and next_mm_data_i['image'] is not None:
                     rollings.non_tensor_batch['multi_modal_data'][i]['image'].extend(next_mm_data_i['image'])
                 if 'video' in next_mm_data_i and next_mm_data_i['video'] is not None:
                     rollings.non_tensor_batch['multi_modal_data'][i]['video'].extend(next_mm_data_i['video'])
-        for mm_data in mm_data_list:
-            # pop image_url and video_url from mm_data
-            mm_data.pop('image_url', None)
-            mm_data.pop('video_url', None)
 
         return next_obs_ids, rollings
 
@@ -837,7 +882,7 @@ class AgentActorManager:
         logger.info(f"ACTIVE_TRAJ_NUM: {active_num_list}")
         
         if "multi_modal_data" in rollings.non_tensor_batch:
-            mm_inputs = self.get_final_mm_inputs(rollings)
+            mm_inputs = await self.get_final_mm_inputs(rollings)
             non_tensors['multi_modal_inputs'] = mm_inputs # used for policy gradient updates
 
         results = self._compose_final_output(original_left_side, original_right_side, non_tensors, ori_meta_info)
@@ -853,19 +898,25 @@ class AgentActorManager:
     def run_llm_loop(self, gen_batch: DataProto, **sampling_params: Dict[str, Any]) -> Tuple[Dict, Dict]:
         return asyncio.run(self.run_llm_loop_async(gen_batch, **sampling_params))
 
-    def get_final_mm_inputs(self, rollings: DataProto):
+    async def get_final_mm_inputs(self, rollings: DataProto):
         mm_inputs = []
-        texts =  self.tokenizer.batch_decode(rollings.non_tensor_batch['raw_prompt_ids'])
-        for i in range(rollings.batch['input_ids'].shape[0]):
-            text = texts[i]
-            images = rollings.non_tensor_batch['multi_modal_data'][i].get('image', None)
-            videos = rollings.non_tensor_batch['multi_modal_data'][i].get('video', None)
-            model_inputs = self.processor(text=[text], images=images, videos=videos, return_tensors="pt")
-            model_inputs.pop('input_ids')
-            model_inputs.pop('attention_mask')
-            if "second_per_grid_ts" in model_inputs:
-                model_inputs.pop('second_per_grid_ts')
-            mm_inputs.append(dict(model_inputs))
+        async with self.tokenizer_lock:
+            for i in range(rollings.batch['input_ids'].shape[0]):
+                raw_prompt = self.processor.apply_chat_template(rollings.non_tensor_batch['rollout_messages'][i].messages, add_generation_prompt=False, tokenize=False)
+                images = rollings.non_tensor_batch['multi_modal_data'][i].get('image', None)
+                videos = rollings.non_tensor_batch['multi_modal_data'][i].get('video', None)
+                try:
+                    model_inputs = self.processor(text=[raw_prompt], images=images, videos=videos, return_tensors="pt")
+                except Exception as e:
+                    print("Error processing multi-modal data for prompt:", raw_prompt)
+                    print("images:", images)
+                    print("videos:", videos)
+                    raise e
+                model_inputs.pop('input_ids')
+                model_inputs.pop('attention_mask')
+                if "second_per_grid_ts" in model_inputs:
+                    model_inputs.pop('second_per_grid_ts')
+                mm_inputs.append(dict(model_inputs))
         return mm_inputs
     
     def _compose_final_output(

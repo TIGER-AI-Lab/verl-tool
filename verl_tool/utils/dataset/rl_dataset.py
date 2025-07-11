@@ -38,7 +38,11 @@ class RolloutMessagesMixin:
         if messages[-1]['role'] != role:
             messages.append({'role': role, 'content': content_list})
         else:
-            messages[-1]['content'].extend(content_list)
+            for content in content_list:
+                if isinstance(content, dict) and content.get('type') == 'text' and messages[-1]['content'][-1].get('type') == 'text':
+                    messages[-1]['content'][-1]['text'] += content['text']
+                else:
+                    messages[-1]['content'].append(content)
         return messages
 
     def tolist(self):
@@ -59,11 +63,11 @@ class VerlToolRLHFDataset(RLHFDataset):
         row_dict: dict = self.dataframe[item]
         start = time.time()
         rollout_messages = self._build_rollout_messages(row_dict)
-        print(f'finish getting {item}-th item rollout messages in {time.time() - start} seconds')
+        # print(f'finish getting {item}-th item rollout messages in {time.time() - start} seconds')
         start = time.time()
         result = super().__getitem__(item)
         result['rollout_messages'] = rollout_messages
-        print(f'finish getting {item}-th item in {time.time() - start} seconds')
+        # print(f'finish getting {item}-th item in {time.time() - start} seconds')
         return result
     
     def _build_rollout_messages(self, example: dict):
@@ -97,8 +101,8 @@ class VerlToolRLHFDataset(RLHFDataset):
                         message['content'][j] = {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"file://{content['image']}" if not content['image'].startswith("file://") else content['image'],
-                                # "url": f"data:image/jpeg;base64,{encode_image(content['image'])}" if not content['image'].startswith("data:image/jpeg;base64,") else content['image'],
+                                # "url": f"file://{content['image']}" if not content['image'].startswith("file://") else content['image'],
+                                "url": f"data:image/jpeg;base64,{encode_image(content['image'])}" if not content['image'].startswith("data:image/jpeg;base64,") else content['image'],
                             }
                         }
                         assert Path(content['image']).exists(), f"Image file {content['image']} does not exist."
@@ -106,8 +110,8 @@ class VerlToolRLHFDataset(RLHFDataset):
                         message['content'][j] = {
                             "type": "video_url",
                             "video_url": {
-                                "url": f"file://{content['video']}" if not content['video'].startswith("file://") else content['video'],
-                                # "url": f"data:video/mp4;base64,{base64.b64encode(open(content['video'], 'rb').read()).decode()}" if not content['video'].startswith("data:video/mp4;base64,") else content['video'],
+                                # "url": f"file://{content['video']}" if not content['video'].startswith("file://") else content['video'],
+                                "url": f"data:video/mp4;base64,{base64.b64encode(open(content['video'], 'rb').read()).decode()}" if not content['video'].startswith("data:video/mp4;base64,") else content['video'],
                             }
                         }
                         assert Path(content['video']).exists(), f"Video file {content['video']} does not exist."

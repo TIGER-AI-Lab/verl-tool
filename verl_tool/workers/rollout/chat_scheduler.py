@@ -268,7 +268,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 "__depth__": 1,
                 "__done__": asyncio.Event(),
             }
-            print(rollout_messages)
+            # print_messages(rollout_messages)
             tasks.append(
                 asyncio.create_task(
                     # self._submit_completions(prompt=prompt, request_id=request_id, info=info)

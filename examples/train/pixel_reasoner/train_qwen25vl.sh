@@ -4,14 +4,14 @@ train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name}/val.parquet]
 model_name=Qwen/Qwen2.5-VL-3B-Instruct
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=2
+n_gpus_per_node=4
 n_nodes=1
 n=16
 batch_size=128
 ppo_mini_batch_size=$batch_size
 max_prompt_length=60000 #should be big to avoid any truncation of image tokens which will cause error
-max_response_length=60000
-max_obs_length=10000
+max_response_length=30000
+max_obs_length=30000
 temperature=1.0
 top_p=1.0
 enable_agent=True # enable agent for tool use
@@ -59,7 +59,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "crop_image" --workers_per_tool 8 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "pixel_reasoner" --workers_per_tool 8 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"
@@ -73,6 +73,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.truncation='right' \
+    +data.dataloader_num_workers=64 \
     reward_model.reward_manager=$reward_manager \
     reward_model.launch_reward_fn_async=True \
     actor_rollout_ref.model.path=$model_name \
