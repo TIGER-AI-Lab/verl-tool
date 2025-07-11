@@ -1,0 +1,1 @@
+python examples/data_preprocess/acecoder.py --dataset_path CodeDPO/AceCoderV2-150K-processed-master-with-gpt-challenging --local_dir data/acecoderv2_challenging --add_execution_prompt False --propmt_type naive
