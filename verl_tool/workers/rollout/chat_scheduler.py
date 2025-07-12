@@ -107,7 +107,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 address,
                 prompt=prompt,
                 extra_body=extra_body,
-                extra_headers={"x-request-id": request_id},
+                extra_headers={"x-request-id": request_id + f"-{time.time()}"},  # add a unique request id to avoid random duplicate request_id problem, seems to be a bug in VLLM
                 **sampling_params,
             )
         except Exception as e:

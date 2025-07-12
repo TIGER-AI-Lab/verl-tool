@@ -2,7 +2,7 @@
 Tool Server - A FastAPI server to manage and execute tools based on incoming requests.
 Using asyncio for concurrent processing.
 """
-import asyncio
+import asyncio, inspect
 import logging
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
 from tqdm import tqdm
@@ -224,12 +224,22 @@ class AsyncToolManager:
             
             # Create task for tool processing
             # We use asyncio.to_thread for potentially blocking operations
-            task = asyncio.to_thread(
-                tool.get_observations,
-                tool_trajectory_ids, 
-                tool_actions, 
-                tool_extra_fields
-            )
+            if hasattr(tool, "aget_observations") and \
+               inspect.iscoroutinefunction(tool.aget_observations):
+                task = asyncio.create_task(
+                    tool.aget_observations(
+                        tool_trajectory_ids,
+                        tool_actions,
+                        tool_extra_fields,
+                    )
+                )
+            else:
+                task = asyncio.to_thread(
+                    tool.get_observations,
+                    tool_trajectory_ids,
+                    tool_actions,
+                    tool_extra_fields,
+                )
             tasks.append((tool_type, task))
         
         # Process all non-matching actions
@@ -385,18 +395,6 @@ class AsyncToolServer:
                             dones=dones,
                             valids=valids
                         )
-                        # import json
-                        # with open(f"tmp_requests/request_response_{data_hash_str}.json", "w") as f:
-                        #     json.dump([
-                        #         {
-                        #             "trajectory_id": trajectory_ids[i],
-                        #             "action": actions[i],
-                        #             "extra_field": extra_fields[i],
-                        #             "observation": observations[i],
-                        #             "done": dones[i],
-                        #             "valid": valids[i]
-                        #         } for i in range(len(trajectory_ids))
-                        #     ], f, indent=4)
                         logger.debug(f"Sending response: {response}")
                         # Store the result for potential duplicate requests
                         self.processing_tasks[data_hash_str]['result'] = response

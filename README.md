@@ -76,6 +76,7 @@ VerlTool: A unified and easy-to-extend tool-agent training framework based on ve
 
 ## Installation
 
+### Option 1: UV Installation
 We highly recommend using uv to install verl-tool.
 
 ```bash
@@ -88,7 +89,7 @@ uv pip install -e ".[vllm,acecoder,torl,search_tool]"
 uv pip install "flash-attn<2.8.0" --no-build-isolation
 ```
 
-### Conda Installation
+### Option 2: Conda Installation
 ```bash
 git submodule update --init --recursive
 conda create --name verl-tool-env python=3.10
@@ -616,3 +617,8 @@ We thank [Netmind.AI](https://www.netmind.ai/), [SeaAI Lab](https://sail.sea.com
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=TIGER-AI-Lab/verl-tool&type=Date)](https://www.star-history.com/#TIGER-AI-Lab/verl-tool&Date)
+
+
+## Badge
+
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/tiger-ai-lab-verl-tool-badge.png)](https://mseep.ai/app/tiger-ai-lab-verl-tool)
