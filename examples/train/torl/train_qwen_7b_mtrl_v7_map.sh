@@ -136,5 +136,5 @@ python3 -m verl_tool.trainer.main_ppo \
 ls
 sleep 10
 
-# pkill -P -9 $server_pid
-# kill -9 $kill $server_pid
+pkill -P -9 $server_pid
+kill -9 $kill $server_pid

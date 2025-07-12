@@ -141,5 +141,5 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.total_epochs=10
 
 
-# pkill -P -9 $server_pid
-# kill -9 $kill $server_pid
+pkill -P -9 $server_pid
+kill -9 $kill $server_pid
