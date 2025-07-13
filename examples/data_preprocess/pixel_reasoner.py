@@ -20,9 +20,15 @@ import datasets
 import zipfile
 import cv2
 import os
+import regex as re
 from glob import glob
 from pathlib import Path
 from huggingface_hub import hf_hub_download
+from collections import defaultdict
+from copy import deepcopy
+
+from transformers import AutoProcessor
+from qwen_vl_utils import process_vision_info
 
 system_prompt = """You are a helpful assistant.
 
@@ -41,6 +47,7 @@ For each function call, return a json object with function name and arguments wi
 {"name": <function-name>, "arguments": <args-json-object>}
 </tool_call>
 """
+
 
 def images_to_video(image_folder, output_path, fps=24):
     images = sorted(glob(os.path.join(image_folder, "*.jpg")))
@@ -61,13 +68,47 @@ def images_to_video(image_folder, output_path, fps=24):
     out.release()
     print(f"Video saved to {output_path}")
 
+def get_mm_content_len(processor, example):
+    messages = deepcopy(example['prompt'])
+    for message in messages:
+        content = message["content"]
+        content_list = []
+        segments = re.split("(<image>|<video>)", content)
+        segments = [item for item in segments if item != ""]
+        segment_idx = defaultdict(int)
+        for segment in segments:
+            if segment == "<image>":
+                content_list.append({"type": "image", "image": example['images'][segment_idx[segment]]["image"]})
+                segment_idx[segment] += 1
+            elif segment == "<video>":
+                content_list.append({"type": "video", "video": example['videos'][segment_idx[segment]]["video"]})
+                segment_idx[segment] += 1
+            else:
+                content_list.append({"type": "text", "text": segment})
+
+        message["content"] = content_list
+    raw_prompt = processor.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
+    image_inputs, video_inputs = process_vision_info(messages)
+    inputs = processor(
+        text=[raw_prompt],
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors="pt",
+    )
+    return inputs.input_ids.shape[1]
+
 def main(
     dataset_path: str = 'TIGER-Lab/PixelReasoner-RL-Data',
     local_dir: str = 'data/pixel_reasoner',
+    version: str = None,
     seed: int = 42,
     image_sep = "<image>",
     video_sep = "<video>",
+    filter_len=None,
+    include_videos=True,
 ):
+    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
     local_dir = Path(local_dir)
     local_dir = local_dir / (dataset_path.split('/')[-1].replace('-', '_'))
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -75,10 +116,7 @@ def main(
     dataset = datasets.load_dataset(dataset_path, split='train')
 
     # 500 examples for testing
-    
-    dataset = dataset.train_test_split(test_size=50, seed=42)
-    train_dataset = dataset['train']
-    val_dataset = dataset['test']
+    train_dataset = dataset
     
     # download images and videos
     image_zip_file = hf_hub_download(repo_id=dataset_path, filename='images.zip', repo_type='dataset')
@@ -150,20 +188,32 @@ def main(
                     'images': extra_info_images,
                 }
             }
+            if filter_len and filter_len > 0:
+                mm_content_len = get_mm_content_len(processor, data)
+                data['extra_info']['mm_content_len'] = mm_content_len
             return data
 
         return process_fn
 
+    if not include_videos:
+        train_dataset = train_dataset.filter(lambda x: not x['is_video'], num_proc=8)
+        print(f"Filtered out video examples. Remaining {len(train_dataset)} examples.")
     
-    train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True, remove_columns=train_dataset.column_names)
+    train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True, remove_columns=train_dataset.column_names, num_proc=8)
+    if filter_len and filter_len > 0:
+        _train_dataset = train_dataset.filter(lambda x: x['extra_info']['mm_content_len'] <= filter_len, num_proc=8)
+        print(f"Filtered {len(train_dataset) - len(_train_dataset)}/{len(train_dataset)} examples from training dataset due to content length > {filter_len}")
+        train_dataset = _train_dataset
     # split 400 as val
-    train_dataset, val_dataset = train_dataset.train_test_split(test_size=400, seed=seed).values()
+    train_dataset, val_dataset = train_dataset.train_test_split(test_size=100, seed=seed).values()
     
     print(f"Loaded {len(train_dataset)} training samples")
     print(f"Loaded {len(val_dataset)} validation samples")
     print(f"Example of a training sample:")
     print(train_dataset[0])
-
+    
+    if version is not None:
+        local_dir = local_dir / version
     train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
     val_dataset.to_parquet(os.path.join(local_dir, 'val.parquet'))
     print(f"Saved to {len(train_dataset)} training samples to {local_dir}/train.parquet")
@@ -173,5 +223,8 @@ if __name__ == '__main__':
     fire.Fire(main)
     
 """
-python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner
+python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --include_videos=True --filter_len=8192
+python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version no_video --include_videos=False
+python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version no_video_max_8192 --include_videos=False --filter_len=8192
+python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version no_video_max_2048 --include_videos=False --filter_len=2048
 """

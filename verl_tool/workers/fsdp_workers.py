@@ -16,13 +16,14 @@ def collect_dp_compute(worker_group, output):
     assert len(output) == worker_group.world_size
     return output
 
-class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, SiblingMarker, metaclass=SiblingMetaClass):
-    def __init__(self, config: DictConfig, role: str):
-        self.config = config
-        self.role = role
+# class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, SiblingMarker, metaclass=SiblingMetaClass):
+class AgentActorRolloutRefWorker(ActorRolloutRefWorker):
+    def __init__(self, config: DictConfig, role: str, **kwargs):
+        super().__init__(config=config, role=role, **kwargs)
         self.manager = AgentActorManager.from_rollout_config(self, self.config, rollout_mode="sync")
-        
+
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
+    @DistProfiler.annotate(color="red", role="rollout_generate")
     def generate_sequences(self, prompts: DataProto):
         # Support all hardwares
         prompts = prompts.to(get_device_id())
@@ -30,8 +31,12 @@ class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, SiblingMarker, m
         assert self._is_rollout
 
         meta_info = {
-            "eos_token_id": self.generation_config.eos_token_id if self.generation_config is not None else self.tokenizer.eos_token_id,
-            "pad_token_id": self.generation_config.pad_token_id if self.generation_config is not None else self.tokenizer.pad_token_id,
+            "eos_token_id": self.generation_config.eos_token_id
+            if self.generation_config is not None
+            else self.tokenizer.eos_token_id,
+            "pad_token_id": self.generation_config.pad_token_id
+            if self.generation_config is not None
+            else self.tokenizer.pad_token_id,
         }
         prompts.meta_info.update(meta_info)
         timing_generate = {}

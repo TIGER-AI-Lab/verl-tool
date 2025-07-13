@@ -1015,6 +1015,10 @@ class AgentActorManager:
                 model_inputs = non_tensors['multi_modal_inputs'][i]
                 input_ids_i = final_output['input_ids'][i]
                 attention_mask_i = final_output['attention_mask'][i]
+                effective_len = attention_mask_i.sum().item()
+                final_output_effective_len = final_output['attention_mask'][i].sum().item()
+                assert final_output_effective_len == effective_len, \
+                    f"Effective length mismatch: {final_output_effective_len} != {effective_len}"
                 _position_ids = get_rope_index(
                         self.processor,
                         input_ids=input_ids_i,

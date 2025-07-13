@@ -78,7 +78,10 @@ class VerlToolRLHFDataset(RLHFDataset):
             for message in messages:
                 content = message["content"]
                 content_list = []
-                segments = re.split("(<image>|<video>)", content)
+                try:
+                    segments = re.split("(<image>|<video>)", content)
+                except Exception as e:
+                    raise ValueError(f"Error splitting content: {content}") from e
                 segments = [item for item in segments if item != ""]
                 segment_idx = defaultdict(int)
                 for segment in segments:

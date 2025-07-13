@@ -147,12 +147,12 @@ class PixelReaonerTool(BaseTool):
         env = self.env_cache.pop(trajectory_id, None)
         if env is not None:
             temporary_image_folder = env.get('temporary_image_folder')
-            if temporary_image_folder:
+            # if temporary_image_folder:
                 # Remove the temporary image folder if it exists
-                if isinstance(temporary_image_folder, str):
-                    temporary_image_folder = Path(temporary_image_folder)
-                if isinstance(temporary_image_folder, Path) and temporary_image_folder.exists():
-                    rm_tree(temporary_image_folder)
+                # if isinstance(temporary_image_folder, str):
+                #     temporary_image_folder = Path(temporary_image_folder)
+                # if isinstance(temporary_image_folder, Path) and temporary_image_folder.exists():
+                #     rm_tree(temporary_image_folder)
 
     def save_image_to_env(self, trajectory_id, image: Union[Image.Image,str]) -> str:
         """
