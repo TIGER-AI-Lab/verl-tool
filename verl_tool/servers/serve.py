@@ -336,7 +336,7 @@ class AsyncToolServer:
                 # Parse request
                 data = await request.json()
                 data_hash_str = hash_requests(data)
-                logger.debug(f"Request hash: {data_hash_str}")
+                logger.warning(f"Request hash: {data_hash_str}")
                 
                 # Check if this request is already being processed
                 if data_hash_str in self.processing_tasks:

@@ -284,6 +284,11 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
 
     async def generate_sequences(self, batch: DataProto, **kwargs) -> DataProto:
         logger.info("[VerlToolChatCompletionScheduler] generate_sequences start")
+        print("batch:", batch)
+        print("batch.meta_info:", batch.meta_info)
+        # print shape of batch.batch and non_tensor_batch
+        print("batch.batch shape:", {k: v.shape for k, v in batch.batch.items()})
+        print("batch.non_tensor_batch shape:", {k: v.shape for k, v in batch.non_tensor_batch.items()})
         t_start = time.time()
         kwargs.update({
             "model": self.model_name,
@@ -328,6 +333,11 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
             # gen_outputs = await asyncio.gather(*tasks)
             gen_outputs = await tqdm.gather(*tasks, total=len(tasks), desc="Async Generating sequences")
             output_batch = DataProto.concat(gen_outputs)
+            print("output_batch:", output_batch)
+            print("output_batch.meta_info:", output_batch.meta_info)
+            # print shape of output_batch.batch and non_tensor_batch
+            print("output_batch.batch shape:", {k: v.shape for k, v in output_batch.batch.items()})
+            print("output_batch.non_tensor_batch shape:", {k: v.shape for k, v in output_batch.non_tensor_batch.items()})
         else:
             kwargs["max_tokens"] = self.max_response_length
             output_batch = await self.simple_generate_sequences(

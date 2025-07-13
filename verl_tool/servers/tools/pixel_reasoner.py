@@ -144,34 +144,39 @@ class PixelReaonerTool(BaseTool):
         """
         Delete the environment for the given trajectory_id
         """
-        # import json
-        if trajectory_id in self.env_cache:
-            temporary_image_folder = self.env_cache[trajectory_id]['temporary_image_folder']
-            if temporary_image_folder.exists():
-                rm_tree(temporary_image_folder)
-            # remove the trajectory_id from the env_cache
-            del self.env_cache[trajectory_id]
+        env = self.env_cache.pop(trajectory_id, None)
+        if env is not None:
+            temporary_image_folder = env.get('temporary_image_folder')
+            if temporary_image_folder:
+                # Remove the temporary image folder if it exists
+                if isinstance(temporary_image_folder, str):
+                    temporary_image_folder = Path(temporary_image_folder)
+                if isinstance(temporary_image_folder, Path) and temporary_image_folder.exists():
+                    rm_tree(temporary_image_folder)
 
     def save_image_to_env(self, trajectory_id, image: Union[Image.Image,str]) -> str:
         """
         Save the image to the environment for the given trajectory_id
         """
         env = self.load_env(trajectory_id)
-        temporary_image_folder = env['temporary_image_folder']
-        image_path = temporary_image_folder / f"image_{len(env['temporary_images'])}.jpg"
-        image_path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(image, str):
-            # If the image is a base64 string, decode it
-            image = decode_image_url(image)
-        elif isinstance(image, Image.Image):
-            # If the image is already a PIL Image, no need to decode
-            pass
-        else:
-            raise ValueError("Image must be a PIL Image or a base64 encoded string.")
-        image.save(image_path)
-        env['temporary_images'].append(image_path)
-        self.save_env(trajectory_id, env)
-        return str(image_path.absolute())
+        env['temporary_images'].append(image)
+        return image
+
+        # temporary_image_folder = env['temporary_image_folder']
+        # image_path = temporary_image_folder / f"image_{len(env['temporary_images'])}.jpg"
+        # image_path.parent.mkdir(parents=True, exist_ok=True)
+        # if isinstance(image, str):
+        #     # If the image is a base64 string, decode it
+        #     image = decode_image_url(image)
+        # elif isinstance(image, Image.Image):
+        #     # If the image is already a PIL Image, no need to decode
+        #     pass
+        # else:
+        #     raise ValueError("Image must be a PIL Image or a base64 encoded string.")
+        # image.save(image_path)
+        # env['temporary_images'].append(image_path)
+        # self.save_env(trajectory_id, env)
+        # return str(image_path.absolute())
 
     def conduct_zoom_in_action(self, parameters, env):
         """
