@@ -9,7 +9,8 @@ dependencies = [
     "psutils>=3.3.9",
     "timeout-decorator>=0.5.0",
     "pyext",
-    "qwen_vl_utils"
+    "qwen_vl_utils",
+    "transformers<4.53.0" # for vlm
 ]
 
 [tool.setuptools]

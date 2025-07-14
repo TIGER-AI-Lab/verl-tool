@@ -126,10 +126,10 @@ class VerlToolRLHFDataset(RLHFDataset):
                 segment_idx = defaultdict(int)
                 for segment in segments:
                     if segment == "<image>":
-                        content_list.append({"type": "image", "image": example[self.image_key][segment_idx[segment]]})
+                        content_list.append({"type": "image", "image": example[self.image_key][segment_idx[segment]]["image"]})
                         segment_idx[segment] += 1
                     elif segment == "<video>":
-                        content_list.append({"type": "video", "video": example[self.video_key][segment_idx[segment]]})
+                        content_list.append({"type": "video", "video": example[self.video_key][segment_idx[segment]]["video"]})
                         segment_idx[segment] += 1
                     else:
                         content_list.append({"type": "text", "text": segment})
@@ -147,7 +147,7 @@ class VerlToolRLHFDataset(RLHFDataset):
                             message['content'][j] = {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/jpeg;base64,{encode_image_url(content['image'])}"
+                                    "url": encode_image_url(content['image']),
                                 }
                             }
                             assert Path(content['image']).exists(), f"Image file {content['image']} does not exist."
