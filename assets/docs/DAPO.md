@@ -48,3 +48,5 @@ DAPO training example script for Qwen-1.5B on DeepMath dataset:
 ```bash
 bash examples/train/torl/train_qwen_1.5B_math_deep_math_dapo.sh
 ```
+
+We put example wandb training curve [here](https://wandb.ai/tiger_ai_lab/torl/reports/Example-Qwen-1-5b-Math-DAPO-training-on-DeepMath-data--VmlldzoxMzU4ODg4Mw)
