@@ -3,12 +3,12 @@ import base64
 import numpy as np
 import regex as re
 import time
+import datasets
 from verl.utils.dataset.rl_dataset import RLHFDataset
 from pathlib import Path
 from typing import List
 from copy import deepcopy
 from collections import defaultdict
-import os
 
 def encode_image(img_path: str) -> str:
     with open(img_path, "rb") as image_file:
@@ -71,6 +71,46 @@ class VerlToolRLHFDataset(RLHFDataset):
         # print(f'finish getting {item}-th item in {time.time() - start} seconds')
         return result
     
+    def maybe_filter_out_long_prompts(self, dataframe: datasets.Dataset = None):
+        # filter out too long prompts
+        if self.filter_overlong_prompts:
+            tokenizer = self.tokenizer
+            processor = self.processor
+            prompt_key = self.prompt_key
+            image_key = self.image_key
+            video_key = self.video_key
+
+            if processor is not None:
+                from verl.utils.dataset.vision_utils import process_image, process_video
+
+                def doc2len(doc) -> int:
+                    messages = self._build_messages(doc)
+                    raw_prompt = self.processor.apply_chat_template(
+                        messages, add_generation_prompt=True, tokenize=False
+                    )
+                    images = (
+                        [process_image(image) for image in doc[image_key]] if image_key in doc else None # changed to get images from doc
+                    )
+                    videos = (
+                        [process_video(video) for video in doc[video_key]] if video_key in doc else None # changed to get videos from doc
+                    )
+
+                    return len(processor(text=[raw_prompt], images=images, videos=videos)["input_ids"][0])
+
+            else:
+
+                def doc2len(doc) -> int:
+                    return len(tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True))
+
+            dataframe = dataframe.filter(
+                lambda doc: doc2len(doc) <= self.max_prompt_length,
+                num_proc=self.num_workers,
+                desc=f"Filtering prompts longer than {self.max_prompt_length} tokens",
+            )
+
+            print(f"filter dataset len: {len(dataframe)}")
+        return dataframe
+    
     def _build_rollout_messages(self, example: dict):
         messages = deepcopy(example[self.prompt_key])
 
@@ -86,49 +126,49 @@ class VerlToolRLHFDataset(RLHFDataset):
                 segment_idx = defaultdict(int)
                 for segment in segments:
                     if segment == "<image>":
-                        content_list.append({"type": "image", "image": example[self.image_key][segment_idx[segment]]["image"]})
+                        content_list.append({"type": "image", "image": example[self.image_key][segment_idx[segment]]})
                         segment_idx[segment] += 1
                     elif segment == "<video>":
-                        content_list.append({"type": "video", "video": example[self.video_key][segment_idx[segment]]["video"]})
+                        content_list.append({"type": "video", "video": example[self.video_key][segment_idx[segment]]})
                         segment_idx[segment] += 1
                     else:
                         content_list.append({"type": "text", "text": segment})
 
                 message["content"] = content_list
 
-        
-        for i, message in enumerate(messages):
-            if isinstance(message['content'], list):
-                for j in range(len(message['content'])):
-                    content = message['content'][j]
-                    if content['type'] == 'image':
-                        message['content'][j] = {
-                            "type": "image_url",
-                            "image_url": {
-                                # "url": f"file://{content['image']}" if not content['image'].startswith("file://") else content['image'],
-                                "url": f"data:image/jpeg;base64,{encode_image(content['image'])}" if not content['image'].startswith("data:image/jpeg;base64,") else content['image'],
+        if self.processor is not None:
+            # multi-modal inputs
+            from verl_tool.llm_agent.vision_utils import encode_image_url, encode_video_url
+            for i, message in enumerate(messages):
+                if isinstance(message['content'], list):
+                    for j in range(len(message['content'])):
+                        content = message['content'][j]
+                        if content['type'] == 'image':
+                            message['content'][j] = {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{encode_image_url(content['image'])}"
+                                }
                             }
-                        }
-                        assert Path(content['image']).exists(), f"Image file {content['image']} does not exist."
-                    elif content['type'] == 'video':
-                        message['content'][j] = {
-                            "type": "video_url",
-                            "video_url": {
-                                # "url": f"file://{content['video']}" if not content['video'].startswith("file://") else content['video'],
-                                "url": f"data:video/mp4;base64,{base64.b64encode(open(content['video'], 'rb').read()).decode()}" if not content['video'].startswith("data:video/mp4;base64,") else content['video'],
+                            assert Path(content['image']).exists(), f"Image file {content['image']} does not exist."
+                        elif content['type'] == 'video':
+                            message['content'][j] = {
+                                "type": "video_url",
+                                "video_url": {
+                                    "url": encode_video_url(content['video']),
+                                }
                             }
-                        }
-                        assert Path(content['video']).exists(), f"Video file {content['video']} does not exist."
-                    elif content['type'] == 'text':
-                        message['content'][j] = {
-                            "type": "text",
-                            "text": content['text']
-                        }
-                    else:
-                        raise ValueError(f"Unknown content element type: {content['type']}")
-            elif isinstance(message['content'], str):
-                message['content'] = [{"type": "text", "text": message['content']}]
-            else:
-                raise ValueError(f"Unknown content type: {type(message['content'])}")
+                            assert Path(content['video']).exists(), f"Video file {content['video']} does not exist."
+                        elif content['type'] == 'text':
+                            message['content'][j] = {
+                                "type": "text",
+                                "text": content['text']
+                            }
+                        else:
+                            raise ValueError(f"Unknown content element type: {content['type']}")
+                elif isinstance(message['content'], str):
+                    message['content'] = [{"type": "text", "text": message['content']}]
+                else:
+                    raise ValueError(f"Unknown content type: {type(message['content'])}")
                     
         return RolloutMessagesMixin(messages)
