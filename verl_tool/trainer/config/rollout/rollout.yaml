@@ -174,7 +174,7 @@ agent:
   custom_async_server:
 
     # Path to the custom async server implementation
-    path: pkg://verl_tool.workers.rollout.vllm_rollout.vllm_async_server
+    path: pkg://verl_tool.workers.rollout.vllm_rollout.vllm_async_server # added by verl-tool
 
     # Class name of the custom async server class (e.g. AsyncvLLMServer)
-    name: AsyncvLLMServer
+    name: AsyncvLLMServer # added by verl-tool
