@@ -18,6 +18,7 @@ def collect_dp_compute(worker_group, output):
 class AgentActorRolloutRefWorker(Worker, DistProfilerExtension, ActorRolloutRefWorker, SiblingMarker, metaclass=SiblingMetaClass):
     def __init__(self, config: DictConfig, role: str, **kwargs):
         self.manager = AgentActorManager.from_rollout_config(self, self.config, rollout_mode="sync")
+        self.agent_config = self.manager.config
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     @DistProfiler.annotate(color="red", role="rollout_generate")

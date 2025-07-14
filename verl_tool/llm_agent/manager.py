@@ -511,7 +511,7 @@ class AgentActorManager:
 
         effective_lens = new_attention_mask.sum(dim=1)
         min_effective_len = effective_lens.min().item()
-        overlong_traj_mask = (effective_lens >= max_len).numpy()
+        overlong_traj_mask = (effective_lens >= max_len).cpu().numpy()
         if overlong_traj_mask.sum() > 0:
             overlong_traj_ids = rollings.non_tensor_batch['traj_ids'][overlong_traj_mask]
             self.close_traj_tool_threads(overlong_traj_ids)
@@ -621,6 +621,9 @@ class AgentActorManager:
         perf_timer = PerformanceTimer(do_timer=True)
         perf_timer.start('run_llm_loop_total')
         perf_timer.start('initialization')
+        # only async is supported for multi-modal now
+        if "multi_modal_data" in gen_batch.non_tensor_batch and self.config.rollout_mode != "async":
+            raise ValueError("Multi-modal data is only supported in async mode, please set rollout_mode to 'async'.")
         
         ori_meta_info = gen_batch.meta_info
         if 'eos_token_id' not in ori_meta_info:
