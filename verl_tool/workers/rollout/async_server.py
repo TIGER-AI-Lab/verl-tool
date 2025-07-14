@@ -16,6 +16,7 @@ import logging
 from typing import Type
 from verl.workers.rollout.async_server import AsyncServerBase, AsyncLLMServerManager
 from .chat_scheduler import VerlToolChatCompletionScheduler
+from verl.protocol import DataProto
 logger = logging.getLogger(__file__)
 
 class VerlToolAsyncLLMServerManager(AsyncLLMServerManager):
@@ -32,8 +33,15 @@ class VerlToolAsyncLLMServerManager(AsyncLLMServerManager):
 
         self.chat_scheduler_ready.set()
         self.chat_scheduler_loop.run_forever()
+    
+    def generate_sequences(self, prompts: DataProto, **sampling_params) -> DataProto:
+        self.wake_up()
+        result = super().generate_sequences(prompts, **sampling_params)
+        self.sleep()
+        return result
 
+# here are the hacky parts to replace the original AsyncLLMServerManager with VerlToolAsyncLLMServerManager
 import verl.experimental.agent_loop
 import verl.workers.rollout.async_server
-verl.experimental.agent_loop.AgentLoopManager = VerlToolAsyncLLMServerManager
-verl.workers.rollout.async_server.AsyncLLMServerManager = VerlToolAsyncLLMServerManager
+verl.experimental.agent_loop.AgentLoopManager = VerlToolAsyncLLMServerManager # replace the original AgentLoopManager with VerlToolAsyncLLMServerManager
+verl.workers.rollout.async_server.AsyncLLMServerManager = VerlToolAsyncLLMServerManager # replace the original AsyncLLMServerManager with VerlToolAsyncLLMServerManager

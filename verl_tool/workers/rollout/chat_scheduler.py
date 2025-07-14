@@ -292,7 +292,10 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         if batch.meta_info.get("validate", False):
             kwargs["top_p"] = self.config.val_kwargs.top_p
             kwargs["temperature"] = self.config.val_kwargs.temperature
-        repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
+        if not batch.meta_info.get("is_repeated_by_n", False):
+            repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
+        else:
+            repeated_batch = batch
         repeated_chunk_batch = repeated_batch.chunk(len(repeated_batch))
         # repeated_batch = [repeated_batch] # for debug
         logger.warning(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")

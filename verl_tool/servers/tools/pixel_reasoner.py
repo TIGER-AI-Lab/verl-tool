@@ -280,9 +280,19 @@ class PixelReaonerTool(BaseTool):
                 observation = f"'arguments' should be a dictionary of parameters key-value pairs, got {type(parsed_action['arguments'])}."
                 valid = False
             elif parsed_action['name'] == 'zoom_in':
-                observation, valid = self.conduct_zoom_in_action(parsed_action['arguments'], env)
+                try:
+                    observation, valid = self.conduct_zoom_in_action(parsed_action['arguments'], env)
+                except Exception as e:
+                    observation = f"Error processing zoom-in action: {str(e)}"
+                    valid = False
+                    print(f"Error processing zoom-in action: {str(e)}; parameters: {parsed_action['arguments']}")
             elif parsed_action['name'] == 'select_frames':
-                observation, valid = self.conduct_select_frames_action(parsed_action['arguments'], env)
+                try:
+                    observation, valid = self.conduct_select_frames_action(parsed_action['arguments'], env)
+                except Exception as e:
+                    observation = f"Error processing select frames action: {str(e)}"
+                    valid = False
+                    print(f"Error processing select frames action: {str(e)}; parameters: {parsed_action['arguments']}")
             else:
                 observation = "Unknown action name."
                 valid = False
