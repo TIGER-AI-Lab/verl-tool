@@ -62,6 +62,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
         sample_inputs = []
         sample_outputs = []
         sample_scores = []
+        sample_turns = []
 
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
@@ -93,6 +94,8 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                 non_tensor_batch_keys_to_pop.append("tools_kwargs")
             if "interaction_kwargs" in test_batch.non_tensor_batch:
                 non_tensor_batch_keys_to_pop.append("interaction_kwargs")
+            if "agent_name" in test_batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("agent_name")
             test_gen_batch = test_batch.pop(
                 batch_keys=batch_keys_to_pop,
                 non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
@@ -282,6 +285,10 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                     non_tensor_batch_keys_to_pop.append("tools_kwargs")
                 if "interaction_kwargs" in batch.non_tensor_batch:
                     non_tensor_batch_keys_to_pop.append("interaction_kwargs")
+                if "index" in batch.non_tensor_batch:
+                    non_tensor_batch_keys_to_pop.append("index")
+                if "agent_name" in batch.non_tensor_batch:
+                    non_tensor_batch_keys_to_pop.append("agent_name")
                 gen_batch = batch.pop(
                     batch_keys=batch_keys_to_pop,
                     non_tensor_batch_keys=non_tensor_batch_keys_to_pop,

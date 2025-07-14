@@ -2,7 +2,6 @@ from verl.workers.fsdp_workers import ActorRolloutRefWorker, Worker, DictConfig
 from verl.workers.fsdp_workers import *
 from verl.utils.debug.performance import simple_timer
 from verl.protocol import DataProto
-from ..llm_agent.config import AgentActorConfig
 from ..llm_agent.manager import AgentActorManager
 from .utils import SiblingMetaClass, SiblingMarker
 
@@ -16,10 +15,8 @@ def collect_dp_compute(worker_group, output):
     assert len(output) == worker_group.world_size
     return output
 
-# class AgentActorRolloutRefWorker(Worker, ActorRolloutRefWorker, SiblingMarker, metaclass=SiblingMetaClass):
-class AgentActorRolloutRefWorker(ActorRolloutRefWorker):
+class AgentActorRolloutRefWorker(Worker, DistProfilerExtension, ActorRolloutRefWorker, SiblingMarker, metaclass=SiblingMetaClass):
     def __init__(self, config: DictConfig, role: str, **kwargs):
-        super().__init__(config=config, role=role, **kwargs)
         self.manager = AgentActorManager.from_rollout_config(self, self.config, rollout_mode="sync")
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)

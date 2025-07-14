@@ -70,19 +70,24 @@ class SiblingMetaClass(ABCMeta):
             
             # Create the combined init function
             def combined_init(self, *args, **kwargs):
-                # First call parent_class.__init__ directly
-                parent_class.__init__(self)
+                # First call parent_class.__init__ if it exists
+                if 'super(' in modified_source:
+                    parent_class.__init__(self)
                 
                 # Create a local namespace for execution
-                local_vars = {'self': self}
-                local_vars.update(kwargs)
+                local_vars = {}
+                # inspect silbing_class.__init__() to get the arguments
+                sig = inspect.signature(sibling_class.__init__)
+                bound = sig.bind(self, *args, **kwargs)
+                bound.apply_defaults()  # Apply any defaults if needed
+                local_vars = dict(bound.arguments)
                 
                 # Execute the modified init body (skipping the def line and indentation)
                 # This executes all the code from sibling_class.__init__ except super().__init__()
                 module = sys.modules[sibling_class.__module__]
                 exec(textwrap.dedent(modified_source.split('\n', 1)[1]), module.__dict__, local_vars)
 
-                # Call the new_init if it existsfexe
+                # Call the new_init if it exists
                 if new_init:
                     new_init(self, *args, **kwargs)
 

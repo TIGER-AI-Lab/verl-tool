@@ -150,6 +150,7 @@ def main(
 
         def process_fn(example, idx):
             question_raw = example.pop('question')
+            question_raw += "\nLet's think step by step and put the final answer within \\boxed{}."
             image = example.pop('image')
             is_video = example.pop('is_video')
             answer = example.pop('answer')[0]
