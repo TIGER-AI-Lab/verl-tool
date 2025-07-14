@@ -82,7 +82,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
             sample_inputs.extend(input_texts)
 
             batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
-            non_tensor_batch_keys_to_pop = ["raw_prompt_ids", "rollout_messages"]
+            non_tensor_batch_keys_to_pop = ["raw_prompt_ids", "rollout_messages", "traj_ids"]  # rollout_messages is added by verl-tool for async rollout
             if "multi_modal_data" in test_batch.non_tensor_batch:
                 non_tensor_batch_keys_to_pop.append("multi_modal_data")
             if "multi_modal_inputs" in test_batch.non_tensor_batch:
