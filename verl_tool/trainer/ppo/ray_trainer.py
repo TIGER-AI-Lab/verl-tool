@@ -113,6 +113,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                 "pad_token_id": self.tokenizer.pad_token_id,
                 "recompute_log_prob": False,
                 "do_sample": self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
+                "is_repeated_by_n": True,
                 "validate": True,
                 "is_repeated_by_n": True,  # added by verl_tool
             }
