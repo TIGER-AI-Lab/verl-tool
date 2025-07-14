@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
 from tqdm import tqdm
 import regex as re
-
+import json
 import fire
 import uvicorn
 from fastapi import FastAPI, Request, BackgroundTasks
@@ -117,15 +117,22 @@ class AsyncToolManager:
         # If only one tool available, use it
         if len(self.tools) == 1:
             return list(self.tools.keys())[0]
-            
+        
         # Try to find matching tool (excluding finish tool)
         for tool_type, tool in self.tools.items():
-            if tool_type == "finish":
+            if tool_type in ["finish", 'mcp_interface']:
                 continue
             _, valid = tool.parse_action(action)
             if valid:
                 return tool_type
-                
+        
+        # try mcp_interface tool if has
+        if "mcp_interface" in self.tools:
+            tool = self.tools["mcp_interface"]
+            _, valid = tool.parse_action(action)
+            if valid:
+                return "mcp_interface"
+
         return None
     
     async def identify_tool_types(self, actions: List[str], extra_fields: List[Dict[str, Any]]) -> List[Optional[str]]:
@@ -339,7 +346,7 @@ class AsyncToolServer:
                 # Parse request
                 data = await request.json()
                 data_hash_str = hash_requests(data)
-                logger.debug(f"Request hash: {data_hash_str}")
+                logger.warning(f"Request hash: {data_hash_str}")
                 
                 # Check if this request is already being processed
                 if data_hash_str in self.processing_tasks:

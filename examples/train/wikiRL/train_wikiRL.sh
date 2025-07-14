@@ -47,7 +47,7 @@ server_pid=$!
 echo "Server (pid=$server_pid) started at $tool_server_url"
 
 # actor_rollout_ref.rollout.enforce_eager=False \
-# actor_rollout_ref.rollout.free_cache_engine=False \
+# actor_rollout_ref.rollout.free_cache_engine=True \
 
 # export VLLM_USE_V1=1
 # actor_rollout_ref.agent.max_turns is for debug only

@@ -27,6 +27,7 @@ from collections import defaultdict
 class ToRLRewardManager:
     """The reward manager.
     """
+    name="torl"
 
     def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source') -> None:
         self.tokenizer = tokenizer
@@ -225,9 +226,9 @@ class ToRLRewardManager:
         if save_record:
             # Save the records to a file
             if self.num_examine == 1:
-                temp_file = self.record_dir / f"math-step-val-{self.step}.json"
+                temp_file = self.record_dir / f"{self.name}-step-val-{self.step}.json"
             else:
-                temp_file = self.record_dir / f"math-step-{self.step}.json"
+                temp_file = self.record_dir / f"{self.name}-step-{self.step}.json"
             self.step += 1
             with open(temp_file, "w") as f:
                 json.dump(to_save_records, f, indent=4)

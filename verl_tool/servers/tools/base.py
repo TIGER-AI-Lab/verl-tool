@@ -97,9 +97,7 @@ class BaseTool:
         """
         Delete the environment for the given trajectory_id
         """
-        # import json
-        if trajectory_id in self.env_cache:
-            del self.env_cache[trajectory_id]
+        self.env_cache.pop(trajectory_id, None)
     
     def parse_action(self, action:str):
         """
@@ -182,7 +180,8 @@ class BaseTool:
         for i in range(len(trajectory_ids)):
             if extra_fields[i].get('is_last_step', False) or dones[i]:
                 # delete the environment if it's the last step or done by the tool
-                self.delete_env(trajectory_ids[i])
+                if self.has_env(trajectory_ids[i]):
+                    self.delete_env(trajectory_ids[i])
         return observations, dones, valids
 
 # go through all files in the tools directory and register them

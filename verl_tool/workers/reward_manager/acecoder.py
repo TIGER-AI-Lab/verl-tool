@@ -114,6 +114,7 @@ class AceCoderRewardManager:
     """
     The Reward Manager used in https://github.com/TIGER-AI-Lab/AceCoder
     """
+    name = "acecoder"
 
     def __init__(self, tokenizer, num_examine, compute_score=None, run_id=None) -> None:
         self.tokenizer = tokenizer
@@ -447,9 +448,9 @@ class AceCoderRewardManager:
                     to_save_records[i]['extra_info']['inputs_outputs'] = to_save_records[i]['extra_info']['inputs_outputs'][:1000]
             # Save the records to a file
             if self.num_examine == 1:
-                temp_file = self.record_dir / f"acecoder-step-val-{self.step_idx}.json"
+                temp_file = self.record_dir / f"{self.name}-step-val-{self.step_idx}.json"
             else:
-                temp_file = self.record_dir / f"acecoder-step-{self.step_idx}.json"
+                temp_file = self.record_dir / f"{self.name}-step-{self.step_idx}.json"
             self.step_idx += 1
             with open(temp_file, "w") as f:
                 json.dump(to_save_records, f, indent=4)
