@@ -279,13 +279,13 @@ class PixelReaonerTool(BaseTool):
             elif not isinstance(parsed_action['arguments'], dict):
                 observation = f"'arguments' should be a dictionary of parameters key-value pairs, got {type(parsed_action['arguments'])}."
                 valid = False
-            elif parsed_action['name'] == 'zoom_in':
+            elif parsed_action['name'] in ['zoom_in', 'crop_image_normalized']:
                 try:
                     observation, valid = self.conduct_zoom_in_action(parsed_action['arguments'], env)
                 except Exception as e:
-                    observation = f"Error processing zoom-in action: {str(e)}"
+                    observation = f"Error processing {parsed_action['name']} action: {str(e)}"
                     valid = False
-                    print(f"Error processing zoom-in action: {str(e)}; parameters: {parsed_action['arguments']}")
+                    print(f"Error processing {parsed_action['name']} action: {str(e)}; parameters: {parsed_action['arguments']}")
             elif parsed_action['name'] == 'select_frames':
                 try:
                     observation, valid = self.conduct_select_frames_action(parsed_action['arguments'], env)

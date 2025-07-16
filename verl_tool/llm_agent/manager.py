@@ -310,20 +310,22 @@ class AgentActorManager:
                 next_obs_ids,
                 skip_special_tokens=True
             )
-            if self.config.enable_mtrl:
-                processed_next_obs = []
-                for i in range(len(next_obs)):
-                    if finishs[i] or dones[i]:
-                        # do action is false
-                        assert next_obs[i] == "", f"next_obs should be empty when finishs is True, but got {next_obs[i]}"
-                        processed_next_obs.append("")
-                    elif valid_action[i]:
-                        processed_next_obs.append(mtrl_sep.format(obs=next_obs[i]))
-                    else:
-                        processed_next_obs.append(mtrl_sep.format(obs="Your action is not valid, please check the format and try again." + next_obs[i]))
-                next_obs = processed_next_obs
 
             if not has_multi_modal_data:
+                
+                if self.config.enable_mtrl:
+                    processed_next_obs = []
+                    for i in range(len(next_obs)):
+                        if finishs[i] or dones[i]:
+                            # do action is false
+                            assert next_obs[i] == "", f"next_obs should be empty when finishs is True, but got {next_obs[i]}"
+                            processed_next_obs.append("")
+                        elif valid_action[i]:
+                            processed_next_obs.append(mtrl_sep.format(obs=next_obs[i]))
+                        else:
+                            processed_next_obs.append(mtrl_sep.format(obs="Your action is not valid, please check the format and try again." + next_obs[i]))
+                    next_obs = processed_next_obs
+
                 next_obs_ids = self.tokenizer(
                     next_obs,
                     padding='longest',
@@ -389,12 +391,18 @@ class AgentActorManager:
                             content_list.append({"type": "text", "text": segment})
                     if content_list:
                         next_obs_message = [{"role": "system", "content": content_list}]
-                        
-                        raw_prompt = self.processor.apply_chat_template(
-                            next_obs_message, add_generation_prompt=False, tokenize=False, continue_final_message=True
-                        )
-                        # remove mm_prefix and mm_postfix
-                        raw_prompt = raw_prompt.replace(self.mm_prefix, "")
+                        if not self.config.enable_mtrl:
+                            raw_prompt = self.processor.apply_chat_template(
+                                next_obs_message, add_generation_prompt=False, tokenize=False, continue_final_message=True
+                            )
+                            # remove mm_prefix, only keep the part after <im_start>, the system will not appear
+                            raw_prompt = raw_prompt.replace(self.mm_prefix, "")
+                        else:
+                            raw_prompt = self.processor.apply_chat_template(
+                                next_obs_message, add_generation_prompt=True, tokenize=False, continue_final_message=False
+                            )
+                            # change system role to mtrl_role
+                            raw_prompt = "\n" + raw_prompt.replace("system", self.config.mtrl_role, 1)
                     else:
                         raw_prompt = ""
 

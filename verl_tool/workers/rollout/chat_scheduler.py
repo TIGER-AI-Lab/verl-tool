@@ -274,7 +274,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                     self._submit_chat_completions(messages=rollout_messages, request_id=request_id, info=info)
                 )
             )
-        responses = await tqdm.gather(*tasks, total=len(tasks), desc="Simple generating sequences", disable=len(tasks) < 10)
+        responses = await tqdm.gather(*tasks, total=len(tasks), desc="Simple generating sequences", disable=(len(tasks) < 10) or not self.agent_config.enable_tqdm)
         output_batch = self.simple_postprocess(batch, responses)
         output_batch.meta_info["timing"] = {"generate_sequences": time.time() - t_start}
         return output_batch
@@ -326,7 +326,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                         )
                     )
             # gen_outputs = await asyncio.gather(*tasks)
-            gen_outputs = await tqdm.gather(*tasks, total=len(tasks), desc="Async Generating sequences")
+            gen_outputs = await tqdm.gather(*tasks, total=len(tasks), desc="Async Generating sequences", disable=not self.agent_config.enable_tqdm)
             output_batch = DataProto.concat(gen_outputs)
         else:
             kwargs["max_tokens"] = self.max_response_length

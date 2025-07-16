@@ -1,18 +1,18 @@
 set -x
-dataset_name=pixel_reasoner/PixelReasoner_RL_Data/no_video_max_2048
+dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name}/val.parquet]
-# model_name=Qwen/Qwen2.5-VL-3B-Instruct
-model_name=TIGER-Lab/PixelReasoner-RL-v1
+model_name=TIGER-Lab/PixelReasoner-WarmStart
+# model_name=TIGER-Lab/PixelReasoner-RL-v1
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
 n=8
 batch_size=128
 ppo_mini_batch_size=$batch_size
-max_prompt_length=2048 #should be big to avoid any truncation of image tokens which will cause error
-max_response_length=4096
-max_obs_length=4096
+max_prompt_length=8192 #should be big to avoid any truncation of image tokens which will cause error
+max_response_length=8192
+max_obs_length=8192
 ppo_max_token_len_per_gpu=$(expr $max_prompt_length + $max_response_length)
 temperature=1.0
 top_p=1.0
@@ -28,9 +28,9 @@ lr=1e-6
 reward_manager=pixel_reasoner # should be okay for simple match
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
-tensor_model_parallel_size=1
-gpu_memory_utilization=0.7 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
-do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
+tensor_model_parallel_size=2
+gpu_memory_utilization=0.6 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
+do_offload=False # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
 use_dynamic_bsz=True # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
@@ -61,7 +61,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "pixel_reasoner" --workers_per_tool 8 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "pixel_reasoner" --workers_per_tool 4 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"
@@ -71,7 +71,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.train_files=$train_data \
     data.val_files=$val_data \
     data.train_batch_size=$batch_size \
-    data.val_batch_size=50 \
+    data.val_batch_size=250 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.filter_overlong_prompts=False \
