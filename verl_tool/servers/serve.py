@@ -14,10 +14,8 @@ from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .utils import hash_requests
-from collections import defaultdict
 
 from .tools import get_tool_cls, ALL_TOOLS, set_use_tqdm
-from dataclasses import dataclass
 
 # Configure logging
 logging.basicConfig(
@@ -26,16 +24,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class DictObservation:
-    """Dataclass for structured observations"""
-    obs: str
-    reward: Union[int, float, None] = None
     
 class AgentResponse(BaseModel):
-    """Model for outgoing agent responses"""
-    observations: List[Union[str,  dict]]
+    """Model for outgoing agent responses
+        Observations: List[DictObservation] - List of observations for each action
+            - Keys:
+                - obs: str (required) - The main observation string
+                - reward: Union[int, float, None] - Optional reward value
+                - any other fields as needed
+        dones: List[bool] - List indicating if the action is done
+        valids: List[bool] - List indicating if the action is valid
+    """
+    observations: List[Union[str, dict]]
     dones: List[bool]
     valids: List[bool]
 
@@ -254,9 +254,7 @@ class AsyncToolManager:
             usage_instructions = self.get_tool_usage_instructions()
             indices = indices_by_tool[None]
             for idx in indices:
-                # all_observations[idx] = usage_instructions
-                all_observations[idx] = "" # no observation
-                # all_observations[idx] = "\nNo valid action found\n" # no observation
+                all_observations[idx] = {"obs": "", "invalid_reason": "no valid tool found for action"}
                 all_valids[idx] = False
                 if self.done_if_invalid:
                     all_dones[idx] = True

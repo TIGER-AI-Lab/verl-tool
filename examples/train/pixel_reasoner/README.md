@@ -10,9 +10,10 @@ note the data processing will filter out those samples with length larger than 8
 ```bash
 bash examples/train/pixel_reasoner/train_qwen25vl.sh
 ```
-It should be able to run under 8 GPUs with 80GB memory. 
+It should be able to run under 8 H100/A100 GPUs with 80GB memory. 
 
 ### Notes
 - If you kill a training job, for current version of verl, it seems the gpu memory will not be released immediately. You may need to kill mannually (e.g. `pkill -f -9 ray`)
 - Check original paper for more details: [Pixel Reasoner](https://arxiv.org/abs/2505.15966)
 - [PR](https://github.com/TIGER-AI-Lab/verl-tool/pull/63)
+- requires `transformers<4.53.0` due to `Qwen2.5-VL` model codes

@@ -76,6 +76,7 @@ class PixelReaonerTool(BaseTool):
     tool_type = "pixel_reasoner"
 
     stop_tokens = [ "</tool_call>"]
+    valid_mcp_func_names = ['zoom_in', 'crop_image_normalized', 'select_frames']
 
     def get_usage_inst(self):
         return ""
@@ -95,7 +96,7 @@ class PixelReaonerTool(BaseTool):
         try:
             call = json.loads(action.split('<tool_call>')[1].split('</tool_call>')[0])
             name = call.get('name', '')
-            if name not in ['zoom_in', 'select_frames']:
+            if name not in self.valid_mcp_func_names:
                 return "", False
         except:
             return "", False

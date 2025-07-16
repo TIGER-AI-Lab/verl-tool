@@ -1167,13 +1167,15 @@ class AgentActorManager:
         processed_next_obs = []
         rewards = []
         tool_interact_info = []
-        allowed_keys = ['obs', 'reward']
+        active_idx = 0
         for i, obs in enumerate(next_obs):
+            tool_interact_info_i = {}
             if isinstance(obs, str):
                 # can be invalid
                 processed_next_obs.append(obs)
                 rewards.append(None)
-                tool_interact_info.append({})
+                tool_interact_info_i['obs'] = obs
+                tool_interact_info_i['reward'] = None
             elif isinstance(obs, dict):
                 assert "obs" in obs, f"Observation dict must contain 'obs' key, but got {obs.keys()}"
                 _obs = obs.get('obs', '')
@@ -1183,8 +1185,21 @@ class AgentActorManager:
                 processed_next_obs.append(_obs)
                 rewards.append(_reward)
                 # store tool interaction info if exists
-                tool_interact_info.append({k: v for k, v in obs.items() if k not in allowed_keys})
+                tool_interact_info_i = {k: v for k, v in obs.items()}
+                tool_interact_info_i['obs'] = _obs
+                tool_interact_info_i['reward'] = _reward
             else:
                 raise ValueError(f"Invalid observation type: {type(obs)}. Expected str or dict.")
+            tool_interact_info_i['active'] = bool(active_mask[i])
+            if active_mask[i]:
+                tool_interact_info_i['trajectory_id'] = active_uids[active_idx] if active_idx < len(active_uids) else None
+                tool_interact_info_i['action'] = responses[active_idx] if active_idx < len(responses) else None
+                tool_interact_info_i['is_last_step'] = is_last_step
+                active_idx += 1
+            tool_interact_info_i['done'] = dones[i]
+            tool_interact_info_i['valid_action'] = valid_action[i]
+            tool_interact_info_i['finish'] = _finishs[i]
+            tool_interact_info_i['invalid_reason'] = tool_interact_info_i.get('invalid_reason', None)
+            tool_interact_info.append(tool_interact_info_i)
         next_obs = processed_next_obs
         return next_obs, dones, valid_action, _finishs, rewards, tool_interact_info
