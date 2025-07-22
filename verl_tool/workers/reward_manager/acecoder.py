@@ -116,7 +116,7 @@ class AceCoderRewardManager:
     """
     name = "acecoder"
 
-    def __init__(self, tokenizer, num_examine, compute_score=None, run_id=None) -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source', run_id=None) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
