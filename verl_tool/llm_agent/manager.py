@@ -10,6 +10,7 @@ import regex as re
 import numpy as np
 import requests
 import omegaconf
+from copy import deepcopy
 from collections import defaultdict
 from typing import List, Dict, Any, Tuple
 from verl import DataProto
@@ -173,12 +174,13 @@ class AgentActorManager:
         inputs.meta_info['is_repeated_by_n'] = True
         return inputs
 
-    async def _postprocess_responses(self, responses: Union[torch.Tensor, List[str]], action_step: int, rollings: DataProto) -> torch.Tensor:
+    async def _postprocess_responses(self, responses: Union[torch.Tensor, List[str]], action_step: int, rollout_messages: list) -> torch.Tensor:
         """Process responses to stop at python operation or answer operation.
         Args:
-            responses (Union[torch.Tensor, List[str]]): Responses from the model, either as a tensor or a list of strings.
+            responses (Union[torch.Tensor, List[str]]): Responses from the model, either as a tensor or a list of strings. of length sum(active_mask), which <= batch_size
             action_step (int): Current action step in the interaction.
-            rollings (DataProto): Current rolling state containing input_ids, position_ids, attention_mask, and non_tensor_batch.
+            rollout_messages (list): List of rollout messages to update with new responses.
+            active_mask (torch.Tensor): A mask indicating which responses are active, of shape [batch_size].
         Returns:
             responses (torch.Tensor): Processed responses as a tensor.
             responses_str (List[str]): List of processed response strings.
@@ -196,9 +198,9 @@ class AgentActorManager:
             else:
                 responses_str = responses
             # update messages with new responses
-            if "rollout_messages" in rollings.non_tensor_batch:
+            if rollout_messages is not None:
                 for i in range(len(responses_str)):
-                    rollings.non_tensor_batch['rollout_messages'][i].update_rollout_messages(
+                    rollout_messages[i].update_rollout_messages(
                         {
                             "role": self.config.assistant_role,
                             "content": responses_str[i]
@@ -262,7 +264,7 @@ class AgentActorManager:
             #         "do_action": do_actions[i],
             #     } for i in range(len(responses_str))], f, indent=4)
             responses = self._batch_tokenize(responses_str).to(torch.int64)
-        return responses, responses_str, do_actions, rollings
+        return responses, responses_str, do_actions, rollout_messages
 
     async def _process_next_obs(self, next_obs: List[str], dones: List[bool], valid_action: List[bool], finishs: List[bool], tool_interact_info: List[dict], rollings: DataProto) -> Tuple[torch.Tensor, List[dict]]:
         """Process next observations from environment.
@@ -725,7 +727,9 @@ class AgentActorManager:
             agent_sampling_params['max_new_tokens'] = available_context_budget # for sglang
             active_num_list.append(active_mask.sum().item())
             perf_timer.end('initial_tool_call')
-
+        
+        # it seems somehow and sometime the rollout_messages will be changed by the generate_sequences. so we deepcopy to save a copy. This is a quite weird bug and a temporary fix.
+        rollout_messages = deepcopy(rollings.non_tensor_batch.get('rollout_messages', None))
         # Main generation loop
         perf_timer.start('main_generation_loop')
         for step in range(self.config.max_turns+1):
@@ -741,11 +745,13 @@ class AgentActorManager:
                 rollings.batch,
                 keys=['input_ids', 'attention_mask', 'position_ids']
             ) # TODO: delete
+            active_idxs = torch.nonzero(active_mask, as_tuple=True)[0]
             rollings_active = DataProto.from_dict(
                 {k: v[active_mask] for k, v in rollings.batch.items()},
                 {k: v[active_mask.numpy()] for k, v in rollings.non_tensor_batch.items()},
                 meta_info=ori_meta_info
             )
+            active_rollout_messages = [rollout_messages[active_idx] for active_idx in active_idxs] if rollout_messages is not None else None
             if step == self.config.max_turns and self.config.force_finish_for_last_turn:
                 # remove the action stop tokens in the last turn to force a finish
                 agent_sampling_params.pop('stop')
@@ -759,8 +765,10 @@ class AgentActorManager:
 
             # Time the postprocessing
             perf_timer.start(f'step_{step}_postprocess')
-            responses_ids, responses_str, do_actions, rollings = await self._postprocess_responses(gen_output.batch['responses'], step, rollings) # [active_size, ...]
+            responses_ids, responses_str, do_actions, active_rollout_messages = await self._postprocess_responses(gen_output.batch['responses'], step, active_rollout_messages) # [active_size, ...]
             responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask) # [bs*n, response_length]
+            for i in range(len(active_rollout_messages)):
+                rollings.non_tensor_batch['rollout_messages'][active_idxs[i]] = active_rollout_messages[i]
             perf_timer.end(f'step_{step}_postprocess')
 
             logger.info(f"Number of active trajectories: {active_mask.sum().item()}")

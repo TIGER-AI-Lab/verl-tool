@@ -48,7 +48,7 @@ class RolloutMessagesMixin:
 
     def tolist(self):
         """Convert the messages to a list format."""
-        return self.messages
+        return self.messages.copy()
 
 class VerlToolRLHFDataset(RLHFDataset):
     """A dataset class for reinforcement learning tasks in verl-tool.
