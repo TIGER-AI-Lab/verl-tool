@@ -8,15 +8,77 @@ from .base import BaseTool, register_tool
 import regex as re
 import subprocess
 import os
+import time
 import uuid
+import select
 import shutil
 import resource
 from typing import Tuple, Dict, Any, Optional, Union, List
 
 # Timeout for code execution in seconds
 TIMEOUT = 10
+MAX_BUFFER = 1024*64
 PRE_IMPORT_LIBS = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(6*10**5)\n\n"
 filejail_command_exists = shutil.which("firejail") is not None
+
+def process_output(proc, timeout, max_buffer):
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+
+    start_time = time.perf_counter()
+
+    stdout_eof = False
+    stderr_eof = False
+
+    try:
+        while True:
+            now = time.perf_counter()
+            elapsed = now - start_time
+
+            if stdout_eof and stderr_eof:
+                if proc.poll() is not None:
+                    break
+
+            rlist = []
+            if not stdout_eof:
+                rlist.append(proc.stdout)
+            if not stderr_eof:
+                rlist.append(proc.stderr)
+
+            readable, _, _ = select.select(rlist, [], [], 0.1)
+
+            if proc.stdout in readable:
+                out = proc.stdout.read(1024)
+                if out:
+                    stdout_buf.extend(out)
+                else:
+                    stdout_eof = True  # EOF reached
+
+            if proc.stderr in readable:
+                err = proc.stderr.read(1024)
+                if err:
+                    stderr_buf.extend(err)
+                else:
+                    stderr_eof = True  # EOF reached
+
+            if len(stdout_buf) + len(stderr_buf) >= max_buffer:
+                print("Buffer limit exceeded.")
+                proc.kill()
+                break
+
+            if timeout >= 0 and elapsed > timeout:
+                print("Timeout exceeded.")
+                proc.kill()
+                break
+
+        proc.wait()
+
+    except Exception as e:
+        proc.kill()
+        raise e
+
+    return bytes(stdout_buf).decode(errors="replace"), bytes(stderr_buf).decode(errors="replace")
+
 
 def check_forbidden_imports(code: str) -> bool:
     """
@@ -236,19 +298,42 @@ def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Opt
 
     has_error = False
     try:
-        result = subprocess.run(
+        # result = subprocess.run(
+        #     command,
+        #     input=stdin if stdin else None,
+        #     env=env,
+        #     text=True,
+        #     capture_output=True,
+        #     preexec_fn=set_limits,
+        #     timeout=timeout,
+        #     cwd=subprocess_cwd,
+        # )
+        proc = subprocess.Popen(
             command,
-            input=stdin if stdin else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=env,
-            text=True,
-            capture_output=True,
             preexec_fn=set_limits,
-            timeout=timeout,
-            cwd=subprocess_cwd,
+            cwd=subprocess_cwd
         )
+
+        # Iterate the out/err buffers while tracking both the time elapsed and the bytes received,
+        # and exit if either threshold is exceeded
+        stdout, stderr = process_output(
+            proc=proc, 
+            timeout=timeout, 
+            max_buffer=MAX_BUFFER
+        )
+
+        # Write stdin to the process pipe if desired
+        if stdin is not None:
+            in_bytes = stdin.encode("utf-8")
+            proc.stdin.write(in_bytes)
+            proc.stdin.close()
+
         # Clean both stdout and stderr
-        stdout = clean_traceback(result.stdout, cwd)
-        stderr = clean_traceback(result.stderr, cwd)
+        stdout = clean_traceback(stdout, cwd)
+        stderr = clean_traceback(stderr, cwd)
         stderr = stderr if stderr else ""
         if stderr:
             has_error = True

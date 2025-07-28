@@ -46,6 +46,11 @@ def test_python(
     print("--- Testing 8 ---") # memory limit
     action = """```<python>\nimport numpy as np\nx = np.random.rand(40000, 40000)\nsize_of_x_in_bytes = x.nbytes\nprint(f'Memory test completed after allocating a {len(x)}x{len(x[0])} array, which is {size_of_x_in_bytes / (1024 * 1024):.2f} MB.')</python> ...```"""
     print(_send_test_request(url, trajectory_id, action, "Python Memory Test"))
+
+    print("--- Testing 9 ---") # max buffer limit
+    action = """```<python>print("x"*68*1024)</python> ...```"""
+    _send_test_request(url, trajectory_id, action, "Python max buffer Test")
+
     return True
     
     
@@ -70,7 +75,11 @@ def _send_test_request(url, trajectory_id, action, test_name):
         # Print observation
         if "observations" in result and len(result["observations"]) > 0:
             observation = result["observations"][0]
-            logger.info(f"\n--- {test_name} Result ---\n{observation}\n")
+
+            if len(observation) < 1024*4:
+                logger.info(f"\n--- {test_name} Result ---\n{observation}\n")
+            else:
+                logger.info(f"\n--- {test_name} Result ---\nVERY LONG OUTPUT OMITTED: {len(observation)}\n")
         else:
             logger.error(f"No observation found in response for {test_name}")
         
