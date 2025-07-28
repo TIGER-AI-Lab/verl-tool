@@ -298,16 +298,6 @@ def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Opt
 
     has_error = False
     try:
-        # result = subprocess.run(
-        #     command,
-        #     input=stdin if stdin else None,
-        #     env=env,
-        #     text=True,
-        #     capture_output=True,
-        #     preexec_fn=set_limits,
-        #     timeout=timeout,
-        #     cwd=subprocess_cwd,
-        # )
         proc = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
