@@ -62,12 +62,10 @@ def process_output(proc, timeout, max_buffer):
                     stderr_eof = True  # EOF reached
 
             if len(stdout_buf) + len(stderr_buf) >= max_buffer:
-                print("Buffer limit exceeded.")
                 proc.kill()
                 break
 
             if timeout >= 0 and elapsed > timeout:
-                print("Timeout exceeded.")
                 proc.kill()
                 break
 
