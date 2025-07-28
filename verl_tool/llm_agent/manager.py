@@ -837,7 +837,7 @@ class AgentActorManager:
             agent_sampling_params['max_new_tokens'] = available_context_budget # for sglang
             if available_context_budget == 0:
                 # update all active_mask to False, since no more context is available
-                self.close_traj_tool_threads(traj_ids[active_mask])
+                self.close_traj_tool_threads(traj_ids[active_mask.numpy()])
                 self._update_active_mask_inplace(active_mask, torch.zeros_like(active_mask, dtype=torch.bool))
             perf_timer.end(f'step_{step}_state_updates')
             
