@@ -154,7 +154,7 @@ def main(
                 if add_r1:
                     system_instruction = r1_naive_execution_prompt if add_execution_prompt else r1_naive_coder_instruction
                 else:
-                    system_instruction = naive_execution_prompt if add_execution_prompt else naive_coder_instruction
+                    system_instruction = naive_execution_prompt
             else:
                 raise ValueError(f"Unknown propmt_type: {propmt_type}")
             
