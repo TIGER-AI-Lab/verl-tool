@@ -33,6 +33,7 @@ from .metric_utils import (
     compute_timing_metrics,
 )
 from tqdm import tqdm
+from verl_tool.workers.rollout.async_server import VerlToolAsyncLLMServerManager # required, do not remove this import
 
 def repeat_inputs_by_n(inputs: DataProto, n: int) -> DataProto:
     """
