@@ -298,12 +298,19 @@ def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Opt
     try:
         proc = subprocess.Popen(
             command,
+            stdin=subprocess.PIPE
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
             preexec_fn=set_limits,
             cwd=subprocess_cwd
         )
+
+        # Write stdin to the process pipe if desired
+        if stdin is not None:
+            in_bytes = stdin.encode("utf-8")
+            proc.stdin.write(in_bytes)
+            proc.stdin.close()
 
         # Iterate the out/err buffers while tracking both the time elapsed and the bytes received,
         # and exit if either threshold is exceeded
@@ -312,12 +319,6 @@ def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Opt
             timeout=timeout, 
             max_buffer=MAX_BUFFER
         )
-
-        # Write stdin to the process pipe if desired
-        if stdin is not None:
-            in_bytes = stdin.encode("utf-8")
-            proc.stdin.write(in_bytes)
-            proc.stdin.close()
 
         # Clean both stdout and stderr
         stdout = clean_traceback(stdout, cwd)
