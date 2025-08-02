@@ -230,8 +230,15 @@ class ToRLRewardManager:
             else:
                 temp_file = self.record_dir / f"{self.name}-step-{self.step}.json"
             self.step += 1
-            with open(temp_file, "w") as f:
-                json.dump(to_save_records, f, indent=4)
+            if temp_file.exists():
+                with open(temp_file, "r") as f:
+                    existing_records = json.load(f)
+                existing_records.extend(to_save_records)
+                with open(temp_file, "w") as f:
+                    json.dump(existing_records, f, indent=4)
+            else:
+                with open(temp_file, "w") as f:
+                    json.dump(to_save_records, f, indent=4)
             print(f"Saved records to {temp_file}")
         
         if return_dict:

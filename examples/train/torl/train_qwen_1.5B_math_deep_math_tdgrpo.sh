@@ -6,7 +6,8 @@ $(pwd)/data/${dataset_name}/math500_test.parquet,\
 $(pwd)/data/${dataset_name}/aime24_test.parquet,\
 $(pwd)/data/${dataset_name}/aime25_test.parquet]
 model_name=Qwen/Qwen2.5-Math-1.5B
-rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
+rl_alg=tdgrpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
+loss_mode=gspo # vanilla(grpo)
 n_gpus_per_node=4
 n_nodes=1
 n=16
@@ -40,7 +41,7 @@ mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
 max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="debug-10-turns"
+run_name_postfix="debug-10-turns_tdgrpo"
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -67,6 +68,7 @@ echo "Server (pid=$server_pid) started at $tool_server_url"
 
 PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     algorithm.adv_estimator=$rl_alg \
+    +algorithm.tdgrpo_lambda=0.9 \
     data.train_files=$train_data \
     data.val_files=$val_data \
     data.train_batch_size=$batch_size \
@@ -91,6 +93,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.actor.kl_loss_coef=$kl_loss_coef \
     actor_rollout_ref.actor.kl_loss_type=$kl_loss_type \
     actor_rollout_ref.actor.entropy_coeff=$entropy_coeff \
+    actor_rollout_ref.actor.policy_loss.loss_mode=$loss_mode \
     actor_rollout_ref.actor.fsdp_config.param_offload=$do_offload \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=$do_offload \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=$fsdp_size \
