@@ -32,7 +32,7 @@ class BingSearchEngine():
         zone: str = "serp_api1",
         max_results: int = 10,
         result_length: int = 1000,
-        location: str = "cn",
+        location: str = "us",
         cache_file: Optional[str] = None,
         async_cache_write: bool = True,
         cache_refresh_interval: float = 15.0
@@ -650,7 +650,7 @@ class BingSearchTool(BaseTool):
                     valid = False
                 
                 # Search action is typically always done after one execution
-                done = True
+                done = False
                 
             except Exception as e:
                 observation = f"Search failed with error: {str(e)}"

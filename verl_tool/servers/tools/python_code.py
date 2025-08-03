@@ -362,6 +362,60 @@ class PythonCodeTool(BaseTool):
         parsed_code = "\n".join([code.strip() for code in all_valid_python_code])
         
         return parsed_code, True
+
+    def postprocess_observation(
+        self,
+        action: str, 
+        observation: Union[str, Dict[str, Any]], 
+        output_tag: str = "result"
+    ) -> Union[str, Dict[str, Any]]:
+        """
+        Add output tags to the observation based on action type.
+        
+        Args:
+            action: The action string that determines formatting
+            observation: Raw observation (string or dict with 'observation' key)
+            output_tag: Type of output tag to use ('output', 'result', 'response', etc.)
+        
+        Returns:
+            Formatted observation with appropriate tags
+        """
+        # Extract raw observation
+        if isinstance(observation, str):
+            raw_observation = observation
+        elif isinstance(observation, dict):
+            raw_observation = observation.get("obs", "")
+        else:
+            raise ValueError("Observation must be a string or a dictionary with an 'observation' field.")
+        
+        # Determine format based on action patterns
+        if any(pattern in action for pattern in ["```output", "```python"]):
+            # Handle code block patterns
+            if action.count("```") % 2 == 0:  # Even number of backticks (closed block)
+                formatted_obs = f"\n```{output_tag}\n{raw_observation}\n```\n"
+            else:  # Odd number (unclosed block)
+                formatted_obs = f"{output_tag}\n{raw_observation}\n```\n"
+        elif any(pattern in action for pattern in ["</tool_call>"]):
+            # Tool call patterns - prefer code blocks, give in <tool_response> format
+            formatted_obs = f"\n<tool_response>\n```{output_tag}\n{raw_observation}\n```\n</tool_response>\n"
+        elif any(pattern in action for pattern in [f"<{output_tag}>", f"</{output_tag}>", "</python>"]):
+            # XML-style tag patterns
+            if action.strip(" \n").endswith(f"<{output_tag}>"):
+                formatted_obs = f"\n{raw_observation}\n</{output_tag}>\n"
+            else:
+                formatted_obs = f"\n<{output_tag}>\n{raw_observation}\n</{output_tag}>\n"
+        else:
+            # Default: simple newline wrapping
+            formatted_obs = f"\n<{output_tag}>\n{raw_observation}\n</{output_tag}>\n"
+        
+        # Return in same format as input
+        if isinstance(observation, str):
+            return formatted_obs
+        else:
+            result = observation.copy()
+            result['obs'] = formatted_obs
+            return result
+
     
     def conduct_action(self, trajectory_id, action, extra_field):
         """
@@ -404,29 +458,7 @@ class PythonCodeTool(BaseTool):
             execution_result = execution_result.strip(' \n')
             observation = execution_result
             
-            # format the observation based on the action type
-            if action.endswith("```output"):
-                observation = "\n" + observation + "\n```\n"
-            elif action.endswith("</tool_call>"):
-                observation = "\n```output\n" + observation + "\n```\n"
-            elif action.endswith("<output>"):
-                observation = "\n" + observation + "\n</output>\n"
-            elif action.endswith("</python>") or "</python>" in action:
-                observation = "\n<output>\n" + observation + "\n</output>\n"
-            elif "<|calling system for feedback|>" in action:
-                if "```python" in action:
-                    observation = "\n```output\n" + observation + "\n```\n"
-                elif "<python>" in action:
-                    observation = "\n<output>\n" + observation + "\n</output>\n"
-                else:
-                    observation = "\n" + observation + "\n"
-            elif action.strip(' \n').endswith("```") or "```python" in action:
-                if action.count("```") % 2 == 0:
-                    observation = "\n```output\n" + observation + "\n```\n"
-                else:
-                    observation = "output\n" + observation + "\n```\n"
-            else:
-                observation = "\n" + observation + "\n"
+            observation = self.postprocess_observation(action, observation)
 
             if self.done_without_error:
                 if has_error:

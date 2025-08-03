@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import verl.trainer.ppo.core_algos
 from verl.trainer.ppo.core_algos import (
     register_adv_est,
     register_policy_loss,
@@ -14,7 +15,6 @@ from enum import Enum
 
 class MyAdvantageEstimator(str, Enum):
     TDGRPO = "tdgrpo"
-
 
 # Vectorized version (more efficient for larger batches)
 def calculate_discounted_rewards_vectorized(mask, final_rewards, discount_factor):
@@ -214,3 +214,5 @@ def compute_policy_loss_gspo(
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
 
     return pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower
+
+verl.trainer.ppo.core_algos.POLICY_LOSS_REGISTRY["gspo"] = compute_policy_loss_gspo
