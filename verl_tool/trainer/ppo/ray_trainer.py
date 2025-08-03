@@ -143,6 +143,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
             AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE,
             AdvantageEstimator.GPG,
             MyAdvantageEstimator.TDGRPO,
+            MyAdvantageEstimator.GAPO,
         ]:
             self.use_critic = False
         else:

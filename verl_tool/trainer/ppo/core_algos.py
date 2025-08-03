@@ -15,6 +15,7 @@ from enum import Enum
 
 class MyAdvantageEstimator(str, Enum):
     TDGRPO = "tdgrpo"
+    GAPO = "gapo"
 
 # Vectorized version (more efficient for larger batches)
 def calculate_discounted_rewards_vectorized(mask, final_rewards, discount_factor):
@@ -72,6 +73,41 @@ def calculate_discounted_rewards_vectorized(mask, final_rewards, discount_factor
     
     return rewards
 
+# Vectorized version (more efficient for larger batches)
+def get_num_actions(mask):
+    """
+    Calculate discounted rewards for action sequences.
+    Vectorized version for better performance on larger batches.
+    
+    Args:
+        mask: Tensor of shape [batch_size, seq_length] with 1s for valid actions, 0s for padding
+        final_rewards: Tensor of shape [batch_size] with final reward for each sequence
+        discount_factor: Float, discount factor (lambda)
+    
+    Returns:
+        Tensor of shape [batch_size, seq_length] with discounted rewards
+    """
+    batch_size, seq_length = mask.shape
+    device = mask.device
+    total_num_actions = []
+    # For each batch, process action groups
+    for b in range(batch_size):
+        seq_mask = mask[b]
+        
+        # Find action group boundaries using the same logic as the first version
+        # Add padding to handle edge cases
+        padded_mask = torch.cat([torch.zeros(1, device=device), seq_mask, torch.zeros(1, device=device)])
+        
+        # Find start positions (0 -> 1 transitions)
+        starts = torch.where((padded_mask[:-1] == 0) & (padded_mask[1:] == 1))[0]
+        
+        # Find end positions (1 -> 0 transitions) 
+        ends = torch.where((padded_mask[:-1] == 1) & (padded_mask[1:] == 0))[0]
+        
+        # Calculate number of action groups
+        num_groups = len(starts)
+        total_num_actions.append(num_groups)
+    return torch.tensor(total_num_actions, device=device, dtype=torch.float32)
 
 # NOTE(sgm): this implementation only consider outcome supervision, where the reward is a scalar.
 @register_adv_est(MyAdvantageEstimator.TDGRPO)
@@ -148,6 +184,72 @@ def compute_tdgrpo_outcome_advantage(
             scores,
             config.tdgrpo_lambda
         )
+
+    return scores, scores
+
+# NOTE(sgm): this implementation only consider outcome supervision, where the reward is a scalar.
+@register_adv_est(MyAdvantageEstimator.GAPO)
+def compute_gapo_outcome_advantage(
+    token_level_rewards: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config: Optional[AlgoConfig] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Compute advantage for GRPO, operating only on Outcome reward
+    (with only one scalar reward for each response).
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape is (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            shape is (bs, response_length)
+        index: `(np.ndarray)`
+            index array for grouping
+        epsilon: `(float)`
+            small value to avoid division by zero
+        norm_adv_by_std_in_grpo: `(bool)`
+            whether to scale the GRPO advantage
+        config: `(Optional[AlgoConfig])`
+            algorithm configuration object
+
+    Note:
+        If norm_adv_by_std_in_grpo is True, the advantage is scaled by the std, as in the original GRPO.
+        If False, the advantage is not scaled, as in Dr.GRPO (https://arxiv.org/abs/2503.20783).
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape is (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape is (bs, response_length)
+    """
+    scores = token_level_rewards.sum(dim=-1)
+
+    id2score = defaultdict(list)
+    id2mean = {}
+    id2std = {}
+    num_actions_per_sequence = get_num_actions(response_mask)
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i]* num_actions_per_sequence[i]) # treat each action as a separate seq
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0)
+                id2std[idx] = torch.tensor(1.0)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
+                id2std[idx] = torch.std(torch.tensor([id2score[idx]]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        scores = scores.unsqueeze(-1) * response_mask
 
     return scores, scores
 
