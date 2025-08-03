@@ -5,12 +5,14 @@ import torch
 import random
 import regex as re
 import json
+import time
+import os
 from typing import Dict, Any
 from verl import DataProto
 from verl.workers.reward_manager.registry import register
 from .reward_score import _default_compute_score
 from collections import defaultdict
-
+from pathlib import Path
 
 def normalize_answer(s):
     """Lower text and remove punctuation, articles and extra whitespace."""
@@ -129,10 +131,37 @@ class SearchR1QAEMRewardManager:
         self.compute_score = compute_score or _default_compute_score
         self.format_score = format_score
         self.score = score
+        self.step = None
 
     def __call__(self, data: DataProto, return_dict=False):
         """Compute rewards for Search-R1 style responses."""
         save_record = data.meta_info.get('save_record', True)
+
+        if not hasattr(self, 'record_dir'):
+            if hasattr(self, 'run_id'):
+                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / self.run_id
+                self.record_dir.mkdir(parents=True, exist_ok=True)
+            else:
+                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / f"torl-{time.strftime('%Y-%m-%d-%H-%M-%S')}"
+                self.record_dir.mkdir(parents=True, exist_ok=True)
+
+        # check the last step index
+        if self.step is None:
+            last_step_idx = 0
+            for file in os.listdir(self.record_dir):
+                if self.num_examine == 1:
+                    if re.search(r"step-val-\d+\.json", file):
+                        step_idx = int(file[:-len(".json")].split("-")[-1])
+                        if step_idx > last_step_idx:
+                            last_step_idx = step_idx
+                else:
+                    if re.search(r"step-\d+\.json", file):
+                        step_idx = int(file[:-len(".json")].split("-")[-1])
+                        if step_idx > last_step_idx:
+                            last_step_idx = step_idx
+            self.step = last_step_idx + 1
+        if data.meta_info.get('global_step', None) is not None:
+            self.step = data.meta_info['global_step']
 
         # If there is rm score, we directly return rm score
         if 'rm_scores' in data.batch.keys():
