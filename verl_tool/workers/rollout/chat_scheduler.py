@@ -268,12 +268,18 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 "__depth__": 1,
                 "__done__": asyncio.Event(),
             }
-            tasks.append(
-                asyncio.create_task(
-                    # self._submit_completions(prompt=prompt, request_id=request_id, info=info)
-                    self._submit_chat_completions(messages=rollout_messages, request_id=request_id, info=info)
+            if "multi_modal_data" in batch.non_tensor_batch:
+                tasks.append(
+                    asyncio.create_task(
+                        self._submit_chat_completions(messages=rollout_messages, request_id=request_id, info=info)
+                    )
                 )
-            )
+            else:
+                tasks.append(
+                    asyncio.create_task(
+                        self._submit_completions(prompt=prompt, request_id=request_id, info=info)
+                    )
+                )
         responses = await tqdm.gather(*tasks, total=len(tasks), desc="Simple generating sequences", disable=(len(tasks) < 10) or not self.agent_config.enable_tqdm)
         output_batch = self.simple_postprocess(batch, responses)
         output_batch.meta_info["timing"] = {"generate_sequences": time.time() - t_start}

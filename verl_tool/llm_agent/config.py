@@ -26,7 +26,7 @@ class AgentActorConfig:
     mtrl_sep: str=None # "\n<|im_start|>system\n{obs}<|im_end|>\n<|im_start|>assistant\n"
     assistant_role: str="assistant"
     turn_end_token: str="<|im_end|>"
-    rollout_mode: str="sync" # "sync" or "async"
+    rollout_mode: str="async" # "sync" or "async"
     mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
     max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.

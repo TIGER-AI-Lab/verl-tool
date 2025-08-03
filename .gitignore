@@ -311,3 +311,4 @@ verl_step_records/
 /tensorboard_log
 /tensorboard_log/*
 /*.pkl
+/entropy_vis

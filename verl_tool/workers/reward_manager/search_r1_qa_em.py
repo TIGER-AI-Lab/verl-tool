@@ -4,6 +4,7 @@ Search-R1 style QA Exact Match Reward Manager
 import torch
 import random
 import regex as re
+import json
 from typing import Dict, Any
 from verl import DataProto
 from verl.workers.reward_manager.registry import register
@@ -115,6 +116,7 @@ class SearchR1QAEMRewardManager:
     """
     Reward Manager for Search-R1 style QA tasks with Exact Match scoring.
     """
+    name = "search_r1_qa_em"
     
     # fix the error: in reward.py force passing "reward_fn_key" param
     def __init__(self, tokenizer=None, num_examine=1, compute_score=None, format_score=0.0, score=1.0, run_id=None, **kwargs) -> None:
@@ -140,6 +142,7 @@ class SearchR1QAEMRewardManager:
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         already_print_data_sources = {}
         reward_extra_info = defaultdict(list)
+        to_save_records = []
 
         for i in range(len(data)):
             data_item = data[i]
@@ -193,21 +196,38 @@ class SearchR1QAEMRewardManager:
                 print(f"Sequence: {sequences_str}")
                 print("=" * 50)
 
-        # TODO: add intermediate output logging
-        # if save_record:
-        #     to_save_records = [
-        #         {
-        #             "id": data[i].non_tensor_batch['extra_info']['id'] if 'id' in data[i].non_tensor_batch['extra_info'] else None,
-        #             "data_source": data[i].non_tensor_batch['data_source'],
-        #             "prompt": prompt_str[i],
-        #             "response": response_str[i],
-        #             "extracted_code": extracted_answers[i],
-        #             "ground_truth": "",
-        #             "score": scores[i],
-        #             'extra_info': data[i].non_tensor_batch.get('extra_info', None),
-        #         }
-        #     ]
-
+        # Save the records
+            to_save_records.append({
+                'id': data_item.non_tensor_batch['extra_info']['id'] if 'id' in data_item.non_tensor_batch['extra_info'] else None,
+                'data_source': data_source,
+                "prompt": self.tokenizer.decode(prompt_ids[-valid_prompt_length:], skip_special_tokens=False),
+                "response": self.tokenizer.decode(response_ids[:valid_response_length], skip_special_tokens=False),
+                'ground_truth': ground_truth,
+                'score': score,
+                'tool_interact_info': data[i].non_tensor_batch.get('tool_interact_info', None),
+                'extra_info': data_item.non_tensor_batch.get('extra_info', None),
+            })
+            if "turns_stats" in data_item.non_tensor_batch:
+                to_save_records[i]['num_turn'] = data[i].non_tensor_batch["turns_stats"]
+                to_save_records[i]['num_valid_action'] = data[i].non_tensor_batch["valid_action_stats"]
+                to_save_records[i]['is_done'] = not data[i].non_tensor_batch["active_mask"]
+        if save_record:
+            # Save the records to a file
+            if self.num_examine == 1:
+                temp_file = self.record_dir / f"{self.name}-step-val-{self.step}.json"
+            else:
+                temp_file = self.record_dir / f"{self.name}-step-{self.step}.json"
+            self.step += 1
+            if temp_file.exists():
+                with open(temp_file, "r") as f:
+                    existing_records = json.load(f)
+                existing_records.extend(to_save_records)
+                with open(temp_file, "w") as f:
+                    json.dump(existing_records, f, indent=4)
+            else:
+                with open(temp_file, "w") as f:
+                    json.dump(to_save_records, f, indent=4)
+            print(f"Saved records to {temp_file}")
 
         for i, score in enumerate(scores):
             if isinstance(score, dict):
