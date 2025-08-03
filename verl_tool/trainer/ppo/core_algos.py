@@ -234,7 +234,8 @@ def compute_gapo_outcome_advantage(
     with torch.no_grad():
         bsz = scores.shape[0]
         for i in range(bsz):
-            id2score[index[i]].append(scores[i]* num_actions_per_sequence[i]) # treat each action as a separate seq
+            # id2score[index[i]].append(scores[i]* num_actions_per_sequence[i]) # treat each action as a separate seq
+            id2score[index[i]].extend([scores[i]] * int(num_actions_per_sequence[i].item()))
         for idx in id2score:
             if len(id2score[idx]) == 1:
                 id2mean[idx] = torch.tensor(0.0)
