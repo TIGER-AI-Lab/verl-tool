@@ -4,32 +4,13 @@ Metrics related to the Agent PPO trainer. Change it to add more metrics.
 
 import verl.trainer.ppo.metric_utils
 verl_computer_data_metrics = verl.trainer.ppo.metric_utils.compute_data_metrics
+from verl.trainer.ppo.metric_utils import _compute_response_info
 
 import torch
 from typing import Any, Dict, List
 import numpy as np
 from verl import DataProto
 
-def _compute_response_info(batch: DataProto) -> Dict[str, Any]:
-    response_length = batch.batch['responses'].shape[-1]
-
-    # use observation-masked attention masks
-    if 'loss_mask' in batch.batch.keys():
-        prompt_mask = batch.batch['loss_mask'][:, :-response_length]
-        response_mask = batch.batch['loss_mask'][:, -response_length:]
-    else:
-        prompt_mask = batch.batch['attention_mask'][:, :-response_length]
-        response_mask = batch.batch['attention_mask'][:, -response_length:]
-    
-    prompt_length = prompt_mask.sum(-1).float()
-    response_length = response_mask.sum(-1).float()  # (batch_size,)
-
-    return dict(
-        response_mask=response_mask,
-        prompt_length=prompt_length,
-        response_length=response_length,
-    )
-    
 def agent_compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str, Any]:
     metrics = verl_computer_data_metrics(batch, use_critic)
     
@@ -43,6 +24,20 @@ def agent_compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dic
         metrics['env/number_of_actions/mean'] = float(np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16).mean())
         metrics['env/number_of_actions/max'] = float(np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16).max())
         metrics['env/number_of_actions/min'] = float(np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16).min())
+    if 'action_lengths' in batch.non_tensor_batch:
+        metrics['env/action_length/mean'] = float(np.array(batch.non_tensor_batch['action_lengths'], dtype=np.int16).mean())
+        metrics['env/action_length/max'] = float(np.array(batch.non_tensor_batch['action_lengths'], dtype=np.int16).max())
+        metrics['env/action_length/min'] = float(np.array(batch.non_tensor_batch['action_lengths'], dtype=np.int16).min())
+        metrics['env/total_action_length_per_traj/mean'] = float(np.array(batch.non_tensor_batch['action_lengths'], dtype=np.int16).sum(-1).mean())
+        metrics['env/total_action_length_per_traj/max'] = float(np.array(batch.non_tensor_batch['action_lengths'], dtype=np.int16).sum(-1).max())
+        metrics['env/total_action_length_per_traj/min'] = float(np.array(batch.non_tensor_batch['action_lengths'], dtype=np.int16).sum(-1).min())
+    if "obs_lengths" in batch.non_tensor_batch:
+        metrics['env/obs_length/mean'] = float(np.array(batch.non_tensor_batch['obs_lengths'], dtype=np.int16).mean())
+        metrics['env/obs_length/max'] = float(np.array(batch.non_tensor_batch['obs_lengths'], dtype=np.int16).max())
+        metrics['env/obs_length/min'] = float(np.array(batch.non_tensor_batch['obs_lengths'], dtype=np.int16).min())
+        metrics['env/total_obs_length_per_traj/mean'] = float(np.array(batch.non_tensor_batch['obs_lengths'], dtype=np.int16).sum(-1).mean())
+        metrics['env/total_obs_length_per_traj/max'] = float(np.array(batch.non_tensor_batch['obs_lengths'], dtype=np.int16).sum(-1).max())
+        metrics['env/total_obs_length_per_traj/min'] = float(np.array(batch.non_tensor_batch['obs_lengths'], dtype=np.int16).sum(-1).min())
     if 'active_mask' in batch.non_tensor_batch:
         metrics['env/finish_ratio'] = 1 - float(np.array(batch.non_tensor_batch['active_mask'], dtype=np.int16).mean())
     if 'valid_action_stats' in batch.non_tensor_batch:
