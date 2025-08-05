@@ -15,6 +15,7 @@ import os
 import time
 import json
 import regex as re
+import numpy as np
 from pathlib import Path
 from verl import DataProto
 from .reward_score import _default_compute_score
@@ -39,8 +40,8 @@ class ToRLRewardManager:
         self.add_format_think_penalty = False # -0.5 if not begines with <think> and end with </think>
         self.add_format_answer_penalty = False # -0.5 if not having <answer> </answer>
         self.add_valid_action_penalty = True # -0.25 if num turns > 0 not action not valid
-        self.add_unfinished_traj_penalty = True # -0.25 if the traj is not finished
-        self.add_no_tool_interact_penalty = True # -0.25 if the traj's num turn is 0, no interaction at all
+        self.add_unfinished_traj_penalty = False # -0.25 if the traj is not finished
+        self.add_no_tool_interact_penalty = False # -0.25 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
 
     def add_additional_penalties(self, response: str, data_i, scores_i: dict):
@@ -175,8 +176,15 @@ class ToRLRewardManager:
             score['score'] = torl_score
 
             # add additional penalty
-            score = self.add_additional_penalties(response_str, data_item, score)       
-            
+            score = self.add_additional_penalties(response_str, data_item, score)      
+
+            if score['accuracy'] > 0:
+                reward_extra_info['correct_response_length'].append(valid_response_length)
+                reward_extra_info['wrong_response_length'].append(None)
+            else:
+                reward_extra_info['wrong_response_length'].append(valid_response_length)
+                reward_extra_info['correct_response_length'].append(None)
+
             if isinstance(score, dict):
                 reward = score["score"]
                 # Store the information including original reward
@@ -241,6 +249,11 @@ class ToRLRewardManager:
                     json.dump(to_save_records, f, indent=4)
             print(f"Saved records to {temp_file}")
         
+        correct_response_length_mean = np.mean(reward_extra_info['correct_response_length']) if reward_extra_info['correct_response_length'] else 0.0
+        wrong_response_length_mean = np.mean(reward_extra_info['wrong_response_length']) if reward_extra_info['wrong_response_length'] else 0.0
+        reward_extra_info['correct_response_length'] = [correct_response_length_mean] * len(reward_tensor)
+        reward_extra_info['wrong_response_length'] = [wrong_response_length_mean] * len(reward_tensor)
+
         if return_dict:
             return {
                 "reward_tensor": reward_tensor,
