@@ -180,10 +180,8 @@ class ToRLRewardManager:
 
             if score['accuracy'] > 0:
                 reward_extra_info['correct_response_length'].append(valid_response_length)
-                reward_extra_info['wrong_response_length'].append(None)
             else:
                 reward_extra_info['wrong_response_length'].append(valid_response_length)
-                reward_extra_info['correct_response_length'].append(None)
 
             if isinstance(score, dict):
                 reward = score["score"]

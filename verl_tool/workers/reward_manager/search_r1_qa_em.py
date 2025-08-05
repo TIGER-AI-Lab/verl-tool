@@ -9,6 +9,7 @@ import time
 import os
 import time
 import os
+import numpy as np
 from typing import Dict, Any
 from verl import DataProto
 from verl.workers.reward_manager.registry import register
@@ -207,6 +208,10 @@ class SearchR1QAEMRewardManager:
                 format_score=self.format_score,
                 score=self.score
             )
+            if score > 0:
+                reward_extra_info['correct_response_length'].append(valid_response_length)
+            else:
+                reward_extra_info['wrong_response_length'].append(valid_response_length)
 
             # TODO: check if logic is correct
             # update this score to the scores
@@ -274,6 +279,11 @@ class SearchR1QAEMRewardManager:
             else:
                 length_i = data[i].batch['attention_mask'][data[i].batch['prompts'].shape[-1]:].sum().item()
                 reward_tensor[i, length_i - 1] = score
+
+        correct_response_length_mean = np.mean(reward_extra_info['correct_response_length']) if reward_extra_info['correct_response_length'] else 0.0
+        wrong_response_length_mean = np.mean(reward_extra_info['wrong_response_length']) if reward_extra_info['wrong_response_length'] else 0.0
+        reward_extra_info['correct_response_length'] = [correct_response_length_mean] * len(reward_tensor)
+        reward_extra_info['wrong_response_length'] = [wrong_response_length_mean] * len(reward_tensor)
 
         if return_dict: 
             return {

@@ -30,3 +30,4 @@ class AgentActorConfig:
     mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
     max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
+    over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
