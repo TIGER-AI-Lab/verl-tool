@@ -41,6 +41,18 @@ class AsyncvLLMServer(VerlAsyncvLLMServer.__ray_actor_class__):
             assert isinstance(generator, CompletionResponse)
             return JSONResponse(content=generator.model_dump())
     
+    async def abort(self, raw_request: Request):
+        """Abort the current request."""
+        request_json = await raw_request.json()
+        request_id = request_json.get("request_id")
+        if not request_id:
+            return JSONResponse(
+                content={"error": "request_id is required to abort a request"},
+                status_code=400,
+            )
+        await self.engine.abort(request_id)
+        return JSONResponse(content={"status": "aborted"}, status_code=200)
+    
     async def _start_fastapi_server(self):
         @asynccontextmanager
         async def lifespan(app: fastapi.FastAPI):
@@ -56,6 +68,7 @@ class AsyncvLLMServer(VerlAsyncvLLMServer.__ray_actor_class__):
         app = fastapi.FastAPI(lifespan=lifespan)
         app.router.add_api_route("/v1/chat/completions", self.chat_completion, methods=["POST"])
         app.router.add_api_route("/v1/completions", self.completion, methods=["POST"]) # added by verl-tool
+        app.router.add_api_route("/v1/abort", self.abort, methods=["POST"])
 
         self.port = _get_free_port()
         config = uvicorn.Config(app, host=["::", "0.0.0.0"], port=self.port, log_level="warning")

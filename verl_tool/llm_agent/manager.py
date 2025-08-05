@@ -158,7 +158,10 @@ class AgentActorManager:
         if not do_sample:
             n = 1
         else:
-            n = self.config.n
+            if inputs.meta_info.get("validate", False):
+                n = self.config.val_kwargs.n
+            else:
+                n = self.config.n
 
             inputs = inputs.repeat(n, interleave=True)
         # add "_{i}" for each trajectory to the traj_ids
@@ -628,7 +631,7 @@ class AgentActorManager:
 
     async def run_llm_loop_async(self, gen_batch: DataProto, **sampling_params: Dict[str, Any]) -> Tuple[Dict, Dict]:
         """Run main LLM generation loop."""
-        perf_timer = PerformanceTimer(do_timer=True)
+        perf_timer = PerformanceTimer(do_timer=False)
         perf_timer.start('run_llm_loop_total')
         perf_timer.start('initialization')
         # only async is supported for multi-modal now

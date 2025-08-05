@@ -40,6 +40,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         self.max_response_length = self.agent_config.max_response_length
         self.max_concurrent_trajectories = self.agent_config.max_concurrent_trajectories
         self.tokenizer = self.agent_actor_manager.tokenizer
+        self.over_sampling = self.agent_config.over_sampling
         print(f"AgentActorManager initialized with config: {self.agent_config}")
     
     async def _chat_completions_openai(self, address: str, **chat_complete_request) -> ChatCompletion:
@@ -85,6 +86,22 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 if resp.status != 200:
                     raise ValueError(f"Request failed with status {data.get('code', 'unknown')}: {data}")
                 return Completion(**data)
+        finally:
+            await session.close()
+    
+    async def _abort(self, address: str, request_id: str) -> Dict[str, Any]:
+        timeout = aiohttp.ClientTimeout(total=None)
+        session = aiohttp.ClientSession(timeout=timeout)
+        try:
+            async with session.post(
+                url=f"http://{address}/v1/abort",
+                headers={"Authorization": "Bearer token-abc123"},
+                json={"request_id": request_id},
+            ) as resp:
+                data = await resp.json()
+                if resp.status != 200:
+                    raise ValueError(f"Abort request failed with status {data.get('code', 'unknown')}: {data}")
+                return data
         finally:
             await session.close()
 
@@ -239,6 +256,23 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         batch.batch['response_mask'] = responses["attention_mask"]
         return batch
     
+    def submit_task(
+        self, 
+        prompt: List[int], 
+        messages: List[dict],
+        request_id: str, 
+        info: Dict[str, Any]
+    ) -> asyncio.Task:
+        """Submit a task to the agent actor manager."""
+        if info['is_multi_modal']:
+            return asyncio.create_task(
+                self._submit_chat_completions(messages=messages, request_id=request_id, info=info)
+            )
+        else:
+            return asyncio.create_task(
+                self._submit_completions(prompt=prompt, request_id=request_id, info=info)
+            )
+    
     async def simple_generate_sequences(
         self, batch: DataProto, **kwargs
     ) -> DataProto:
@@ -257,30 +291,110 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         if batch.meta_info.get("validate", False):
             kwargs["top_p"] = self.config.val_kwargs.top_p
             kwargs["temperature"] = self.config.val_kwargs.temperature
+            over_sampling = False
+        else:
+            over_sampling = self.over_sampling
 
+        traj_ids = batch.non_tensor_batch["traj_ids"]
+        batch_addresses = [self.request_id_to_address.get(request_id, None) for request_id in traj_ids]
+        if over_sampling:
+            request_ids = []
+            for i, request_id in enumerate(traj_ids):
+                request_ids.append(f"{request_id}-0")
+                request_ids.append(f"{request_id}-1")
+                if batch_addresses[i] is not None:
+                    self.request_id_to_address[f"{request_id}-0"] = batch_addresses[i]
+                    self.request_id_to_address[f"{request_id}-1"] = batch_addresses[i]
+        else:
+            request_ids = traj_ids
+            for request_id, address in zip(traj_ids, batch_addresses):
+                if request_id not in self.request_id_to_address and address is not None:
+                    self.request_id_to_address[request_id] = address
+            
+            
         tasks = []
-        for batch_index in range(len(batch)):
+        for request_idx in range(len(request_ids)):
+            batch_index = request_idx % len(batch)
             prompt = list(batch.non_tensor_batch["raw_prompt_ids"][batch_index]) # change ndarray to list
             rollout_messages = batch.non_tensor_batch["rollout_messages"][batch_index].tolist() # change RolloutMessagesMixin to list
-            request_id = batch.non_tensor_batch["traj_ids"][batch_index]
+            request_id = request_ids[request_idx]
             info = {
                 "__sampling_params__": kwargs,
                 "__depth__": 1,
                 "__done__": asyncio.Event(),
+                "is_multi_modal": "multi_modal_data" in batch.non_tensor_batch,
             }
-            if "multi_modal_data" in batch.non_tensor_batch:
-                tasks.append(
-                    asyncio.create_task(
-                        self._submit_chat_completions(messages=rollout_messages, request_id=request_id, info=info)
-                    )
+            task = self.submit_task(
+                prompt=prompt,
+                messages=rollout_messages,
+                request_id=request_id,
+                info=info
+            )
+            tasks.append(task)
+        
+        # Wait for the first len(batch) tasks to complete, then abort the rest
+        target_count = len(batch)
+        completed_responses = []
+        pending_tasks = set(tasks)
+        
+        try:
+            while len(completed_responses) < target_count and pending_tasks:
+                # Wait for at least one task to complete
+                done, pending = await asyncio.wait(
+                    pending_tasks, 
+                    return_when=asyncio.FIRST_COMPLETED
                 )
-            else:
-                tasks.append(
-                    asyncio.create_task(
-                        self._submit_completions(prompt=prompt, request_id=request_id, info=info)
-                    )
-                )
-        responses = await tqdm.gather(*tasks, total=len(tasks), desc="Simple generating sequences", disable=(len(tasks) < 10) or not self.agent_config.enable_tqdm)
+                
+                # Collect completed responses
+                for task in done:
+                    try:
+                        response = await task
+                        completed_responses.append(response)
+                    except Exception as e:
+                        logger.exception(f"Task failed with exception: {e}")
+                        # You might want to handle failed tasks differently
+                        completed_responses.append(None)  # or some default response
+                
+                pending_tasks = pending
+                
+                # Stop if we have enough responses
+                if len(completed_responses) >= target_count:
+                    break
+            
+            # Abort remaining tasks
+            if pending_tasks:
+                logger.info(f"Aborting {len(pending_tasks)} remaining tasks")
+                for task in pending_tasks:
+                    if not task.done():
+                        # Try to abort the request on the server side if possible
+                        try:
+                            # Extract request_id from task (you might need to modify this based on your task structure)
+                            # This is a simplified approach - you might need to store request_id with the task
+                            task_index = tasks.index(task)
+                            request_id = request_ids[task_index]
+                            address = self.request_id_to_address.get(request_id)
+                            if address:
+                                await self._abort(address, request_id)
+                        except Exception as e:
+                            logger.warning(f"Failed to abort request {request_id}: {e}")
+                        
+                        # Cancel the task
+                        task.cancel()
+                
+                # Wait a bit for cancellations to complete
+                if pending_tasks:
+                    await asyncio.gather(*pending_tasks, return_exceptions=True)
+        
+        except Exception as e:
+            # If something goes wrong, cancel all remaining tasks
+            for task in pending_tasks:
+                if not task.done():
+                    task.cancel()
+            raise e
+        
+        # Take only the first len(batch) responses
+        responses = completed_responses[:target_count]
+        
         output_batch = self.simple_postprocess(batch, responses)
         output_batch.meta_info["timing"] = {"generate_sequences": time.time() - t_start}
         return output_batch
@@ -298,11 +412,14 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         if batch.meta_info.get("validate", False):
             kwargs["top_p"] = self.config.val_kwargs.top_p
             kwargs["temperature"] = self.config.val_kwargs.temperature
+            n = self.config.val_kwargs.n
+        else:
+            n = self.config.n
         if not batch.meta_info.get("is_repeated_by_n", False):
             repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
         else:
             repeated_batch = batch
-        repeated_chunk_batch = repeated_batch.chunk(len(repeated_batch))
+        repeated_chunk_batch = repeated_batch.chunk((len(repeated_batch) - 1) // n + 1)
         # repeated_batch = [repeated_batch] # for debug
         logger.warning(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")
         tasks = []
