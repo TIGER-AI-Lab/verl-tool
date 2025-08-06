@@ -32,7 +32,7 @@ sailctl job create vtsrdapo7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yam
 sailctl job create vtsr3b -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtsr7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 
-export HF_TOKEN=""
+export HF_TOKEN=
 export WANDB_API_KEY=""
 export HF_HOME="/home/aiops/jiangdf/.cache/huggingface"
 source /home/aiops/jiangdf/Workspace/verl-tool/.venv/bin/activate
