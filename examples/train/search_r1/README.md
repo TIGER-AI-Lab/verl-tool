@@ -17,7 +17,6 @@ We assume you:
 
 ```bash
 # download the index
-conda activate verl-tool-env
 save_path=./data/search_r1/retriever_index
 python ./verl/examples/sglang_multiturn/search_r1_like/local_dense_retriever/download.py --save_path $save_path
 
@@ -30,7 +29,7 @@ gzip -d $save_path/wiki-18.jsonl.gz
 - create a separate environment for the retrieval server, e.g. `search-retriever`, and activate it.
 ```bash
 conda install -c pytorch -c nvidia faiss-gpu=1.8.0
-pip install transformers datasets fastapi numpy torch uvicorn
+uv pip install transformers datasets fastapi numpy torch uvicorn
 ```
 - then run the retrieval server with the following command:
 

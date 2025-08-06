@@ -1,32 +1,37 @@
+#!/bin/bash
+
+# Search-R1 style training with verl-tool
+# This script demonstrates how to train an LLM to use search capabilities
+
 set -x
-dataset_name=deepmath_torl # or math_torl_offical to use torl training data
-train_data=$(pwd)/data/${dataset_name}/train.parquet
-val_data=[$(pwd)/data/${dataset_name}/test.parquet,\
-$(pwd)/data/${dataset_name}/math500_test.parquet,\
-$(pwd)/data/${dataset_name}/aime24_test.parquet,\
-$(pwd)/data/${dataset_name}/aime25_test.parquet]
-model_name=Qwen/Qwen2.5-Math-1.5B
+model_name="Qwen/Qwen2.5-7B"
+train_data="./data/search_r1/training_data/train.parquet"
+val_data="./data/search_r1/training_data/test.parquet"
+
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=4
+n_gpus_per_node=8
 n_nodes=1
 n=16
-batch_size=128
-ppo_mini_batch_size=$batch_size
-max_prompt_length=1024
-max_response_length=3072
-max_obs_length=512
+total_epochs=15
+total_training_steps=1005
+batch_size=512
+ppo_mini_batch_size=64
+max_prompt_length=4096
+max_action_length=2048
+max_response_length=4096
+max_obs_length=1024
 temperature=1.0
 top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp"
-action_stop_tokens='```output'
-max_turns=1
-kl_loss_coef=0.0
+action_stop_tokens="</search>,</answer>"
+max_turns=2
+kl_loss_coef=0.0001
 kl_coef=0
 entropy_coeff=0
 kl_loss_type=low_var_kl
 lr=1e-6
-reward_manager=torl
+reward_manager=search_r1_qa_em
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
 tensor_model_parallel_size=1
@@ -38,24 +43,17 @@ fsdp_size=-1
 additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
-max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="dapo-debug-with-penalty"
+run_name_postfix="debug"
 if [ "$enable_agent" = "True" ]; then
-    run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-${ppo_mini_batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
-    run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-${ppo_mini_batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 fi
 export VERL_RUN_ID=$run_name
 export NCCL_DEBUG=INFO
 export VLLM_USE_V1=1
-rollout_mode='async'
-
-# algorithm:
-#   filter_groups:
-#     enable: False # We try to avoid forgetting to set enable
-#     metric: null # acc / score / seq_reward / seq_final_reward / ...
-#     max_num_gen_batches: 0 # Non-positive values mean no upper limit
+rollout_mode='dapo'
 
 # temp file for action tokens as verl cannot pass special strs as params
 action_stop_tokens_file="$(pwd)$(mktemp)"
@@ -63,10 +61,25 @@ mkdir -p $(dirname $action_stop_tokens_file)
 echo -e -n "$action_stop_tokens" | tee $action_stop_tokens_file
 echo "action_stop_tokens_file=$action_stop_tokens_file"
 
+file_path=./data/search_r1/retriever_index
+index_file=$file_path/e5_Flat.index
+corpus_file=$file_path/wiki-18.jsonl
+retriever_name=e5
+retriever_path=intfloat/e5-base-v2
+/home/aiops/jiangdf/miniconda3/envs/search/bin/python ./verl_tool/servers/tools/utils/retrieval_server.py \
+    --index_path $index_file \
+    --corpus_path $corpus_file \
+    --topk 3 \
+    --retriever_name $retriever_name \
+    --retriever_model $retriever_path \
+    --faiss_gpu &
+retriever_pid=$!
+
+
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "python_code" --workers_per_tool 8 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "search_retrieval" --workers_per_tool 8 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"
@@ -79,7 +92,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.train_files=$train_data \
     data.val_files=$val_data \
     data.train_batch_size=$batch_size \
-    data.val_batch_size=1024 \
+    data.val_batch_size=2048 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.truncation='right' \
@@ -103,10 +116,10 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.param_offload=$do_offload \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=$do_offload \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=$fsdp_size \
-    actor_rollout_ref.actor.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
     actor_rollout_ref.actor.clip_ratio_high=0.3 \
     actor_rollout_ref.actor.clip_ratio_low=0.2 \
     actor_rollout_ref.actor.loss_agg_mode='token-mean' \
+    actor_rollout_ref.actor.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
     actor_rollout_ref.agent.enable_agent=$enable_agent \
     actor_rollout_ref.agent.tool_server_url=$tool_server_url \
     actor_rollout_ref.agent.max_prompt_length=$max_prompt_length \
@@ -119,6 +132,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.agent.action_stop_tokens=$action_stop_tokens_file \
     actor_rollout_ref.agent.enable_mtrl=$enable_mtrl \
     actor_rollout_ref.agent.max_action_length=$max_action_length \
+    actor_rollout_ref.agent.mask_overlong_loss=True \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$tensor_model_parallel_size \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.rollout.enforce_eager=False \
@@ -146,15 +160,17 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name=$reward_manager \
     trainer.experiment_name=$run_name \
-    trainer.val_before_train=False \
+    trainer.val_before_train=True \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=$n_nodes \
     +trainer.remove_previous_ckpt_in_save=True \
     trainer.save_freq=10 \
-    trainer.test_freq=10 \
-    trainer.total_epochs=10
+    trainer.test_freq=20 \
+    trainer.total_epochs=$total_epochs \
+    trainer.total_training_steps=$total_training_steps \
 
 
+pkill -P -9 $retriever_pid
 pkill -P -9 $server_pid
 kill -9 $kill $server_pid
