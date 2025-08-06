@@ -1,32 +1,37 @@
+#!/bin/bash
+
+# Search-R1 style training with verl-tool
+# This script demonstrates how to train an LLM to use search capabilities
+
 set -x
-dataset_name=deepmath_torl # or math_torl_offical to use torl training data
-train_data=$(pwd)/data/${dataset_name}/train.parquet
-val_data=[$(pwd)/data/${dataset_name}/test.parquet,\
-$(pwd)/data/${dataset_name}/math500_test.parquet,\
-$(pwd)/data/${dataset_name}/aime24_test.parquet,\
-$(pwd)/data/${dataset_name}/aime25_test.parquet]
-model_name=Qwen/Qwen2.5-Math-1.5B
+model_name="Qwen/Qwen2.5-3B"
+train_data="./data/search_r1/training_data/train.parquet"
+val_data="./data/search_r1/training_data/test.parquet"
+
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=4
 n_nodes=1
 n=16
-batch_size=128
-ppo_mini_batch_size=$batch_size
-max_prompt_length=1024
-max_response_length=3072
-max_obs_length=512
+total_epochs=15
+total_training_steps=1005
+batch_size=512
+ppo_mini_batch_size=64
+max_prompt_length=4096
+max_action_length=2048
+max_response_length=4096
+max_obs_length=1024
 temperature=1.0
 top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp"
-action_stop_tokens='```output'
-max_turns=1
-kl_loss_coef=0.0
+action_stop_tokens="</search>,</answer>"
+max_turns=2
+kl_loss_coef=0.0001
 kl_coef=0
 entropy_coeff=0
 kl_loss_type=low_var_kl
 lr=1e-6
-reward_manager=torl
+reward_manager=search_r1_qa_em
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
 tensor_model_parallel_size=1
@@ -38,13 +43,12 @@ fsdp_size=-1
 additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
-max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="debug-drgrpo-with-tool-penalty"
+run_name_postfix="debug"
 if [ "$enable_agent" = "True" ]; then
-    run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-${ppo_mini_batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
-    run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-${ppo_mini_batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 fi
 export VERL_RUN_ID=$run_name
 export NCCL_DEBUG=INFO
@@ -60,7 +64,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "python_code" --workers_per_tool 8 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "search_retrieval" --workers_per_tool 8 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"
@@ -71,7 +75,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.train_files=$train_data \
     data.val_files=$val_data \
     data.train_batch_size=$batch_size \
-    data.val_batch_size=1024 \
+    data.val_batch_size=2048 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.truncation='right' \
@@ -142,8 +146,9 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.nnodes=$n_nodes \
     +trainer.remove_previous_ckpt_in_save=True \
     trainer.save_freq=10 \
-    trainer.test_freq=10 \
-    trainer.total_epochs=10
+    trainer.test_freq=20 \
+    trainer.total_epochs=$total_epochs \
+    trainer.total_training_steps=$total_training_steps \
 
 
 pkill -P -9 $server_pid

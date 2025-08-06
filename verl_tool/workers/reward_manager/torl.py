@@ -41,7 +41,7 @@ class ToRLRewardManager:
         self.add_format_answer_penalty = False # -0.5 if not having <answer> </answer>
         self.add_valid_action_penalty = True # -0.25 if num turns > 0 not action not valid
         self.add_unfinished_traj_penalty = False # -0.25 if the traj is not finished
-        self.add_no_tool_interact_penalty = False # -0.25 if the traj's num turn is 0, no interaction at all
+        self.add_no_tool_interact_penalty = True # -0.25 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
 
     def add_additional_penalties(self, response: str, data_i, scores_i: dict):
