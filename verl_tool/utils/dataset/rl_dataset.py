@@ -15,7 +15,20 @@ def encode_image(img_path: str) -> str:
         encoded_bytes = base64.b64encode(image_file.read())
         encoded_str = encoded_bytes.decode("utf-8")
         return encoded_str
-
+    
+def nested_copy(obj):
+    """
+    Recursively copy nested objects (lists, dicts, etc.) to avoid reference issues.
+    """
+    if isinstance(obj, dict):
+        return {k: nested_copy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [nested_copy(item) for item in obj]
+    elif hasattr(obj, 'copy'):
+        return obj.copy()
+    else:
+        return obj
+    
 class RolloutMessagesMixin:
     """Mixin class to handle rollout messages in reinforcement learning datasets.
 
@@ -49,7 +62,10 @@ class RolloutMessagesMixin:
     def tolist(self):
         """Convert the messages to a list format."""
         return self.messages.copy()
-
+    
+    def __copy__(self):
+        """Create a shallow copy of the RolloutMessagesMixin instance."""
+        return RolloutMessagesMixin(nested_copy(self.messages))
 class VerlToolRLHFDataset(RLHFDataset):
     """A dataset class for reinforcement learning tasks in verl-tool.
 

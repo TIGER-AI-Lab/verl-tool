@@ -24,7 +24,7 @@ from copy import deepcopy
 from .config import AgentActorConfig
 from .tensor_helper import TensorHelper, TensorConfig
 from PIL import Image
-from .utils import PerformanceTimer
+from .utils import PerformanceTimer, nested_copy
 from .vision_utils import encode_image, encode_image_url, encode_video_url, decode_image_url, decode_video_url
 
 logger = logging.getLogger(__file__)
@@ -168,9 +168,7 @@ class AgentActorManager:
                 # deepcopy to avoid reference bug
                 for key in inputs.non_tensor_batch.keys():
                     # # check if it's the same reference as the inputs.non_tensor_batch[key][i]
-                    # if inputs.non_tensor_batch[key][i*n+j] is inputs.non_tensor_batch[key][i*n]:
-                    inputs.non_tensor_batch[key][i*n+j] = deepcopy(inputs.non_tensor_batch[key][i*n])
-
+                    inputs.non_tensor_batch[key][i*n+j] = nested_copy(inputs.non_tensor_batch[key][i*n])
         inputs.meta_info['is_repeated_by_n'] = True
         return inputs
 

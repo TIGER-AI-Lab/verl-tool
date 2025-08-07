@@ -46,6 +46,19 @@ from verl_tool.workers.rollout.async_server import VerlToolAsyncLLMServerManager
 import verl_tool.trainer.ppo.core_algos
 from .core_algos import MyAdvantageEstimator
 
+def nested_copy(obj):
+    """
+    Recursively copy nested objects (lists, dicts, etc.) to avoid reference issues.
+    """
+    if isinstance(obj, dict):
+        return {k: nested_copy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [nested_copy(item) for item in obj]
+    elif hasattr(obj, 'copy'):
+        return obj.copy()
+    else:
+        return obj
+
 def repeat_inputs_by_n(inputs: DataProto, n: int) -> DataProto:
     """
     this version verl do not repeat the input by n times, so we manually repeat the input by n times
@@ -59,8 +72,7 @@ def repeat_inputs_by_n(inputs: DataProto, n: int) -> DataProto:
             # deepcopy to avoid reference bug
             for key in inputs.non_tensor_batch.keys():
                 # # check if it's the same reference as the inputs.non_tensor_batch[key][i]
-                # if inputs.non_tensor_batch[key][i*n+j] is inputs.non_tensor_batch[key][i*n]:
-                inputs.non_tensor_batch[key][i*n+j] = deepcopy(inputs.non_tensor_batch[key][i*n])
+                inputs.non_tensor_batch[key][i*n+j] = nested_copy(inputs.non_tensor_batch[key][i*n])
     inputs.meta_info['is_repeated_by_n'] = True
     return inputs
 
