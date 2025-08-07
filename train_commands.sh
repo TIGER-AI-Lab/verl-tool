@@ -11,7 +11,8 @@ bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/qwen25vl_pixel_reaso
 bash examples/train/torl/train_drgrpo.sh > logs/qwen_1.5B_math_deep_math_drgrpo_debug.log 2>&1 &
 bash examples/train/torl/train_drgrpo.sh > logs/qwen_1.5B_math_deep_math_drgrpo_debug_with_tool_penalty.log 2>&1 &
 bash examples/train/search_r1/train_drgrpo.sh > logs/search_r1_drgrpo_debug.log 2>&1 &
-
+bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug.log 2>&1 &
+bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.log 2>&1 &
 
 # add-apt-repository ppa:deki/firejail
 # apt-get update
@@ -21,6 +22,8 @@ bash examples/train/search_r1/train_drgrpo.sh > logs/search_r1_drgrpo_debug.log 
 
 sailctl job create verltooldebug -g 2 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --image asia-docker.pkg.dev/sail-tpu-02/images/language/miqaenv:latest --debug
 sailctl job create verltoolmath -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug
+sailctl job create verltool80g -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug 
+sailctl job create verltooldebug -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug 
 
 sailctl job create vtmath15dapo -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtmath7dapo -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args

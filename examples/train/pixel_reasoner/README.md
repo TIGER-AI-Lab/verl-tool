@@ -3,6 +3,7 @@
 ### Data Preprocessing
 ```bash
 python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version max_8192 --include_videos=True --filter_len=8192
+python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --include_videos=True
 ```
 note the data processing will filter out those samples with length larger than 8192 and will take a while (0.5 to 1 hour) to finish. If you don't want to filter, remove the `--filter_len` argument. But there are some samples with length larger than 8192, which may cause problems in training, so make sure you set the `max_prompt_length` during the training properly.
 
