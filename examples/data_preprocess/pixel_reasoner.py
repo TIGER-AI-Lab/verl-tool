@@ -201,9 +201,9 @@ def main(
         train_dataset = train_dataset.filter(lambda x: not x['is_video'], num_proc=8)
         print(f"Filtered out video examples. Remaining {len(train_dataset)} examples.")
     
-    train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True, remove_columns=train_dataset.column_names, num_proc=8)
+    train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True, remove_columns=train_dataset.column_names, num_proc=32)
     if filter_len and filter_len > 0:
-        _train_dataset = train_dataset.filter(lambda x: x['extra_info']['mm_content_len'] <= filter_len, num_proc=8)
+        _train_dataset = train_dataset.filter(lambda x: x['extra_info']['mm_content_len'] and x['extra_info']['mm_content_len'] <= filter_len, num_proc=8)
         print(f"Filtered {len(train_dataset) - len(_train_dataset)}/{len(train_dataset)} examples from training dataset due to content length > {filter_len}")
         train_dataset = _train_dataset
     # split 400 as val

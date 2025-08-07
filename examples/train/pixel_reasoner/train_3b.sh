@@ -1,5 +1,5 @@
 set -x
-dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
+dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_16384
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name}/val.parquet]
 model_name=VerlTool/pixel-reaoner-qwen2-5vl-3b-sft
@@ -10,7 +10,8 @@ n_nodes=1
 n=8
 batch_size=128
 ppo_mini_batch_size=64
-max_prompt_length=16384 #should be big to avoid any truncation of image tokens which will cause error
+max_prompt_length=16384
+ #should be big to avoid any truncation of image tokens which will cause error
 max_response_length=16384
 max_obs_length=8192 # should be big to avoid any truncation of image tokens which will cause error
 ppo_max_token_len_per_gpu=$(expr $max_prompt_length + $max_response_length)

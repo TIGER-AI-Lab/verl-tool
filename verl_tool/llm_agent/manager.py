@@ -204,63 +204,41 @@ class AgentActorManager:
                             "content": responses_str[i]
                         }
                     )
-            if self.config.enable_mtrl:
-                for i in range(len(responses_str)):
-                    if action_step >= self.config.min_turns:
-                        if self.action_stop_tokens:
-                            if any([action_stop_token in responses_str[i] for action_stop_token in self.action_stop_tokens]):
-                                do_action = True
-                                # replace other action stop tokens with the first one
-                                for j in range(1, len(self.action_stop_tokens)):
-                                    if self.action_stop_tokens[j] in responses_str[i]:
-                                        responses_str[i] = responses_str[i].replace(self.action_stop_tokens[j], self.action_stop_tokens[0])
-                                if not responses_str[i].endswith(self.config.turn_end_token):
-                                    responses_str[i] += self.config.turn_end_token
-                            else:
-                                do_action = False
-                        else:
-                            if not responses_str[i].endswith(self.config.turn_end_token):
-                                responses_str[i] += self.config.turn_end_token
-                            do_action = True
-                    else:
-                        # always do action, decided by the server about whether an action stops
-                        for j in range(1, len(self.action_stop_tokens)):
-                            if self.action_stop_tokens[j] in responses_str[i]:
-                                responses_str[i] = responses_str[i].replace(self.action_stop_tokens[j], self.action_stop_tokens[0])
-                        turn_end_token_idx = responses_str[i].rfind(self.config.turn_end_token)
-                        if self.action_stop_tokens and not self.action_stop_tokens[0] in responses_str[i]:
-                            if turn_end_token_idx != -1:
-                                responses_str[i] = responses_str[i][:turn_end_token_idx] + self.action_stop_tokens[0] + self.config.turn_end_token
-                            else:
-                                responses_str[i] = responses_str[i] + self.action_stop_tokens[0] + self.config.turn_end_token
-                        else:
-                            if turn_end_token_idx == -1:
-                                responses_str[i] += self.config.turn_end_token
-                        do_action = True
-                    do_actions.append(do_action)
-            else:
-                for i, resp in enumerate(responses_str):
-                    # resp = resp.strip(' \n')
-                    has_action = False
-                    for j in range(len(self.action_stop_tokens)):
-                        if self.action_stop_tokens[j] in resp:
-                        # if resp.endswith(self.action_stop_tokens[j]):
-                        # if self.action_stop_tokens[j] in resp[-(len(self.action_stop_tokens[j]) + 3):]: # 5 for some action token tokens not indepdently decoded
-                            has_action = True
-                            responses_str[i] = resp.split(self.action_stop_tokens[j])[0] + self.action_stop_tokens[j]
-                            break
-                    if not has_action and action_step < self.config.min_turns:
+                    
+            for i in range(len(responses_str)):
+                # check if the response contains action stop tokens
+                has_action = False
+                for j in range(len(self.action_stop_tokens)):
+                    if self.action_stop_tokens[j] in responses_str[i]:
+                        responses_str[i] = responses_str[i].split(self.action_stop_tokens[j])[0] + self.action_stop_tokens[j]
                         has_action = True
-                        responses_str[i] = resp + self.action_stop_tokens[0]
-                    do_actions.append(has_action)
-                for i in range(len(responses_str)):
-                    if not do_actions[i]:
-                        responses_str[i] = self.tokenizer.decode(responses[i][:effective_lens[i]], skip_special_tokens=False) # preserve eos token
-            # with open(f"temp-{action_step}.json", 'w') as f:
-            #     json.dump([{
-            #         "responses_str": responses_str[i],
-            #         "do_action": do_actions[i],
-            #     } for i in range(len(responses_str))], f, indent=4)
+                        break
+                
+                # judge whether do action or not
+                if action_step >= self.config.min_turns:
+                    # do action if there are action stop tokens in the response
+                    do_action = has_action or (self.config.enable_mtrl and not self.action_stop_tokens)
+                else:
+                    # always do action, decided by the server about whether an action stops
+                    do_action = True
+                    if self.action_stop_tokens and not has_action:
+                        # force add a action stop token for those responses that do not have action stop tokens
+                        turn_end_token_idx = responses_str[i].rfind(self.config.turn_end_token)
+                        if turn_end_token_idx != -1:
+                            responses_str[i] = responses_str[i][:turn_end_token_idx] + self.action_stop_tokens[0]
+                        else:
+                            responses_str[i] = responses_str[i] + self.action_stop_tokens[0]
+                
+                # now if do action, responses_str[i] should end with a action stop token, if not do action, we use the original response
+                if do_action:
+                    if self.config.enable_mtrl:
+                        # add turn end token
+                        responses_str[i] += self.config.turn_end_token
+                else:
+                    # preserve eos token
+                    responses_str[i] = self.tokenizer.decode(responses[i][:effective_lens[i]], skip_special_tokens=False)
+                do_actions.append(do_action)     
+
             responses = self._batch_tokenize(responses_str).to(torch.int64)
         return responses, responses_str, do_actions, rollout_messages
 
@@ -378,7 +356,7 @@ class AgentActorManager:
                     
                     content_list = []
                     segments = re.split("(<image>|<video>)", next_obs_k)
-                    segments = [item for item in segments if item != ""]
+                    segments = [item for item in segments]
                     segment_idx = defaultdict(int)
                     for segment in segments:
                         if segment == "<image>":
@@ -389,7 +367,7 @@ class AgentActorManager:
                             segment_idx[segment] += 1
                         else:
                             content_list.append({"type": "text", "text": segment})
-                    if content_list:
+                    if content_list and not dones[k] and not finishs[k]:
                         next_obs_message = [{"role": "system", "content": content_list}]
                         if not self.config.enable_mtrl:
                             raw_prompt = self.processor.apply_chat_template(
@@ -869,6 +847,7 @@ class AgentActorManager:
         # Log performance statistics
         perf_timer.log_stats(logger, f"[PERF] Batch size: {gen_batch.batch['input_ids'].shape[0]} - ")
         
+        results.save_to_disk("test.pkl")
         return results
     
     def run_llm_loop(self, gen_batch: DataProto, **sampling_params: Dict[str, Any]) -> Tuple[Dict, Dict]:
@@ -879,15 +858,23 @@ class AgentActorManager:
         async with self.tokenizer_lock:
             for i in range(rollings.batch['input_ids'].shape[0]):
                 raw_prompt = self.processor.apply_chat_template(rollings.non_tensor_batch['rollout_messages'][i].messages, add_generation_prompt=False, tokenize=False)
+                
                 images = rollings.non_tensor_batch['multi_modal_data'][i].get('image', None)
                 videos = rollings.non_tensor_batch['multi_modal_data'][i].get('video', None)
-                try:
-                    model_inputs = self.processor(text=[raw_prompt], images=images, videos=videos, return_tensors="pt")
-                except Exception as e:
-                    print("Error processing multi-modal data for prompt:", raw_prompt)
-                    print("images:", images)
-                    print("videos:", videos)
-                    raise e
+                model_inputs = self.processor(text=[raw_prompt], images=images, videos=videos, return_tensors="pt")
+                
+                rolling_raw_prompt = self.processor.decode(rollings.batch['input_ids'][i].tolist(), skip_special_tokens=False)
+                _raw_prompt = self.processor.decode(model_inputs['input_ids'][0].tolist(), skip_special_tokens=False)[:len(rolling_raw_prompt)]
+                rolling_raw_prompt = rolling_raw_prompt[:len(_raw_prompt)]
+                if _raw_prompt != rolling_raw_prompt:
+                    logger.warning(f"Raw prompt mismatch for trajectory {i}: \n{_raw_prompt}\n != \n{rolling_raw_prompt}\n")
+                    with open("test.json", "w") as f:
+                        json.dump({
+                            "rollout_messages": rollings.non_tensor_batch['rollout_messages'][i].messages,
+                            "raw_prompt": _raw_prompt,
+                            "rolling_raw_prompt": rolling_raw_prompt,
+                        }, f, indent=4)
+                    raise ValueError(f"Raw prompt mismatch for trajectory {i}, please check the processor and tokenizer settings.")
                 input_ids = model_inputs.pop('input_ids')
                 attention_mask = model_inputs.pop('attention_mask')
                 if "second_per_grid_ts" in model_inputs:
@@ -995,15 +982,23 @@ class AgentActorManager:
                 final_output_effective_len = final_output['attention_mask'][i].sum().item()
                 assert final_output_effective_len == effective_len, \
                     f"Effective length mismatch: {final_output_effective_len} != {effective_len}"
-                _position_ids = get_rope_index(
-                        self.processor,
-                        input_ids=input_ids_i,
-                        image_grid_thw=model_inputs.get("image_grid_thw"),
-                        video_grid_thw=model_inputs.get("video_grid_thw"),
-                        second_per_grid_ts=model_inputs.get("second_per_grid_ts"),
-                        attention_mask=attention_mask_i
-                    )
-                position_ids.append(_position_ids)  # (3, seq_len)
+                try:
+                    _position_ids = get_rope_index(
+                            self.processor,
+                            input_ids=input_ids_i,
+                            image_grid_thw=model_inputs.get("image_grid_thw"),
+                            video_grid_thw=model_inputs.get("video_grid_thw"),
+                            second_per_grid_ts=model_inputs.get("second_per_grid_ts"),
+                            attention_mask=attention_mask_i
+                        )
+                    position_ids.append(_position_ids)  # (3, seq_len)
+                except:
+                    logger.error(f"Failed to get position ids for trajectory {i}, input_ids: {input_ids_i}, attention_mask: {attention_mask_i}")
+                    torch.save({
+                        "final_output": final_output,
+                        "model_inputs": model_inputs,
+                    }, f"tmp/final_output_{i}.pt")
+                    raise 
             final_output['position_ids'] = torch.stack(position_ids, dim=0)  #
         else:
             final_output['position_ids'] = self.tensor_fn.create_position_ids(
