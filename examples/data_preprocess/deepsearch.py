@@ -8,7 +8,7 @@ def main(
     """Main entry point for the dataset loading script
     
     Run with:
-        python -m verl_tool.examples.data_preprocess.deepsearch --dataset_path=VerlTool/deepsearch
+        python examples/data_preprocess/deepsearch.py --dataset_path=VerlTool/deepsearch
     """
     # Load the dataset
     dataset = datasets.load_dataset(dataset_path)

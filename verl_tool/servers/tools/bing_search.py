@@ -16,11 +16,11 @@ from .base import BaseTool, register_tool
 
 class BingSearchEngine():
     """
-    Original Bing search engine that provides web search capability with caching.
+    Bing search engine that provides web search capability with caching.
     
     This tool interfaces with the Brightdata API to perform Bing searches.
     It includes robust caching to minimize redundant API calls and supports
-    both synchronous and asynchronous cache writing modes.
+    both synchronous and asynchronous cache writing modes with JSONL format.
     
     Thread-safety is ensured via memory locks, and process-safety via file locks
     for the cache file.
@@ -46,7 +46,7 @@ class BingSearchEngine():
             max_results: Maximum number of search results to return
             result_length: Maximum length of each result snippet
             location: Country code for search localization
-            cache_file: Path to cache file (if None, uses ~/.verl_cache/bing_search_cache.json)
+            cache_file: Path to cache file (if None, uses ~/.verl_cache/bing_search_cache.jsonl)
             async_cache_write: Whether to write cache updates asynchronously
             cache_refresh_interval: Minimum seconds between cache file checks
         """
@@ -86,7 +86,7 @@ class BingSearchEngine():
         if cache_file is None:
             cache_dir = pathlib.Path.home() / ".verl_cache"
             cache_dir.mkdir(exist_ok=True)
-            self._cache_file = cache_dir / "bing_search_cache.json"
+            self._cache_file = cache_dir / "bing_search_cache.jsonl"
         else:
             self._cache_file = pathlib.Path(cache_file)
             self._cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -111,8 +111,7 @@ class BingSearchEngine():
             self._stop_writer.set()
             if self._writer_thread.is_alive():
                 self._writer_thread.join(timeout=5.0)
-            # Save any remaining cache updates
-            self._save_cache_sync()
+            # No need to save remaining cache updates since JSONL is append-only
     
     def _cache_writer_thread(self) -> None:
         """Background thread for asynchronous cache writing."""
@@ -120,8 +119,8 @@ class BingSearchEngine():
             try:
                 # Wait for write requests, timeout after 1 second
                 try:
-                    _ = self._write_queue.get(timeout=1.0)
-                    self._save_cache_sync()
+                    query, result = self._write_queue.get(timeout=1.0)
+                    self._save_cache_sync(query, result)
                     self._write_queue.task_done()
                 except queue.Empty:
                     continue
@@ -184,7 +183,7 @@ class BingSearchEngine():
         return False
     
     def _load_cache(self) -> None:
-        """Load the cache from disk with file locking."""
+        """Load the cache from JSONL file with file locking."""
         if not self._cache_file.exists():
             return
             
@@ -199,18 +198,30 @@ class BingSearchEngine():
             # Record file modification time
             self._cache_mod_time = os.path.getmtime(self._cache_file)
             
+            # Load JSONL file line by line
+            cache_data = {}
             with open(self._cache_file, "r", encoding="utf-8") as f:
-                file_data = json.load(f)
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if 'query' in entry and 'result' in entry:
+                            cache_data[entry['query']] = entry['result']
+                        else:
+                            print(f"Invalid cache entry format at line {line_num}")
+                    except json.JSONDecodeError as e:
+                        print(f"Invalid JSON at line {line_num}: {e}")
+                        continue
             
             # Update in-memory cache
             with self._cache_lock:
-                self._cache = file_data
+                self._cache = cache_data
             
             self._last_cache_check = time.time()
             print(f"Loaded {len(self._cache)} cache entries from {self._cache_file}")
-        except json.JSONDecodeError:
-            print(f"Cache file {self._cache_file} contains invalid JSON, using empty cache")
-            self._cache = {}
+            
         except Exception as e:
             print(f"Failed to load cache file: {str(e)}")
             self._cache = {}
@@ -246,20 +257,23 @@ class BingSearchEngine():
         
         return False
 
-    def _save_cache(self) -> None:
-        """Save cache to disk, either synchronously or asynchronously."""
+    def _save_cache(self, query: str, result: str) -> None:
+        """Save a single cache entry to JSONL file, either synchronously or asynchronously."""
         if self._async_cache_write:
             # Queue write request for background thread
             try:
-                self._write_queue.put(True, block=False)
+                self._write_queue.put((query, result), block=False)
             except queue.Full:
                 print("Cache write queue full, skipping this update")
         else:
             # Direct synchronous write
-            self._save_cache_sync()
+            self._save_cache_sync(query, result)
     
-    def _save_cache_sync(self) -> None:
-        """Save cache to disk synchronously with file locking."""
+    def _save_cache_sync(self, query: str = None, result: str = None) -> None:
+        """Append a single cache entry to JSONL file synchronously with file locking."""
+        if query is None or result is None:
+            return
+            
         lock_fd = None
         try:
             # Acquire exclusive file lock
@@ -268,58 +282,26 @@ class BingSearchEngine():
                 print("Unable to acquire file lock, skipping cache save")
                 return
             
-            # Create temporary file for atomic write
-            temp_file = self._cache_file.with_suffix('.tmp')
+            # Create cache entry
+            cache_entry = {
+                "query": query,
+                "result": result,
+                "timestamp": time.time()
+            }
             
-            # Copy cache data to minimize lock time
-            with self._cache_lock:
-                cache_copy = dict(self._cache)
-            
-            # If cache file exists, read and merge with current cache
-            merged_cache = self._merge_with_existing_cache(cache_copy)
-            
-            # Write to temp file and replace original (atomic operation)
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(merged_cache, f, ensure_ascii=False, indent=2)
-            
-            temp_file.replace(self._cache_file)
+            # Append to JSONL file
+            with open(self._cache_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(cache_entry, ensure_ascii=False) + "\n")
             
             # Update modification time record
             self._cache_mod_time = os.path.getmtime(self._cache_file)
-            print(f"Cache saved to {self._cache_file} with {len(merged_cache)} entries")
-            
-            # Update in-memory cache with merged data
-            with self._cache_lock:
-                self._cache = merged_cache
+            print(f"Cache entry appended to {self._cache_file}")
                 
         except Exception as e:
-            print(f"Failed to save cache file: {str(e)}")
+            print(f"Failed to save cache entry: {str(e)}")
         finally:
             if lock_fd:
                 self._release_file_lock(lock_fd)
-    
-    def _merge_with_existing_cache(self, cache_copy: Dict) -> Dict:
-        """
-        Merge in-memory cache with existing cache file content.
-        
-        Args:
-            cache_copy: Copy of the current in-memory cache
-            
-        Returns:
-            Merged cache dictionary
-        """
-        merged_cache = cache_copy
-        if self._cache_file.exists():
-            try:
-                with open(self._cache_file, "r", encoding="utf-8") as f:
-                    existing_cache = json.load(f)
-                # Update existing cache with new entries
-                existing_cache.update(cache_copy)
-                merged_cache = existing_cache
-                print(f"Merged with existing cache, total entries: {len(merged_cache)}")
-            except Exception as e:
-                print(f"Failed to read existing cache file, using new cache: {str(e)}")
-        return merged_cache
 
     @property
     def name(self) -> str:
@@ -390,8 +372,8 @@ class BingSearchEngine():
         # Clean query
         query = query.replace('"', '')
         
-        # Check if cache file has been updated
-        self._check_cache_update()
+        # # Check if cache file has been updated
+        # self._check_cache_update()
         
         # Check cache for existing results
         with self._cache_lock:
@@ -418,8 +400,8 @@ class BingSearchEngine():
             with self._cache_lock:
                 self._cache[query] = result
             
-            # Trigger cache save
-            self._save_cache()
+            # Trigger cache save with query and result
+            self._save_cache(query, result)
                 
             return result
 

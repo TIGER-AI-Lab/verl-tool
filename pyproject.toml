@@ -32,7 +32,8 @@ torl = [
 search_tool = [
     "google-api-python-client",
     "chardet",
-    "bs4"
+    "bs4",
+    "langid"
 ]
 sql_tool = [
     "sqlparse"

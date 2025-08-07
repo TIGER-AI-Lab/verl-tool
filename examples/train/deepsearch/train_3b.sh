@@ -5,15 +5,15 @@ val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
 $(pwd)/data/${dataset_name}/hle_test.parquet]
 model_name=Qwen/Qwen2.5-3B-Instruct
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=4
+n_gpus_per_node=8
 n_nodes=1
-n=4
-batch_size=64
-ppo_mini_batch_size=64
-max_prompt_length=1024
-max_response_length=3072
+n=16
+batch_size=128
+ppo_mini_batch_size=32
+max_prompt_length=2048
+max_response_length=6144
 max_action_length=2048
-max_obs_length=1024
+max_obs_length=4096
 temperature=1.0
 top_p=1.0
 enable_agent=True # enable agent for tool use
@@ -58,7 +58,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "bing_search,python_code" --workers_per_tool 4 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "google_search,python_code" --workers_per_tool 4 > logs/deepsearch_3b_tool_server.log 2>&1 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"
@@ -107,7 +107,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.agent.max_action_length=$max_action_length \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$tensor_model_parallel_size \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
-    actor_rollout_ref.rollout.enforce_eager=False \
+    actor_rollout_ref.rollout.enforce_eager=True \
     actor_rollout_ref.rollout.free_cache_engine=True \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \

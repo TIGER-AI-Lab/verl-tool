@@ -66,12 +66,12 @@ class AsyncToolManager:
             tool_types = tuple(t for t in tool_types if t != "finish")
             tool_types = tool_types + ("finish",)
             
-        logger.info(f"Initializing tools: {tool_types}")
+        print(f"Initializing tools: {tool_types}")
         for tool_type in tool_types:
             try:
                 tool_cls = get_tool_cls(tool_type)
                 self.tools[tool_type] = tool_cls(num_workers=num_workers)
-                logger.info(f"Initialized tool: {tool_type}")
+                print(f"Initialized tool: {tool_type}")
             except Exception as e:
                 logger.error(f"Failed to initialize tool {tool_type}: {e}")
         
@@ -80,14 +80,14 @@ class AsyncToolManager:
         self.tools["finish"] = finish_tool(num_workers=num_workers, other_tools=list(self.tools.values()))
                 
         # Log available vs. active tools with emoji indicators
-        logger.info("Available Tools:")
+        print("Available Tools:")
         for tool in ALL_TOOLS:
             if tool in self.tools:
                 status = "active 🟢"  # Green circle for active tools
-                logger.info(f"  - {tool}: {status}")
+                print(f"  - {tool}: {status}")
             else:
                 status = "inactive ⚪"  # White circle for inactive tools
-                logger.info(f"  - {tool}: {status}")
+                print(f"  - {tool}: {status}")
     
     def get_tool_usage_instructions(self) -> str:
         """Get usage instructions for all available tools"""
@@ -445,7 +445,7 @@ def main(
     workers_per_tool: int = None,
     max_concurrent_requests: int = 128,
     use_tqdm: bool = False,
-    log_level: str = "error",
+    log_level: str = "warning",
     slient=False,
     done_if_invalid=False,
     use_ray: bool = False,

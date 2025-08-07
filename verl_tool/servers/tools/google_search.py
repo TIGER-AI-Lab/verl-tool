@@ -1,275 +1,337 @@
 import os
-import re
+import json
+import time
+import pathlib
+import threading
 import requests
-import asyncio
-import random
-from typing import List, Optional, Dict, Tuple
-from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, Union, Dict, List, Any
+import regex as re
 
-import chardet
-import aiohttp
-import bs4
-from googleapiclient.discovery import build
-
+import langid
 from .base import BaseTool, register_tool
 
-# --- Config ---
-class OnlineSearchConfig:
-    def __init__(self, topk: int = 3, api_key: Optional[str] = None, cse_id: Optional[str] = None, snippet_only: bool = False):
-        self.topk = topk
-        self.api_key = api_key
-        self.cse_id = cse_id
-        self.snippet_only = snippet_only
+class GoogleSearchEngine:
+    """
+    Simplified Google search engine with basic caching.
+    
+    Removed complex file locking and async operations that could cause deadlocks.
+    Uses simple in-memory cache with periodic file saves.
+    """
 
-# --- Utilities ---
-def parse_snippet(snippet: str) -> List[str]:
-    segments = snippet.split("...")
-    return [s.strip() for s in segments if len(s.strip().split()) > 5]
-
-def sanitize_search_query(query: str) -> str:
-    # Remove or replace special characters that might cause issues.
-    sanitized_query = re.sub(r'[^\w\s]', ' ', query)  # Replace non-alphanumeric and non-whitespace with spaces.
-    sanitized_query = re.sub(r'[\t\r\f\v\n]', ' ', sanitized_query) # replace tab, return, formfeed, vertical tab with spaces.
-    sanitized_query = re.sub(r'\s+', ' ', sanitized_query).strip() #remove duplicate spaces, and trailing/leading spaces.
-    return sanitized_query
-
-def filter_links(search_results: List[Dict]) -> List[str]:
-    links = []
-    for result in search_results:
-        for item in result.get("items", []):
-            if "mime" in item:
-                continue
-            ext = os.path.splitext(item["link"])[1]
-            if ext in ["", ".html", ".htm", ".shtml"]:
-                links.append(item["link"])
-    return links
-
-async def fetch(session: aiohttp.ClientSession, url: str, semaphore: asyncio.Semaphore) -> str:
-    user_agents = [
-        "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.96 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Mozilla/5.0 (compatible; Googlebot/2.1; +https://www.google.com/bot.html)",
-    ]
-    headers = {"User-Agent": random.choice(user_agents)}
-
-    async with semaphore:
-        try:
-            async with session.get(url, headers=headers) as response:
-                raw = await response.read()
-                detected = chardet.detect(raw)
-                encoding = detected["encoding"] or "utf-8"
-                return raw.decode(encoding, errors="ignore")
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            return ""
-
-async def fetch_all(urls: List[str], limit: int = 8) -> List[str]:
-    semaphore = asyncio.Semaphore(limit)
-    timeout = aiohttp.ClientTimeout(total=5)
-    connector = aiohttp.TCPConnector(limit_per_host=limit, force_close=True)
-
-    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-        tasks = [fetch(session, url, semaphore) for url in urls]
-        return await asyncio.gather(*tasks)
-
-# --- Search Engine ---
-class OnlineSearchEngine:
-    def __init__(self, config: OnlineSearchConfig):
-        self.config = config
-
-    def collect_context(self, snippet: str, doc: str) -> str:
-        snippets = parse_snippet(snippet)
-        ctx_paras = []
-
-        for s in snippets:
-            pos = doc.replace("\n", " ").find(s)
-            if pos == -1:
-                continue
-            sta = pos
-            while sta > 0 and doc[sta] != "\n":
-                sta -= 1
-            end = pos + len(s)
-            while end < len(doc) and doc[end] != "\n":
-                end += 1
-            para = doc[sta:end].strip()
-            if para not in ctx_paras:
-                ctx_paras.append(para)
-
-        return "\n".join(ctx_paras)
-
-    def fetch_web_content(self, search_results: List[Dict]) -> Dict[str, str]:
-        links = filter_links(search_results)
-        contents = asyncio.run(fetch_all(links))
-        content_dict = {}
-        for html, link in zip(contents, links):
-            soup = bs4.BeautifulSoup(html, "html.parser")
-            text = "\n".join([p.get_text() for p in soup.find_all("p")])
-            content_dict[link] = text
-        return content_dict
-
-    def search(self, search_term: str, num_iter: int = 1) -> List[Dict]:
-        if not self.config.api_key or not self.config.cse_id:
-            raise ValueError("Google API key and CSE ID must be provided")
+    def __init__(
+        self,
+        api_key: str,
+        max_results: int = 10,
+        result_length: int = 1000,
+        location: str = "us",
+        language: str = "en",
+        cache_file: Optional[str] = None,
+    ):
+        """
+        Initialize the Google search engine.
         
-        service = build('customsearch', 'v1', developerKey=self.config.api_key)
-        results = []
-        sanitize_search_term = sanitize_search_query(search_term)
-        if search_term.isspace():
-            return results
-        res = service.cse().list(q=sanitize_search_term, cx=self.config.cse_id).execute()
-        results.append(res)
-
-        for _ in range(num_iter - 1):
-            if 'nextPage' not in res.get('queries', {}):
-                break
-            start_idx = res['queries']['nextPage'][0]['startIndex']
-            res = service.cse().list(q=search_term, cx=self.config.cse_id, start=start_idx).execute()
-            results.append(res)
-
-        return results
-
-    def _retrieve_context(self, query: str) -> List[Dict]:
+        Args:
+            api_key: Serper API key
+            max_results: Maximum number of search results to return
+            result_length: Maximum length of each result snippet
+            location: Country code for search localization
+            language: Language code for search results
+            cache_file: Path to cache file
+        """
+        # API configuration
+        self._api_key = api_key
+        self._max_results = max_results
+        self._result_length = result_length
+        self._location = location
+        self._language = language
+        
+        # Simple cache with thread lock
+        self._cache = {}
+        self._cache_lock = threading.Lock()
+        self._search_count = 0
+        
+        # Setup cache file
+        self._setup_cache_file(cache_file)
+        
+        # Load existing cache
+        self._load_cache()
+    
+    def _setup_cache_file(self, cache_file: Optional[str]) -> None:
+        """Set up cache file path."""
+        if cache_file is None:
+            cache_dir = pathlib.Path.home() / ".verl_cache"
+            cache_dir.mkdir(exist_ok=True)
+            self._cache_file = cache_dir / "google_search_cache.jsonl"
+        else:
+            self._cache_file = pathlib.Path(cache_file)
+            self._cache_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    def _load_cache(self) -> None:
+        """Load cache from JSON file."""
+        if not self._cache_file.exists():
+            return
+            
         try:
-            search_results = self.search(query)
-            contexts = []
+            with open(self._cache_file, "r", encoding="utf-8") as f:
+                cache_data = [json.loads(line) for line in f if line.strip()]
+                cache_data = {item['query']: item['result'] for item in cache_data}
             
-            if self.config.snippet_only:
-                for result in search_results:
-                    for item in result.get("items", []):
-                        title = item.get("title", "")
-                        context = ' '.join(parse_snippet(item.get("snippet", "")))
-                        if title != "" or context != "":
-                            title = "No title." if not title else title
-                            context = "No snippet available." if not context else context
-                            contexts.append({
-                                'document': {"contents": f'"{title}"\n{context}'},
-                                'url': item.get("link", ""),
-                            })
-            else:
-                content_dict = self.fetch_web_content(search_results)
-                for result in search_results:
-                    for item in result.get("items", []):
-                        link = item["link"]
-                        title = item.get("title", "")
-                        snippet = item.get("snippet", "")
-                        if link in content_dict:
-                            context = self.collect_context(snippet, content_dict[link])
-                            if title != "" or context != "":
-                                title = "No title." if not title else title
-                                context = "No snippet available." if not context else context
-                                contexts.append({
-                                    'document': {"contents": f'"{title}"\n{context}'},
-                                    'url': link,
-                                })
+            self._cache = cache_data
+            self._search_count = len(cache_data)
+            print(f"Loaded {len(self._cache)} cache entries")
             
-            return contexts[:self.config.topk]
         except Exception as e:
-            return [{'document': {'contents': f'Search error: {str(e)}'}, 'url': ''}]
+            print(f"Failed to load cache: {e}")
+            self._cache = {}
+    
+    def _append_cache(self, cache_key: str, cache_value: Union[str, Dict]) -> None:
+        with open(self._cache_file, "a", encoding="utf-8") as f:
+            entry = {
+                "query": cache_key,
+                "result": cache_value
+            }
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def _make_request(self, query: str, timeout: int) -> requests.Response:
+        """
+        Send request to Serper API with proper timeout handling.
+
+        Args:
+            query: Search query
+            timeout: Request timeout in seconds
+
+        Returns:
+            API response object
+        """
+        # Determine language settings
+        try:
+            lang_code, _ = langid.classify(query)
+            if lang_code == 'zh':
+                hl, gl = "zh-cn", "cn"
+            else:
+                hl, gl = self._language, self._location
+        except:
+            hl, gl = self._language, self._location
+        
+        # Prepare request
+        payload = {
+            "q": query,
+            "hl": hl,
+            "gl": gl,
+            "num": min(self._max_results, 100)
+        }
+
+        headers = {
+            'X-API-KEY': self._api_key,
+            'Content-Type': 'application/json'
+        }
+
+        # Make request with explicit timeout
+        return requests.post(
+            "https://google.serper.dev/search",
+            headers=headers,
+            json=payload,
+            timeout=timeout  # This will raise requests.exceptions.Timeout if exceeded
+        )
+
+    def execute(self, query: str, timeout: int = 30) -> str:
+        """
+        Execute Google search query with simplified error handling.
+
+        Args:
+            query: Search query string
+            timeout: API request timeout in seconds
+
+        Returns:
+            Formatted search results as string
+        """
+        # Clean and validate query
+        query = query.strip().replace('"', '')
+        if not query:
+            return "Empty search query provided."
+        
+        # Check cache first
+        if query in self._cache:
+            print(f"Cache hit for: {query}")
+            return self._cache[query]
+
+        try:
+            # Make API request with timeout
+            response = self._make_request(query, timeout)
+
+            if response.status_code != 200:
+                error_msg = f"Search API error {response.status_code}: {response.text[:200]}"
+                print(error_msg)
+                return f"Search failed: {error_msg}"
+
+            # Parse and format results
+            data = response.json()
+            result = self._extract_and_format_results(data)
+            
+            # Update cache
+            with self._cache_lock:
+                self._cache[query] = result
+                self._search_count += 1
+            
+            # Save cache item
+            self._append_cache(query, result)
+            
+            return result
+
+        except requests.exceptions.Timeout:
+            error_msg = f"Search request timed out after {timeout} seconds"
+            print(error_msg)
+            return f"Search failed: {error_msg}"
+            
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Network error: {str(e)}"
+            print(error_msg)
+            return f"Search failed: {error_msg}"
+            
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            print(error_msg)
+            return f"Search failed: {error_msg}"
+    
+    def _extract_and_format_results(self, data: Dict) -> str:
+        """Extract and format search results."""
+        if 'organic' not in data or not data['organic']:
+            return "No search results found."
+
+        results = []
+        seen_snippets = set()
+        
+        for idx, result in enumerate(data['organic'][:self._max_results], 1):
+            title = result.get('title', 'No title').strip()
+            link = result.get('link', '').strip()
+            snippet = result.get('snippet', result.get('description', '')).strip()
+            
+            # Skip duplicates
+            if snippet and snippet not in seen_snippets:
+                # Truncate if needed
+                if len(snippet) > self._result_length:
+                    snippet = snippet[:self._result_length] + "..."
+                
+                formatted = f"Result {idx}:\n{title}\n{link}\n{snippet}\n"
+                results.append(formatted)
+                seen_snippets.add(snippet)
+
+        return "\n".join(results) if results else "No search results found."
+
 
 @register_tool
 class GoogleSearchTool(BaseTool):
+    """
+    Simplified Google search tool with improved reliability.
+    """
+    
     tool_type = "google_search"
     
-    def __init__(self, num_workers=1, api_key=None, cse_id=None, topk=3, snippet_only=False):
+    def __init__(
+        self,
+        num_workers=1,
+        api_key: str = None,
+        max_results: int = 10,
+        result_length: int = 1000,
+        location: str = "us",
+        language: str = "en",
+        cache_file: Optional[str] = None,
+        default_timeout: int = 10
+    ):
+        """
+        Initialize the Google search tool.
+        """
         super().__init__(num_workers)
         
-        # Get credentials from environment if not provided
-        self.api_key = api_key or os.getenv('GOOGLE_API_KEY')
-        self.cse_id = cse_id or os.getenv('GOOGLE_CSE_ID')
-        self.topk = topk
-        self.snippet_only = snippet_only
+        # Get API key
+        if api_key is None:
+            api_key = os.getenv('SERPER_API_KEY')
+            if api_key is None:
+                raise ValueError("API key required: set SERPER_API_KEY environment variable or pass api_key parameter")
         
-        if not self.api_key or not self.cse_id:
-            raise ValueError("Google API key and CSE ID must be provided either as parameters or environment variables (GOOGLE_API_KEY, GOOGLE_CSE_ID)")
-        
-        self.config = OnlineSearchConfig(
-            topk=self.topk,
-            api_key=self.api_key,
-            cse_id=self.cse_id,
-            snippet_only=self.snippet_only
+        # Initialize search engine
+        self.search_engine = GoogleSearchEngine(
+            api_key=api_key,
+            max_results=max_results,
+            result_length=result_length,
+            location=location,
+            language=language,
+            cache_file=cache_file
         )
-        self.engine = OnlineSearchEngine(self.config)
+        
+        self.default_timeout = default_timeout
     
     def get_usage_inst(self):
-        return "You can search the web using Google Custom Search. Provide search queries in <search>query</search> tags or ```search query``` code blocks."
+        """Get usage instructions."""
+        return "Search the web using Google. Use <search>your query</search> or ```search\nyour query\n``` format."
     
-    def parse_action(self, action: str) -> Tuple[str, bool]:
-        """
-        Parse the raw action string to extract search queries.
+    def parse_action(self, action: str):
+        """Parse action to extract search query."""
+        # Try different patterns
+        patterns = [
+            r"<search>(.*?)</search>",
+            r"```\s*search\s*\n(.*?)\n```",
+            r"search:\s*(.*?)(?:\n|$)"
+        ]
         
-        Args:
-            action: Raw action string containing search queries
-            
-        Returns:
-            Tuple containing the extracted query and a validity flag
-        """
-        # Try to find search queries in various formats
-        search_queries = re.findall(r"<search>(.*?)</search>", action, re.DOTALL)
+        for pattern in patterns:
+            matches = re.findall(pattern, action, re.DOTALL | re.IGNORECASE)
+            if matches:
+                query = matches[0].strip()
+                if query:
+                    return query, True
         
-        if not search_queries:
-            search_queries = re.findall(r"```\n?search\n(.*?)```", action, re.DOTALL)
+        return "", False
+    
+    def get_action_priority(self, action: str, extra_field: dict) -> int:
+        """Get action priority."""
+        _, valid = self.parse_action(action)
+        if not valid:
+            return -1
         
-        if not search_queries:
-            search_queries = re.findall(r"```search\n(.*?)\n```", action, re.DOTALL)
+        # Higher priority for explicit search tags
+        search_indicators = ['<search>', 'search:', '```search']
+        if any(indicator in action.lower() for indicator in search_indicators):
+            return 2
         
-        if len(search_queries) == 0:
-            return "", False
-        
-        # Use the first search query found
-        parsed_query = search_queries[0].strip()
-        
-        return parsed_query, True
+        return 0
     
     def conduct_action(self, trajectory_id, action, extra_field):
         """
-        Execute the search action.
-        
-        Args:
-            trajectory_id: ID for tracking the action
-            action: Raw action string
-            extra_field: Additional parameters
-            
-        Returns:
-            Tuple containing observation, done flag, and validity flag
+        Conduct search action with improved error handling.
         """
-        parsed_action, is_valid = self.parse_action(action)
+        parsed_query, is_valid = self.parse_action(action)
+        
+        # Load environment
         env = self.load_env(trajectory_id)
         
         if not is_valid:
-            observation = "No valid search query found. Please provide search queries in <search>...</search> tags or ```search...``` code blocks."
-            done = False
-            valid = False
+            observation = "Invalid search query. Use <search>your query</search> format."
+            done, valid = False, False
+        elif len(parsed_query) > 500:
+            observation = "Search query too long (max 500 characters)."
+            done, valid = False, False
         else:
+            # Get timeout
+            timeout = self.default_timeout
+            if extra_field and 'timeout' in extra_field:
+                timeout = min(extra_field['timeout'], 60)  # Cap at 60 seconds
+            
             try:
-                search_results = self.engine._retrieve_context(parsed_action)
+                # Execute search
+                search_results = self.search_engine.execute(parsed_query, timeout)
+                observation = f"Search results for '{parsed_query}':\n\n{search_results}"
+                done, valid = False, True
                 
-                # Format the results for display
-                if search_results:
-                    formatted_results = []
-                    for i, result in enumerate(search_results, 1):
-                        content = result['document']['contents']
-                        url = result.get('url', 'N/A')
-                        formatted_results.append(f"Result {i}:\nURL: {url}\nContent: {content}")
-                    
-                    observation = "\n\n".join(formatted_results)
-                else:
-                    observation = "No search results found."
-                
-                # Format the observation based on the action type
-                if action.endswith("</search>") or "</search>" in action:
-                    observation = f"\n<search_results>\n{observation}\n</search_results>\n"
-                elif action.strip().endswith("```") or "```search" in action:
-                    observation = f"\n```search_results\n{observation}\n```\n"
-                else:
-                    observation = f"\nSearch Results:\n{observation}\n"
-                
-                done = False  # Search doesn't end the trajectory
-                valid = True
             except Exception as e:
                 observation = f"Search error: {str(e)}"
-                done = False
-                valid = False
+                done, valid = False, False
         
-        self.update_env(trajectory_id, env, parsed_action, is_valid, extra_field, observation)
+        # Wrap in result tags
+        observation = f"<result>{observation}</result>"
+        
+        # Update environment
+        self.update_env(trajectory_id, env, parsed_query, is_valid, extra_field, observation)
         self.save_env(trajectory_id, env)
         
-        return observation, done, valid 
+        return observation, done, valid
