@@ -35,9 +35,9 @@ reward_manager=search_r1_qa_em
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
 tensor_model_parallel_size=2
-gpu_memory_utilization=0.7 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
+gpu_memory_utilization=0.8 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
 do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
-use_dynamic_bsz=False # faster
+use_dynamic_bsz=True # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
 additional_eos_token_ids=[151645] # <|im_end|> token id
@@ -53,7 +53,7 @@ fi
 export VERL_RUN_ID=$run_name
 export NCCL_DEBUG=INFO
 export VLLM_USE_V1=1
-rollout_mode='dapo'
+rollout_mode='async'
 
 # temp file for action tokens as verl cannot pass special strs as params
 action_stop_tokens_file="$(pwd)$(mktemp)"
@@ -120,6 +120,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.actor.clip_ratio_low=0.2 \
     actor_rollout_ref.actor.loss_agg_mode='token-mean' \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=8196 \
     actor_rollout_ref.agent.enable_agent=$enable_agent \
     actor_rollout_ref.agent.tool_server_url=$tool_server_url \
     actor_rollout_ref.agent.max_prompt_length=$max_prompt_length \

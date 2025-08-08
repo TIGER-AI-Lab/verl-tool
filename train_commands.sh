@@ -6,6 +6,7 @@ bash examples/train/torl/train_qwen_1.5B_math_deep_math_tdgrpo.sh > logs/qwen_1.
 bash examples/train/torl/train_qwen_1.5B_math_deep_math_tdgrpo.sh > logs/qwen_1.5B_math_deep_math_tdgspo_debug_10_turns.log 2>&1 &
 bash examples/train/search_r1/train.sh > logs/search_r1_debug.log 2>&1 &
 bash examples/train/search_r1/train_3b_dapo.sh > logs/search_r1_3b_dapo_debug.log 2>&1 &
+bash examples/train/search_r1/train_7b_dapo.sh > logs/search_r1_7b_dapo_debug.log 2>&1 &
 bash examples/train/torl/train_qwen_1.5B_math_deep_math.sh  > logs/qwen_1.5B_math_deep_math_debug_512_64_gapo.log 2>&1 &
 bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/qwen25vl_pixel_reasoner_debug_4gpu_64mb_8n.log 2>&1 &
 bash examples/train/torl/train_drgrpo.sh > logs/qwen_1.5B_math_deep_math_drgrpo_debug.log 2>&1 &
@@ -39,11 +40,14 @@ sailctl job create vtsrdapo7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yam
 sailctl job create vtsr3b -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtsr7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 
+sailctl job create vtds8b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
+
+
 export HF_TOKEN=
 export WANDB_API_KEY=""
 export HF_HOME="/home/aiops/jiangdf/.cache/huggingface"
 source /home/aiops/jiangdf/Workspace/verl-tool/.venv/bin/activate
-cd /home/aiops/jiangdf/Workspace/verl-tool
+cd /home/aiops/jiangdf/Workspace/verl-tool 
 
 bash examples/train/torl/train_qwen_1.5B_math_deep_math_dapo.sh
 bash examples/train/torl/train_qwen_7B_math_deep_math_dapo.sh
@@ -54,3 +58,5 @@ bash examples/train/search_r1/train_3b_dapo.sh
 bash examples/train/search_r1/train_7b_dapo.sh
 bash examples/train/search_r1/train_3b.sh
 bash examples/train/search_r1/train_7b.sh
+
+bash examples/train/deepsearch/train_8b.sh
