@@ -30,6 +30,7 @@ from verl import DataProto
 from verl.protocol import collate_fn
 from .reward_score import _default_compute_score
 from verl.workers.reward_manager import register
+from verl_tool.servers.tools.utils.sql_executor import score
 
 def hash_string(s):
     return hashlib.sha256(s.encode()).hexdigest()
@@ -87,12 +88,54 @@ class SQLCoderRewardManager:
         non_tensor_batch = data.non_tensor_batch # dict
         turn_rewards = non_tensor_batch['turn_rewards']
         
-        for i, turn_rewards_i in enumerate(turn_rewards):
-            if len(turn_rewards_i) == 0:
-                # if there is no turn rewards, set the last turn reward to 0. Also means that the response may not match any tool cause the tool is invalid
-                turn_rewards_i = [0.0]
-            assert turn_rewards_i[-1] is not None, f"Last turn reward is None for index {i}, turn rewards: {turn_rewards_i}"
-            reward_tensor[i, valid_response_length[i].item() - 1] = turn_rewards_i[-1]
+        # fix: the computation of reward for each entry written by Haozhe is ill-defined.
+        
+        final_rewards = []
+        
+        for i in range(len(data)):
+            # get the last round of response
+            last_round_response_decoded = data[i].non_tensor_batch.get('tool_interact_info', None)[-1]['action']
+            # last_round_response_decoded = self.tokenizer.decode(last_round_response, skip_special_tokens=False)
+            entire_block = data.batch['responses'][i]
+            entire_block_decoded = self.tokenizer.decode(entire_block, skip_special_tokens=False)
+            
+            reward = -1.0
+            # perform format check over the entire block as SkyRL-SQL:
+            if "<think>" in entire_block_decoded and "</think>" in entire_block_decoded and \
+            "<solution>" in last_round_response_decoded and "</solution>" in last_round_response_decoded:
+                
+                # extract code from the response: <solution>...</solution>
+                code = re.findall(r"(<solution>.*?</solution>)", last_round_response_decoded, re.DOTALL)
+            
+                # print(f"\n\n\n===> extracted code", code)
+                
+                if len(code) != 0:
+                    parsed_code = code[-1].strip()
+                    
+                    # run the code block to check if its correct
+                    meta = {
+                        "db_id": data[i].non_tensor_batch.get('extra_info', None)["db_id"],
+                        "gold_sql": data[i].non_tensor_batch.get('extra_info', None)["gt_sql"],
+                        "cmp_method": "bird",
+                        "db_path": data[i].non_tensor_batch.get('extra_info', None)["db_path"]
+                    }
+                    correctness, execution_result, error_message = score(parsed_code, meta)
+                    if correctness:
+                        reward = 1.0
+                    else:
+                        reward = 0.0
+            
+            # print(f"\n\n\n===> reward", reward)            
+            final_rewards.append(reward)
+            reward_tensor[i, valid_response_length[i].item() - 1] = reward
+        
+        # original reward computation, directly reused the final round's code execution result, ill-defined.
+        # for i, turn_rewards_i in enumerate(turn_rewards):
+        #     if len(turn_rewards_i) == 0:
+        #         # if there is no turn rewards, set the last turn reward to 0. Also means that the response may not match any tool cause the tool is invalid
+        #         turn_rewards_i = [0.0]
+        #     assert turn_rewards_i[-1] is not None, f"Last turn reward is None for index {i}, turn rewards: {turn_rewards_i}"
+        #     reward_tensor[i, valid_response_length[i].item() - 1] = turn_rewards_i[-1]
 
         if "turns_stats" in data.non_tensor_batch:
             num_turn = data.non_tensor_batch["turns_stats"]
@@ -112,6 +155,7 @@ class SQLCoderRewardManager:
                     "response": self.tokenizer.decode(response_ids[i][:valid_response_length[i].item()], skip_special_tokens=False),
                     "response_ntokens": valid_response_length[i].item(),
                     "score": turn_rewards[i],
+                    "final_reward": final_rewards[i],
                     "tool_interact_info": data[i].non_tensor_batch.get('tool_interact_info', None),
                     'extra_info': data[i].non_tensor_batch.get('extra_info', None),
                 }
