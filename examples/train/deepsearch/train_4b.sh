@@ -3,7 +3,7 @@ dataset_name=deepsearch # or math_torl_offical to use torl training data
 train_data=$(pwd)/data/${dataset_name}/hard_search_1k.parquet
 val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
 $(pwd)/data/${dataset_name}/hle_test.parquet]
-model_name=Qwen/Qwen2.5-3B-Instruct
+model_name=Qwen/Qwen3-4B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
@@ -11,7 +11,7 @@ n=16
 batch_size=128
 ppo_mini_batch_size=32
 max_prompt_length=2048
-max_response_length=6144
+max_response_length=8192
 max_action_length=2048
 max_obs_length=4096
 temperature=1.0
@@ -19,7 +19,7 @@ top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp"
 action_stop_tokens='</python>,</search>'
-max_turns=1
+max_turns=3
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -58,7 +58,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "google_search,python_code" --workers_per_tool 4 > logs/deepsearch_3b_tool_server.log 2>&1 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "google_search,python_code" --workers_per_tool 4 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"

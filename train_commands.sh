@@ -4,14 +4,15 @@ bash examples/train/torl/train_qwen_1.5B_math_deep_math.sh  > logs/qwen_1.5B_mat
 bash examples/train/torl/train_qwen_1.5B_math_deep_math.sh  > logs/qwen_1.5B_math_deep_math_with_penalty.log 2>&1 &
 bash examples/train/torl/train_qwen_1.5B_math_deep_math_tdgrpo.sh > logs/qwen_1.5B_math_deep_math_tdgrpo_debug_10_turns.log 2>&1 &
 bash examples/train/torl/train_qwen_1.5B_math_deep_math_tdgrpo.sh > logs/qwen_1.5B_math_deep_math_tdgspo_debug_10_turns.log 2>&1 &
-bash examples/train/deepsearch/train.sh > logs/deepsearch_debug.log 2>&1 &
 bash examples/train/search_r1/train.sh > logs/search_r1_debug.log 2>&1 &
+bash examples/train/search_r1/train_3b_dapo.sh > logs/search_r1_3b_dapo_debug.log 2>&1 &
 bash examples/train/torl/train_qwen_1.5B_math_deep_math.sh  > logs/qwen_1.5B_math_deep_math_debug_512_64_gapo.log 2>&1 &
 bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/qwen25vl_pixel_reasoner_debug_4gpu_64mb_8n.log 2>&1 &
 bash examples/train/torl/train_drgrpo.sh > logs/qwen_1.5B_math_deep_math_drgrpo_debug.log 2>&1 &
 bash examples/train/torl/train_drgrpo.sh > logs/qwen_1.5B_math_deep_math_drgrpo_debug_with_tool_penalty.log 2>&1 &
 bash examples/train/search_r1/train_drgrpo.sh > logs/search_r1_drgrpo_debug.log 2>&1 &
-bash examples/train/deepsearch/train_3b.sh > logs/deepsearch_3b_debug.log 2>&1 &
+bash examples/train/deepsearch/train_4b.sh > logs/deepsearch_4b_debug.log 2>&1 &
+bash examples/train/deepsearch/train_8b.sh > logs/deepsearch_8b_debug.log 2>&1 &
 
 bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug.log 2>&1 &
 bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.log 2>&1 &

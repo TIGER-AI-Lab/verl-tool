@@ -60,6 +60,7 @@ class BingSearchEngine():
         # Cache and synchronization
         self._cache = {}
         self._cache_lock = threading.Lock()
+        self._lang_id_lock = threading.Lock()
         self._async_cache_write = async_cache_write
         self._write_queue = queue.Queue() if async_cache_write else None
         self._cache_refresh_interval = cache_refresh_interval
@@ -325,7 +326,8 @@ class BingSearchEngine():
             API response object
         """
         # Determine language settings based on query language
-        lang_code, lang_confidence = langid.classify(query)
+        with self._lang_id_lock:
+            lang_code, lang_confidence = langid.classify(query)
         if lang_code == 'zh':
             mkt, setLang = "zh-CN", "zh"
         else:

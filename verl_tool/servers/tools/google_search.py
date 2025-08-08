@@ -48,6 +48,7 @@ class GoogleSearchEngine:
         # Simple cache with thread lock
         self._cache = {}
         self._cache_lock = threading.Lock()
+        self._lang_id_lock = threading.Lock()
         self._search_count = 0
         
         # Setup cache file
@@ -105,7 +106,8 @@ class GoogleSearchEngine:
         """
         # Determine language settings
         try:
-            lang_code, _ = langid.classify(query)
+            with self._lang_id_lock:
+                lang_code, _ = langid.classify(query)
             if lang_code == 'zh':
                 hl, gl = "zh-cn", "cn"
             else:
