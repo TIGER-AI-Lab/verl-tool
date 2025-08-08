@@ -1,23 +1,29 @@
+# pip install sqlparse
+# setup wandb experiments
+export WANDB_API_KEY="082808112389e2ce87f085cabf4ed7cc73511828"
+export https_proxy="http://100.64.117.161:3128"
+
+
 set -x
-dataset_name=nl2sql/NL2SQL-Queries
+dataset_name=skysql_processed
 train_data=$(pwd)/data/${dataset_name}/train.parquet
-val_data=$(pwd)/data/${dataset_name}/dev.parquet
-model_name=Qwen/Qwen2.5-Coder-7B-Instruct
+val_data=$(pwd)/data/${dataset_name}/test.parquet   # dummy val data
+model_name=/map-vepfs/yi/model_weights/Qwen2.5-Coder-7B-Instruct # should use coder model
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=4
+n_gpus_per_node=8
 n_nodes=1
-n=8
-batch_size=128
+n=16
+batch_size=256
 ppo_mini_batch_size=$batch_size
-max_prompt_length=1500
-max_response_length=2596
-max_obs_length=512
+max_prompt_length=4096
+max_response_length=4096
+max_obs_length=1024
 max_action_length=2048
 temperature=1.0
 top_p=1.0
 strategy="fsdp"
 action_stop_tokens=''
-max_turns=1
+max_turns=5
 min_turns=0
 kl_loss_coef=0.0
 kl_coef=0
@@ -27,10 +33,10 @@ lr=1e-6
 reward_manager=sqlcoder
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
-tensor_model_parallel_size=2
+tensor_model_parallel_size=1
 gpu_memory_utilization=0.6 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
 do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
-use_dynamic_bsz=True # faster
+use_dynamic_bsz=False # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
 additional_eos_token_ids=[151645] # <|im_end|> token id
@@ -127,7 +133,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     critic.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
     critic.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
     algorithm.kl_ctrl.kl_coef=$kl_coef \
-    trainer.logger=['console','wandb'] \
+    trainer.logger=['console','wandb','tensorboard'] \
     trainer.project_name=$reward_manager \
     trainer.experiment_name=$run_name \
     trainer.val_before_train=False \

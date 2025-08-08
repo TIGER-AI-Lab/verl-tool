@@ -45,7 +45,8 @@ def extract_sql_from_markdown(text: str) -> str:
     Returns:
         The extracted SQL query, or an empty string if not found.
     """
-    program_pattern = r"```sql[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*```"
+    # program_pattern = r"```sql[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*```"
+    program_pattern = r"<sql>[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*</sql>"
     matches = re.findall(program_pattern, text, re.DOTALL | re.IGNORECASE)
     if matches:
         query = matches[-1].strip()
@@ -407,7 +408,12 @@ def score(
     # NOTE: Assuming a directory structure where db files are in '/cache/'.
     # This might need to be adjusted based on the actual environment.
     cache_dir = os.getenv('SQL_CACHE_DIR', 'data/nl2sql/cache')
-    db_path = os.path.join(cache_dir, ground_truth_info['db_id'])
+    
+    # ensure backward compatibility with Haozhe's dataset format
+    if 'db_path' in ground_truth_info:
+        db_path = ground_truth_info['db_path']
+    else:
+        db_path = os.path.join(cache_dir, ground_truth_info['db_id'])
     comparison_method = ground_truth_info.get('cmp_method', 'bird')
 
     score = 0.0
