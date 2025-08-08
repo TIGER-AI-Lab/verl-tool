@@ -52,6 +52,15 @@ def extract_sql_from_markdown(text: str) -> str:
         query = matches[-1].strip()
         # Clean up common formatting issues
         return query.replace('> =', '>=').replace('< =', '<=').replace('! =', '!=')
+    
+    # compatible with final turn: where the sql code is wrapped in <solution>...</solution>
+    final_turn_program_pattern = r"<solution>[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*</solution>"
+    final_turn_matches = re.findall(final_turn_program_pattern, text, re.DOTALL | re.IGNORECASE)
+    if final_turn_matches:
+        query = final_turn_matches[-1].strip()
+        # Clean up common formatting issues
+        return query.replace('> =', '>=').replace('< =', '<=').replace('! =', '!=')
+
     return ""
 
 
