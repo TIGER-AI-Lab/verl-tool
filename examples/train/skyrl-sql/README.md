@@ -116,3 +116,11 @@ After completing the data setup:
 - **Missing data**: Verify the Omni-SQL download completed successfully
 - **Memory issues**: Ensure sufficient RAM for processing large datasets
 - **Permission errors**: Check file permissions and disk space 
+
+Reference:
+
+- https://github.com/RUCKBReasoning/OmniSQL/tree/main/train_and_evaluate
+- https://github.com/RUCKBReasoning/OmniSQL/blob/main/train_and_evaluate/eval_open_source_models.py
+- https://skyrl.readthedocs.io/en/latest/examples/multi_turn_text2sql.html
+- https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-train
+- https://novasky-ai.notion.site/skyrl-sql
