@@ -40,6 +40,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         self.max_response_length = self.agent_config.max_response_length
         self.max_concurrent_trajectories = self.agent_config.max_concurrent_trajectories
         self.tokenizer = self.agent_actor_manager.tokenizer
+        self.over_sampling = self.agent_config.over_sampling
         print(f"AgentActorManager initialized with config: {self.agent_config}")
     
     async def _chat_completions_openai(self, address: str, **chat_complete_request) -> ChatCompletion:
@@ -85,6 +86,22 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 if resp.status != 200:
                     raise ValueError(f"Request failed with status {data.get('code', 'unknown')}: {data}")
                 return Completion(**data)
+        finally:
+            await session.close()
+    
+    async def _abort(self, address: str, request_id: str) -> Dict[str, Any]:
+        timeout = aiohttp.ClientTimeout(total=None)
+        session = aiohttp.ClientSession(timeout=timeout)
+        try:
+            async with session.post(
+                url=f"http://{address}/v1/abort",
+                headers={"Authorization": "Bearer token-abc123"},
+                json={"request_id": request_id},
+            ) as resp:
+                data = await resp.json()
+                if resp.status != 200:
+                    raise ValueError(f"Abort request failed with status {data.get('code', 'unknown')}: {data}")
+                return data
         finally:
             await session.close()
 
@@ -239,6 +256,23 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         batch.batch['response_mask'] = responses["attention_mask"]
         return batch
     
+    def submit_task(
+        self, 
+        prompt: List[int], 
+        messages: List[dict],
+        request_id: str, 
+        info: Dict[str, Any]
+    ) -> asyncio.Task:
+        """Submit a task to the agent actor manager."""
+        if info['is_multi_modal']:
+            return asyncio.create_task(
+                self._submit_chat_completions(messages=messages, request_id=request_id, info=info)
+            )
+        else:
+            return asyncio.create_task(
+                self._submit_completions(prompt=prompt, request_id=request_id, info=info)
+            )
+    
     async def simple_generate_sequences(
         self, batch: DataProto, **kwargs
     ) -> DataProto:
@@ -267,19 +301,16 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 "__sampling_params__": kwargs,
                 "__depth__": 1,
                 "__done__": asyncio.Event(),
+                "is_multi_modal": "multi_modal_data" in batch.non_tensor_batch,
             }
-            if "multi_modal_data" in batch.non_tensor_batch:
-                tasks.append(
-                    asyncio.create_task(
-                        self._submit_chat_completions(messages=rollout_messages, request_id=request_id, info=info)
-                    )
+            tasks.append(
+                self.submit_task(
+                    prompt=prompt,
+                    messages=rollout_messages,
+                    request_id=request_id,
+                    info=info
                 )
-            else:
-                tasks.append(
-                    asyncio.create_task(
-                        self._submit_completions(prompt=prompt, request_id=request_id, info=info)
-                    )
-                )
+            )
         responses = await tqdm.gather(*tasks, total=len(tasks), desc="Simple generating sequences", disable=(len(tasks) < 10) or not self.agent_config.enable_tqdm)
         output_batch = self.simple_postprocess(batch, responses)
         output_batch.meta_info["timing"] = {"generate_sequences": time.time() - t_start}
@@ -298,6 +329,9 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
         if batch.meta_info.get("validate", False):
             kwargs["top_p"] = self.config.val_kwargs.top_p
             kwargs["temperature"] = self.config.val_kwargs.temperature
+            n = self.config.val_kwargs.n
+        else:
+            n = self.config.n
         if not batch.meta_info.get("is_repeated_by_n", False):
             repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
         else:
