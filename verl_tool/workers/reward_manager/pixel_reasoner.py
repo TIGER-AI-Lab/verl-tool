@@ -80,8 +80,13 @@ class PixelReasonerRewardManager:
             num_turn = data_item.non_tensor_batch["turns_stats"]
             num_valid_action = data_item.non_tensor_batch["valid_action_stats"]
             if "turns_stats" in data_item.non_tensor_batch:
-                uid = data_item.non_tensor_batch["uid"]
-                group_info[uid] = group_info.get(uid, [])
+                uid = data_item.non_tensor_batch.get('uid', i)
+                if uid not in group_info:
+                    group_info[uid] = {}
+                if 'num_turns' not in group_info[uid]:
+                    group_info[uid]['num_turns'] = []
+                if 'num_valid_actions' not in group_info[uid]:
+                    group_info[uid]['num_valid_actions'] = []
                 group_info[uid]['num_turns'].append(num_turn)
                 group_info[uid]['num_valid_actions'].append(num_valid_action)
         for uid, info in group_info.items():

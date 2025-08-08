@@ -64,3 +64,9 @@ bash examples/train/search_r1/train_7b.sh
 bash examples/train/deepsearch/train_8b.sh
 
 bash examples/train/pixel_reasoner/train_qwen25vl.sh
+
+unset CUDA_VISIBLE_DEVICES
+unset ROCR_VISIBLE_DEVICES
+cd ~/WorkSpace/verl-tool
+source .venv/bin/activate
+bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.log 2>&1 &
