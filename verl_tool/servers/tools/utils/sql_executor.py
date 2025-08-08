@@ -46,7 +46,8 @@ def extract_sql_from_markdown(text: str) -> str:
         The extracted SQL query, or an empty string if not found.
     """
     # program_pattern = r"```sql[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*```"
-    program_pattern = r"<sql>[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*</sql>"
+    # program_pattern = r"<sql>[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*</sql>"
+    program_pattern = r"<sql>(.*?)</sql>"
     matches = re.findall(program_pattern, text, re.DOTALL | re.IGNORECASE)
     if matches:
         query = matches[-1].strip()
@@ -54,7 +55,8 @@ def extract_sql_from_markdown(text: str) -> str:
         return query.replace('> =', '>=').replace('< =', '<=').replace('! =', '!=')
     
     # compatible with final turn: where the sql code is wrapped in <solution>...</solution>
-    final_turn_program_pattern = r"<solution>[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*</solution>"
+    # final_turn_program_pattern = r"<solution>[ \t]*[\r\n]+(.*?)[\r\n]+[ \t]*</solution>"
+    final_turn_program_pattern = r"<solution>(.*?)</solution>"
     final_turn_matches = re.findall(final_turn_program_pattern, text, re.DOTALL | re.IGNORECASE)
     if final_turn_matches:
         query = final_turn_matches[-1].strip()

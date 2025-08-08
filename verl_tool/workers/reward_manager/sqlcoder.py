@@ -90,6 +90,8 @@ class SQLCoderRewardManager:
         
         # fix: the computation of reward for each entry written by Haozhe is ill-defined.
         
+        final_rewards = []
+        
         for i in range(len(data)):
             # get the last round of response
             last_round_response_decoded = data[i].non_tensor_batch.get('tool_interact_info', None)[-1]['action']
@@ -124,7 +126,7 @@ class SQLCoderRewardManager:
                         reward = 0.0
             
             # print(f"\n\n\n===> reward", reward)            
-            
+            final_rewards.append(reward)
             reward_tensor[i, valid_response_length[i].item() - 1] = reward
         
         # original reward computation, directly reused the final round's code execution result, ill-defined.
@@ -153,7 +155,7 @@ class SQLCoderRewardManager:
                     "response": self.tokenizer.decode(response_ids[i][:valid_response_length[i].item()], skip_special_tokens=False),
                     "response_ntokens": valid_response_length[i].item(),
                     "score": turn_rewards[i],
-                    "final_reward": reward_tensor[i, valid_response_length[i].item() - 1],
+                    "final_reward": final_rewards[i],
                     "tool_interact_info": data[i].non_tensor_batch.get('tool_interact_info', None),
                     'extra_info': data[i].non_tensor_batch.get('extra_info', None),
                 }
