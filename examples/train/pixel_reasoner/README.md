@@ -14,6 +14,11 @@ bash examples/train/pixel_reasoner/train_qwen25vl.sh
 ```
 It should be able to run under 8 H100/A100 GPUs with 80GB memory. 
 
+Tips:
+- if output shared memory, try lower the `data.dataloader_num_workers`
+- if out of cuda memory during vllm rollout, try set `actor_rollout_ref.rollout.enforce_eager=True`, might be slower.
+- if out of cuda memory during training, try lower the `use_dynamic_bs=False`.
+
 ### Notes
 - If you kill a training job, for current version of verl, it seems the gpu memory will not be released immediately. You may need to kill mannually (e.g. `pkill -f -9 ray`)
 - Check original paper for more details: [Pixel Reasoner](https://arxiv.org/abs/2505.15966)

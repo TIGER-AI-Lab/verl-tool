@@ -1,5 +1,5 @@
 set -x
-dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_16384
+dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name}/val.parquet]
 model_name=VerlTool/pixel-reaoner-qwen2-5vl-3b-sft
