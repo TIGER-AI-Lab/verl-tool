@@ -4,10 +4,6 @@ dataset_name2=deepcoder/all-with-execution-prompt-complex
 dataset_name3=acecoderv2/AceCoderV2-122K-processed-filtered-with-execution-prompt-complex
 dataset_name4=acecoder_long/AceCoderV2-69K-with-execution-prompt-with-public-tests-complex
 dataset_name5=acecoder_custom/AceCoderV2-69K-system-prompt-13-all-tests
-# train_data=[$(pwd)/data/${dataset_name1}/train.parquet,\
-# $(pwd)/data/${dataset_name2}/train.parquet]
-# val_data=[$(pwd)/data/${dataset_name1}/test.parquet,\
-# $(pwd)/data/${dataset_name2}/test.parquet]
 
 train_data=[$(pwd)/data/${dataset_name5}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name5}/test.parquet]

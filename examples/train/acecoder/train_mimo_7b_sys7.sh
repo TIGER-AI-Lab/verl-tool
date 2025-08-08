@@ -10,10 +10,6 @@ dataset_name8=acecoder_custom/AceCoderV2-69K-system-prompt-4
 dataset_name9=acecoder_custom/AceCoderV2-69K-system-prompt-5
 dataset_name10=acecoder_custom/AceCoderV2-69K-system-prompt-6
 dataset_name11=acecoder_custom/AceCoderV2-69K-system-prompt-7
-# train_data=[$(pwd)/data/${dataset_name1}/train.parquet,\
-# $(pwd)/data/${dataset_name2}/train.parquet]
-# val_data=[$(pwd)/data/${dataset_name1}/test.parquet,\
-# $(pwd)/data/${dataset_name2}/test.parquet]
 
 train_data=[$(pwd)/data/${dataset_name11}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name11}/test.parquet]
