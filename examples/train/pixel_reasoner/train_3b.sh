@@ -71,6 +71,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     algorithm.adv_estimator=$rl_alg \
     data.train_files=$train_data \
     data.val_files=$val_data \
+    data.dataloader_num_workers=8 \
     data.train_batch_size=$batch_size \
     data.val_batch_size=250 \
     data.max_prompt_length=$max_prompt_length \
