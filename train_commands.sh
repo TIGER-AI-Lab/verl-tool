@@ -36,11 +36,13 @@ sailctl job create vtmath15 -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml 
 sailctl job create vtmath7 -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 
 sailctl job create vtsrdapo3b -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
-sailctl job create vtsrdapo7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
+sailctl job create vtsrdapo7b -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtsr3b -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtsr7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 
 sailctl job create vtds8b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
+
+sailctl job create vtpr8b -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug --args
 
 
 export HF_TOKEN=
@@ -60,3 +62,5 @@ bash examples/train/search_r1/train_3b.sh
 bash examples/train/search_r1/train_7b.sh
 
 bash examples/train/deepsearch/train_8b.sh
+
+bash examples/train/pixel_reasoner/train_qwen25vl.sh
