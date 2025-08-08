@@ -68,8 +68,10 @@ class PixelReasonerRewardManager:
         self.step = None
         self.add_curiousity_penalty = False
         self.add_action_redundancy_penalty = False
-        self.group_tool_call_rate_lower_bound = 0.5
-        self.group_tool_call_total_upper_bound = 10
+        self.group_tool_call_rate_lower_bound = 0.3 # H in the paper
+        self.action_redundancy_limit = 1 # n_{vo} in the paper, add penalty if the number of redundant actions is larger than this limit
+        self.alpha = 0.5
+        self.beta = 0.05
         
     def get_group_info(self, data: DataProto):
         group_info = {}
@@ -91,35 +93,18 @@ class PixelReasonerRewardManager:
     
     def add_additional_penalties(self, response: str, data_i, scores_i: dict, group_info:dict):
         if "turns_stats" in data_i.non_tensor_batch:
+            num_turn = data_i.non_tensor_batch["turns_stats"]
+            num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
             if self.add_curiousity_penalty:
-                num_turn = data_i.non_tensor_batch["turns_stats"]
-                num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
-                if num_valid_action < num_turn:
-                    scores_i['score'] -= 0.25
-                    scores_i['valid_action_penalty'] = 1
-                else:
-                    scores_i['valid_action_penalty'] = 0
-            if self.add_unfinished_traj_penalty:
-                is_active = data_i.non_tensor_batch["active_mask"]
-                if is_active:
-                    scores_i['score'] -= 0.25
-                    scores_i['unfinished_traj_penalty'] = 1
-                else:
-                    scores_i['unfinished_traj_penalty'] = 0
-            if self.add_no_tool_interact_penalty:
-                num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
-                if num_valid_action == 0:
-                    scores_i['score'] -= 0.25
-                    scores_i['no_tool_interact_penalty'] = 1
-                else:
-                    scores_i['no_tool_interact_penalty'] = 0
-            if self.add_code_exec_penalty:
-                keywords = ["ERROR:\nTraceback", "Execution timed out"]
-                if any(keyword in response for keyword in keywords):
-                    scores_i['score'] -= 0.25
-                    scores_i['exec_error'] = 1
-                else:
-                    scores_i['exec_error'] = 0
+                penalty = (num_valid_action == 0) * max(0, self.group_tool_call_rate_lower_bound - group_info['group_tool_call_rate'])
+                penalty *= self.alpha
+                scores_i['score'] += penalty
+                scores_i['curiousity_penalty'] = penalty
+            if self.add_action_redundancy_penalty:
+                penalty = min(self.action_redundancy_limit - num_valid_action, 0)
+                penalty *= self.beta
+                scores_i['score'] += penalty
+                scores_i['action_redundancy_penalty'] = penalty
         
         return scores_i
     
