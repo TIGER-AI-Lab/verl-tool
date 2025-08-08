@@ -323,7 +323,6 @@ class AgentActorManager:
             else:
                 mm_data_list = []
                 raw_prompts = []
-                next_obs = []
                 
                 for k, tool_interact_info_k in enumerate(tool_interact_info):
                     multi_modal_data = {}
