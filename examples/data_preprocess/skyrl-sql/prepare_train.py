@@ -287,11 +287,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main()
-    
+
+# Example usage:    
 # python examples/data_preprocess/skysql_train.py --local_parquet_path "/map-vepfs/yi/verltool_paper/sql_experiment/get_skysql/SkyRL-SQL-653-data-newfmt/train.parquet"
-    
-
-# TODO: Future extensions
-# 2. [TODO] convert spider-dev, spider-test, spider-realistic, spider-dk, spider-syn
-# Additional datasets that could be processed using similar patterns
-
