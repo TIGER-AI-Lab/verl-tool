@@ -2,7 +2,6 @@ set -x
 dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name}/val.parquet]
-# model_name=Qwen/Qwen2.5-VL-3B-Instruct # for Qwen-2.5-VL-72B-Instruct
 model_name=TIGER-Lab/PixelReasoner-WarmStart
 # model_name=TIGER-Lab/PixelReasoner-RL-v1
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
