@@ -1,30 +1,26 @@
 # pip install sqlparse
 # setup wandb experiments
-export WANDB_API_KEY="082808112389e2ce87f085cabf4ed7cc73511828"
-export https_proxy="http://100.64.117.161:3128"
-
 
 set -x
-dataset_name=skysql_processed
+dataset_name=skysql
 train_data=$(pwd)/data/${dataset_name}/train.parquet
-# val_data=$(pwd)/data/${dataset_name}/test.parquet   # dummy val data
-model_name=/map-vepfs/yi/model_weights/Qwen2.5-Coder-7B-Instruct # should use coder model
-val_data="/map-vepfs/yi/verltool_paper/sql_experiment/construct_test_dataset/processed_spider_datasets/spider_all.parquet"
+val_data=$(pwd)/data/${dataset_name}/test.parquet
+model_name=Qwen/Qwen2.5-Coder-7B-Instruct # should use coder model
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
-n=4 #16
-batch_size=8 #256
+n=8 #16
+batch_size=256 #256
 ppo_mini_batch_size=$batch_size
 max_prompt_length=4096
 max_response_length=4096
 max_obs_length=1024
 max_action_length=2048
 temperature=1.0
-top_p=1.0
+top_p=0.95
 strategy="fsdp"
 action_stop_tokens=''
-max_turns=1 #5
+max_turns=5 #5
 min_turns=0
 kl_loss_coef=0.0
 kl_coef=0
@@ -73,7 +69,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.train_files=$train_data \
     data.val_files=$val_data \
     data.train_batch_size=$batch_size \
-    data.val_batch_size=$batch_size \
+    data.val_batch_size=1024 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.truncation='right' \
@@ -141,8 +137,8 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=$n_nodes \
-    +trainer.remove_previous_ckpt_in_save=False \
-    trainer.save_freq=100 \
+    +trainer.remove_previous_ckpt_in_save=True \
+    trainer.save_freq=20 \
     trainer.test_freq=20 \
     trainer.total_epochs=10
 
