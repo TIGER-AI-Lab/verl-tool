@@ -22,3 +22,4 @@ bash hfd.sh seeklhy/OmniSQL-datasets --dataset --tool wget
 unzip OmniSQL-datasets/data.zip -d ./data/synsql/
 rm -r OmniSQL-datasets
 
+rm hfd.sh
