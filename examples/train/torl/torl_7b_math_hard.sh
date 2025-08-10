@@ -57,7 +57,7 @@ python3 -m verl_tool.trainer.main_ppo \
     data.truncation='right' \
     reward_model.reward_manager=$reward_manager \
     actor_rollout_ref.model.path=$model_name \
-    actor_rollout_ref.actor.checkpoint.contents=['model','optimizer','extra','hf_model'] \
+    actor_rollout_ref.actor.checkpoint.save_contents=['model','optimizer','extra','hf_model'] \
     actor_rollout_ref.actor.optim.lr=$lr \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=$ppo_mini_batch_size \

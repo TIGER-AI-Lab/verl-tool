@@ -116,7 +116,7 @@ class AceCoderRewardManager:
     """
     name = "acecoder"
 
-    def __init__(self, tokenizer, num_examine, compute_score=None, run_id=None) -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, run_id=None, reward_fn_key='data_source') -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
@@ -130,7 +130,8 @@ class AceCoderRewardManager:
         self.add_unfinished_traj_penalty = True # -0.25 if the traj is not finished
         self.add_no_tool_interact_penalty = True # -1.0 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
-        
+        self.reward_fn_key = reward_fn_key
+
         try:
             from acecoder import evaluate_test_cases
         except ImportError:

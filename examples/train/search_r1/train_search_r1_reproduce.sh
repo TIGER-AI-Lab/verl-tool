@@ -99,7 +99,7 @@ tool_server_pid=$!
 echo "Tool server (pid=$tool_server_pid) started at $tool_server_url"
 
 # TODO: fix the error of cannot invoke:
-# actor_rollout_ref.actor.checkpoint.contents=['model','optimizer','extra','hf_model'] \
+# actor_rollout_ref.actor.checkpoint.save_contents=['model','optimizer','extra','hf_model'] \
 
 # Run training
 PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
