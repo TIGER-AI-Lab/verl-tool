@@ -10,7 +10,7 @@ dependencies = [
     "timeout-decorator>=0.5.0",
     "pyext",
     "qwen_vl_utils",
-    "transformers<4.53.0" # for vlm,
+    "transformers<4.53.0",
     "tensorboard"
 ]
 
