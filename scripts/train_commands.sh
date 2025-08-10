@@ -79,4 +79,6 @@ unset ROCR_VISIBLE_DEVICES
 cd ~/WorkSpace/verl-tool
 source .venv/bin/activate
 bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.log 2>&1 &
+bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug_complex_reward.log 2>&1 &
 bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug.log 2>&1 &
+bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug_complex_reward.log 2>&1 &

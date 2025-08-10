@@ -66,8 +66,8 @@ class PixelReasonerRewardManager:
         self.compute_score = pixel_reasoner_score
         self.reward_fn_key = reward_fn_key
         self.step = None
-        self.add_curiousity_penalty = False
-        self.add_action_redundancy_penalty = False
+        self.add_curiousity_penalty = True
+        self.add_action_redundancy_penalty = True
         self.group_tool_call_rate_lower_bound = 0.3 # H in the paper
         self.action_redundancy_limit = 1 # n_{vo} in the paper, add penalty if the number of redundant actions is larger than this limit
         self.alpha = 0.5
@@ -197,7 +197,7 @@ class PixelReasonerRewardManager:
             score['score'] = torl_score
 
             # add additional penalty
-            score = self.add_additional_penalties(response_str, data_item, score, group_info.get(data_item.non_tensor_batch.get('uid', None), {}))      
+            score = self.add_additional_penalties(response_str, data_item, score, group_info.get(data_item.non_tensor_batch.get('uid', i), {}))      
 
             if score['accuracy'] > 0:
                 reward_extra_info['correct_response_length'].append(valid_response_length)
