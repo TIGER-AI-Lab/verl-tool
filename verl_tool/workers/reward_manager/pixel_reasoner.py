@@ -101,7 +101,7 @@ class PixelReasonerRewardManager:
             num_turn = data_i.non_tensor_batch["turns_stats"]
             num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
             if self.add_curiousity_penalty:
-                penalty = (num_valid_action == 0) * max(0, self.group_tool_call_rate_lower_bound - group_info['group_tool_call_rate'])
+                penalty = (num_valid_action != 0) * max(0, self.group_tool_call_rate_lower_bound - group_info['group_tool_call_rate'])
                 penalty *= self.alpha
                 scores_i['score'] += penalty
                 scores_i['curiousity_penalty'] = penalty
