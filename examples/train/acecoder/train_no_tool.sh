@@ -79,11 +79,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.actor.optim.lr=$lr \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.model.use_remove_padding=True \
-<<<<<<< HEAD:examples/train/torl/train_mimo_7b_mtrl_v7.sh
-    +actor_rollout_ref.model.trust_remote_code=True \
-=======
     actor_rollout_ref.model.trust_remote_code=True \
->>>>>>> exp:examples/train/acecoder/train_no_tool.sh
     actor_rollout_ref.actor.checkpoint.save_contents=['model','optimizer','extra','hf_model'] \
     actor_rollout_ref.actor.ppo_mini_batch_size=$ppo_mini_batch_size \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
