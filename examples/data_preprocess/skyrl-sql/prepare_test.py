@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # These should remain relative to the parent directory of verl-tool as they will be hard-coded to the datasets
 DEFAULT_DATABASE_PATH = "./data/synsql/data/spider/database"
+DEFAULT_DATABASE_PATH_TEST = "./data/synsql/data/spider/test_database"
 DEFAULT_DATABASE_PATH_DK = "./data/synsql/data/Spider-DK/database"
 DEFAULT_DATABASE_PATH_BIRD = "/map-vepfs/yi/verltool_paper/sql_experiment/verl-tool/data/synsql/data/bird/dev_20240627/dev_databases"
 
@@ -199,6 +200,16 @@ def process_spider_dataset(dataset_name, prompt_file, schema_file, database_path
             # Build database path following original pattern: {DATABASE_PATH}/{db_id}/{db_id}.sqlite
             db_path = f"{database_path}/{db_id}/{db_id}.sqlite"
             
+            # check if the db actually exists
+            if not os.path.exists(db_path):
+                if dataset_name == "spider_test" or dataset_name == "spider_syn":
+                    # check if the db exists in the test_database path
+                    db_path = f"{DEFAULT_DATABASE_PATH_TEST}/{db_id}/{db_id}.sqlite"
+                    if not os.path.exists(db_path):
+                        raise ValueError(f"Database file does not exist even in test_database path: {db_path}")
+                else:
+                    raise ValueError(f"Database file does not exist in original path: {db_path}")
+
             # Create processed row
             curr_row_pd = pd.Series(
                 {
@@ -427,42 +438,42 @@ if __name__ == "__main__":
     parser.add_argument(
         "--process_dev", 
         action="store_true",
-        default=True,
+        default=False,
         help="Process Spider dev dataset."
     )
     
     parser.add_argument(
         "--process_test", 
         action="store_true",
-        default=True,
+        default=False,
         help="Process Spider test dataset."
     )
     
     parser.add_argument(
         "--process_dk", 
         action="store_true",
-        default=True,
+        default=False,
         help="Process Spider DK dataset."
     )
     
     parser.add_argument(
         "--process_syn", 
         action="store_true",
-        default=True,
+        default=False,
         help="Process Spider Syn dataset."
     )
     
     parser.add_argument(
         "--process_realistic", 
         action="store_true",
-        default=True,
+        default=False,
         help="Process Spider Realistic dataset."
     )
     
     parser.add_argument(
         "--process_bird", 
         action="store_true",
-        default=True,
+        default=False,
         help="Process Bird dataset."
     )
     
@@ -577,3 +588,6 @@ if __name__ == "__main__":
 
 # Example usage for processing all datasets
 # python ./prepare_test_dataset.py --process_dev --process_test --process_dk --process_syn --process_realistic --process_bird --local_dir "./processed_spider_datasets"
+
+# in reality nobody is using the realistic dataset so skip it
+# python ./prepare_test_dataset.py --process_dev --process_test --process_dk --process_syn --process_bird --local_dir "./processed_spider_datasets"
