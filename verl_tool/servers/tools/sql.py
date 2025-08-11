@@ -8,7 +8,7 @@ import json
 import uuid
 import hashlib
 from typing import Tuple, Dict, Any, Optional
-from .utils.sql_executor import score
+from .utils.sql_executor import score, sql_observation
 
 # Timeout for code execution in seconds
 TIMEOUT = 5
@@ -50,29 +50,37 @@ class SqlTool(BaseTool):
         
         Args:
             action: Raw action string containing SQL code
+            tag_type: Type of tag to extract ("sql" or "solution")
             
         Returns:
             Tuple containing the extracted code and a validity flag
         """
+        tag_start_map = {
+            "sql": SQL_START,
+            "solution": SOLUTION_START
+        }
+        tag_end_map = {
+            "sql": SQL_END,
+            "solution": SOLUTION_END
+        }
+
+        # Find the last occurrence of the start tag
+        start_tag = tag_start_map[tag_type]
+        end_tag = tag_end_map[tag_type]
         
-        if tag_type == "sql":
-            # First try to extract from <sql></sql> tags for intermediate verification
-            sql_code = re.findall(r"({SQL_START}.*?{SQL_END})".format(SQL_START=SQL_START, SQL_END=SQL_END), action, re.DOTALL)
-            
-            if len(sql_code) > 0:
-                parsed_code = sql_code[-1].strip()
-                return parsed_code, True
+        sql_code_start_idx = action.rfind(start_tag)
+        if sql_code_start_idx == -1:
+            return "", False
         
-        else:    
-            # Then try to extract from <solution></solution> tags for final answers
-            solution_code = re.findall(r"({SOLUTION_START}.*?{SOLUTION_END})".format(SOLUTION_START=SOLUTION_START, SOLUTION_END=SOLUTION_END), action, re.DOTALL)
-            
-            if len(solution_code) > 0:
-                parsed_code = solution_code[-1].strip()
-                return parsed_code, True
-            
-        # No valid SQL code found
-        return "Error", False
+        # Find the corresponding end tag after the start tag
+        sql_code_end_idx = action.find(end_tag, sql_code_start_idx + len(start_tag))
+        if sql_code_end_idx == -1:
+            return "", False
+        
+        # Extract the content between the tags
+        sql_code = action[sql_code_start_idx + len(start_tag):sql_code_end_idx].strip()
+        return sql_code, True
+
     
     def conduct_action(self, trajectory_id, action, extra_field):
         """
@@ -96,13 +104,13 @@ class SqlTool(BaseTool):
         current_step = extra_field.get("current_step", 0) if extra_field else 0
         max_turns = extra_field.get("max_turns", 0) if extra_field else 0
         
-        print("==>")
-        print(f"===> turns_left", turns_left)
-        print(f"===> current_step", current_step)
-        print(f"===> max_turns", max_turns)
-        print(f"\n\n===> action", action)
-        print(f"\n\n===> parsed_action", parsed_action)
-        print("="*100)
+        # print("==>")
+        # print(f"===> turns_left", turns_left)
+        # print(f"===> current_step", current_step)
+        # print(f"===> max_turns", max_turns)
+        # print(f"\n\n===> action", action)
+        # print(f"\n\n===> parsed_action", parsed_action)
+        # print("="*100)
         
         if not is_valid:
             # if not valid, try to parse the code as if from <solution></solution> tags (final answer)
@@ -136,15 +144,19 @@ class SqlTool(BaseTool):
                     "db_path": db_path
                 }   
                 
-                correctness, execution_result, error_message = score(parsed_action, meta)
+                # correctness, execution_result, error_message = score(parsed_action, meta)
+                observation = sql_observation(parsed_action, meta, timeout=5)
                 
-                if error_message and not correctness:
-                    if execution_result:
-                        observation = f"Error:\n{error_message}\n\nExecution Result:\n{execution_result}"
-                    else:
-                        observation = f"Error:\n{error_message}"
-                else:
-                    observation = f"Execution Result:\n{execution_result}"
+                # if error_message and not correctness:
+                # if error_message != "":
+                #     if execution_result:
+                #         observation = f"\n{error_message}\n\nExecution Result:\n{execution_result}"
+                #     else:
+                #         observation = f"\n{error_message}"
+                # else:
+                #     observation = f"Execution Result:\n{execution_result}"
+                
+                
                 
                 # Only mark as done if this is a final solution submission and it's correct
                 done = False    # we use <sql></sql> here so this must be intermediate
@@ -156,15 +168,22 @@ class SqlTool(BaseTool):
                 valid = False  # Code was extracted validly, just failed to execute
         
         # Create reminder text with turns left information
-        if turns_left > 0:
-            reminder_text = f"<reminder>You have {turns_left} turns left to complete the task.</reminder>"
-        else:
-            reminder_text = f"<reminder>This is your final turn. Please provide your final answer using the <solution></solution> tags.</reminder>"
+        reminder_text = f"<reminder>You have {turns_left} turns left to complete the task.</reminder>"
+        
+        # if turns_left > 0:
+        #     reminder_text = f"<reminder>You have {turns_left} turns left to complete the task.</reminder>"
+        # else:
+        #     reminder_text = f"<reminder>This is your final turn. Please provide your final answer using the <solution></solution> tags.</reminder>"
         
         obs = f"\n\n<observation>{observation}\n{reminder_text}</observation>\n\n"
         
         self.update_env(trajectory_id, env, parsed_action, is_valid, extra_field, observation)
         self.save_env(trajectory_id, env)
+        
+        obs = {
+            "obs": obs,
+            "parsed_sql": parsed_action,
+        }
         
         return obs, done, valid
         

@@ -27,6 +27,7 @@ import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
+from typing import Tuple
 
 import torch
 from collections import defaultdict
@@ -35,6 +36,77 @@ from verl.protocol import collate_fn
 from .reward_score import _default_compute_score
 from verl.workers.reward_manager import register
 from verl_tool.servers.tools.utils.sql_executor import score
+
+
+THINK_START, THINK_END = "<think>", "</think>"
+SQL_START, SQL_END = "<sql>", "</sql>"
+SOLUTION_START, SOLUTION_END = "<solution>", "</solution>"
+OBS_START, OBS_END = "<observation>", "</observation>"
+
+
+
+def parse_action(action: str, tag_type: str = "sql") -> Tuple[str, bool]:
+    """
+    Parse the raw action string to extract SQL code from either <sql></sql> or <solution></solution> tags.
+    
+    Args:
+        action: Raw action string containing SQL code
+        tag_type: Type of tag to extract ("sql" or "solution")
+        
+    Returns:
+        Tuple containing the extracted code and a validity flag
+    """
+    tag_start_map = {
+        "sql": SQL_START,
+        "solution": SOLUTION_START
+    }
+    tag_end_map = {
+        "sql": SQL_END,
+        "solution": SOLUTION_END
+    }
+
+    # Find the last occurrence of the start tag
+    start_tag = tag_start_map[tag_type]
+    end_tag = tag_end_map[tag_type]
+    
+    sql_code_start_idx = action.rfind(start_tag)
+    if sql_code_start_idx == -1:
+        return "", False
+    
+    # Find the corresponding end tag after the start tag
+    sql_code_end_idx = action.find(end_tag, sql_code_start_idx + len(start_tag))
+    if sql_code_end_idx == -1:
+        return "", False
+    
+    # Extract the content between the tags
+    sql_code = action[sql_code_start_idx + len(start_tag):sql_code_end_idx].strip()
+    return sql_code, True
+
+# Copied from SkyRL-SQL/skyrl_gym/envs/sql/utils.py
+def verify_format_and_extract(output: str):
+    if output.count(SOLUTION_START) != 1:
+        return False, None, None, None
+    pre_solution, tail = output.split(SOLUTION_START, 1)
+
+    if tail.count(SOLUTION_END) != 1:
+        return False, None, None, None
+
+    solution_text, _ = tail.split(SOLUTION_END, 1)
+
+    if re.search(r"</?(think|sql|observation)\b", solution_text, re.I):
+        return False, None, None, None
+
+    thoughts = re.findall(r"<think>(.*?)</think>", output, re.S)
+    if not thoughts:
+        return False, None, None, None
+
+    for m in re.finditer(r"</observation>", pre_solution, re.I):
+        rest = pre_solution[m.end() :].lstrip()
+        if not rest.lower().startswith(THINK_START):
+            return False, None, None, None
+
+    return True, thoughts, solution_text.strip(), None
+
 
 def hash_string(s):
     return hashlib.sha256(s.encode()).hexdigest()
@@ -140,6 +212,9 @@ class SQLCoderRewardManager:
                 final_reward = 0.0
                 if len(solution_code) > 0:
                     parsed_solution = solution_code[-1].strip()
+                    
+                    parsed_solution = parsed_solution.replace(SOLUTION_START, "").replace(SOLUTION_END, "")
+                    
                     # Get database and ground truth information
                     extra_info = data[i].non_tensor_batch.get('extra_info', {})
                     meta = {
@@ -150,11 +225,15 @@ class SQLCoderRewardManager:
                     }
                 
                     try:
-                        correctness, execution_result, error_message = score(parsed_solution, meta)
-                        if correctness:
-                            execution_score = 1.0  # Perfect execution
-                        else:
-                            execution_score = 0.0  # Execution failed or incorrect result
+                        execution_score = score(parsed_solution, meta)
+                        
+                        
+                        # if correctness:
+                        #     execution_score = 1.0  # Perfect execution
+                        # else:
+                        #     execution_score = 0.0  # Execution failed or incorrect result
+                        
+                        
                     except Exception as e:
                         execution_score = 0.0  # Execution error
                         print(f"Execution error for trajectory {i}: {str(e)}")
