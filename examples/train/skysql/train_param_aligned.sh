@@ -1,26 +1,27 @@
 # pip install sqlparse
 # setup wandb experiments
 
+
 set -x
-dataset_name=skysql
+dataset_name=skysql_processed
 train_data=$(pwd)/data/${dataset_name}/train.parquet
 val_data=$(pwd)/data/${dataset_name}/test.parquet
-model_name=Qwen/Qwen2.5-Coder-7B-Instruct # should use coder model
+model_name=NovaSky-AI/SkyRL-SQL-7B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
-n=8
+n=5
 batch_size=256
 ppo_mini_batch_size=$batch_size
-max_prompt_length=4096
+max_prompt_length=6000
 max_response_length=4096
-max_obs_length=1024
-max_action_length=2048
-temperature=1.0
+max_obs_length=2048 # 1024
+max_action_length=3072 # 2048
+temperature=0.6
 top_p=0.95
 strategy="fsdp"
-action_stop_tokens=''
-max_turns=3 #5
+action_stop_tokens='</sql>,<observation>'
+max_turns=5 #5
 min_turns=0
 kl_loss_coef=0.0
 kl_coef=0
@@ -31,19 +32,19 @@ reward_manager=sqlcoder
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
 tensor_model_parallel_size=1
-gpu_memory_utilization=0.8 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
+gpu_memory_utilization=0.7 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
 do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
 use_dynamic_bsz=True # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
 additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
-enable_mtrl=True # enable multi-turn training
+enable_mtrl=False # enable multi-turn training
 rollout_mode='async'
 
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 run_name_postfix="debug-sqlcoder"
-run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+run_name="new_sql_test_skyrl_param_aligned_non_mtrl_5_${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 port=$(shuf -i 30000-31000 -n 1)
 export VERL_RUN_ID=$run_name
 export NCCL_DEBUG=INFO
@@ -85,7 +86,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.actor.ppo_mini_batch_size=$ppo_mini_batch_size \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
     actor_rollout_ref.actor.use_dynamic_bsz=$use_dynamic_bsz \
-    actor_rollout_ref.actor.use_kl_loss=True \
+    actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.strategy=$strategy \
     actor_rollout_ref.actor.kl_loss_coef=$kl_loss_coef \
     actor_rollout_ref.actor.kl_loss_type=$kl_loss_type \
@@ -94,7 +95,6 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=$do_offload \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=$fsdp_size \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=8196 \
     actor_rollout_ref.agent.tool_server_url=$tool_server_url \
     actor_rollout_ref.agent.max_prompt_length=$max_prompt_length \
     actor_rollout_ref.agent.max_response_length=$max_response_length \
@@ -134,14 +134,14 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.logger=['console','wandb','tensorboard'] \
     trainer.project_name=$reward_manager \
     trainer.experiment_name=$run_name \
-    trainer.val_before_train=False \
+    trainer.val_before_train=True \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=$n_nodes \
-    +trainer.remove_previous_ckpt_in_save=True \
-    trainer.save_freq=20 \
-    trainer.test_freq=50 \
-    trainer.total_epochs=10
+    +trainer.remove_previous_ckpt_in_save=False \
+    trainer.save_freq=10 \
+    trainer.test_freq=10 \
+    trainer.total_epochs=100
 
 
 pkill -P -9 $server_pid

@@ -780,9 +780,41 @@ class AgentActorManager:
             # Execute in environment and process observations
             perf_timer.start(f'step_{step}_tool_interaction')
             active_uids = [traj_ids[i] for i in range(len(traj_ids)) if active_mask[i]]
+            
+            # Prepare extra fields with turn information
+            extra_fields = rollings_active.non_tensor_batch.get('extra_info', None)
+            if extra_fields is not None:
+                # Add current step and turns_left information to each extra_field entry
+                enhanced_extra_fields = []
+                for i, extra_field in enumerate(extra_fields):
+                    if isinstance(extra_field, dict):
+                        enhanced_field = extra_field.copy()
+                        enhanced_field['current_step'] = step
+                        enhanced_field['max_turns'] = self.config.max_turns
+                        enhanced_field['turns_left'] = max(0, self.config.max_turns - step)
+                        enhanced_extra_fields.append(enhanced_field)
+                    else:
+                        # If extra_field is not a dict, create a new dict with turn info
+                        enhanced_extra_fields.append({
+                            'current_step': step,
+                            'max_turns': self.config.max_turns,
+                            'turns_left': max(0, self.config.max_turns - step)
+                        })
+                extra_fields = enhanced_extra_fields
+            else:
+                # If no extra_fields exist, create them with turn information for each active trajectory
+                extra_fields = [
+                    {
+                        'current_step': step,
+                        'max_turns': self.config.max_turns,
+                        'turns_left': max(0, self.config.max_turns - step)
+                    }
+                    for _ in range(len(active_uids))
+                ]
+            
             next_obs, dones, valid_action, finishs, rewards, tool_interact_info = await self.interact_with_tool_server(
                 active_uids, responses_str, do_actions, active_mask,
-                extra_fields=rollings_active.non_tensor_batch.get('extra_info', None),
+                extra_fields=extra_fields,
                 is_last_step=(step == self.config.max_turns)
             )
             for i, reward in enumerate(rewards):
