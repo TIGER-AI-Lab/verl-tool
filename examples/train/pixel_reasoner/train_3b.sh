@@ -20,7 +20,7 @@ top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp2"
 action_stop_tokens='</tool_call>'
-max_turns=1
+max_turns=2
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -41,8 +41,7 @@ enable_mtrl=True # enable multi-turn training
 max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 max_num_batched_tokens=5000
-run_name_postfix="debug"
-
+run_name_postfix="debug-complex-reward"
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else

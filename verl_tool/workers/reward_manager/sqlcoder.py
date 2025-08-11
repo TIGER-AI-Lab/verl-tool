@@ -100,7 +100,7 @@ class SQLCoderRewardManager:
             entire_block_decoded = self.tokenizer.decode(entire_block, skip_special_tokens=False)
             
             reward = -1.0
-            # perform format check over the entire block as SkyRL-SQL:
+            # perform format check over the entire block as skysql:
             if "<think>" in entire_block_decoded and "</think>" in entire_block_decoded and \
             "<solution>" in last_round_response_decoded and "</solution>" in last_round_response_decoded:
                 

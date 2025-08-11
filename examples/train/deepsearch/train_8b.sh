@@ -140,7 +140,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
     trainer.total_epochs=10 \
-    trainer.total_training_steps=40 \
+    trainer.total_training_steps=100 \
 
 
 pkill -P -9 $server_pid

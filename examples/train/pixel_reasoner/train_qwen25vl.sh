@@ -2,7 +2,6 @@ set -x
 dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name}/val.parquet]
-# model_name=Qwen/Qwen2.5-VL-3B-Instruct # for Qwen-2.5-VL-72B-Instruct
 model_name=TIGER-Lab/PixelReasoner-WarmStart
 # model_name=TIGER-Lab/PixelReasoner-RL-v1
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
@@ -20,7 +19,7 @@ top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp2"
 action_stop_tokens='</tool_call>'
-max_turns=1
+max_turns=2
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -41,7 +40,7 @@ enable_mtrl=True # enable multi-turn training
 max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 max_num_batched_tokens=10000
-run_name_postfix="debug"
+run_name_postfix="debug-complex-reward"
 
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"

@@ -18,6 +18,9 @@ bash examples/train/deepsearch/train_8b.sh > logs/deepsearch_8b_debug.log 2>&1 &
 bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug.log 2>&1 &
 bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.log 2>&1 &
 
+bash examples/train/skysql/train_7b.sh > logs/skysql_7b_debug.log 2>&1 &
+
+
 # add-apt-repository ppa:deki/firejail
 # apt-get update
 # DEBIAN_FRONTEND=noninteractive apt-get -y install firejail firejail-profiles
@@ -28,7 +31,7 @@ sailctl job create verltooldebug -g 2 -r 1 -p high -f ~/sailctl_high_shm_config.
 sailctl job create verltool -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug
 sailctl job create verltoolmath -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug
 sailctl job create verltool80g -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug 
-sailctl job create verltooldebug -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug 
+sailctl job create verltooldebug -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug 
 
 sailctl job create vtmath15dapo -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtmath7dapo -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
@@ -43,6 +46,8 @@ sailctl job create vtsr7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --
 sailctl job create vtds8b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 
 sailctl job create vtpr8b -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug --args
+
+sailctl job create vtsql7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 
 
 export HF_TOKEN=
@@ -65,8 +70,15 @@ bash examples/train/deepsearch/train_8b.sh
 
 bash examples/train/pixel_reasoner/train_qwen25vl.sh
 
+bash examples/train/skysql/train_7b.sh
+
+
+
 unset CUDA_VISIBLE_DEVICES
 unset ROCR_VISIBLE_DEVICES
 cd ~/WorkSpace/verl-tool
 source .venv/bin/activate
 bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.log 2>&1 &
+bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug_complex_reward.log 2>&1 &
+bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug.log 2>&1 &
+bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug_complex_reward.log 2>&1 &

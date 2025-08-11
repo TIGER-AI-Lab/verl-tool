@@ -1,14 +1,18 @@
-# SkyRL-SQL Training Guide
+# skysql Training Guide
 
-This guide covers data preprocessing and training setup for the SkyRL-SQL model using the verl-tool framework.
+This guide covers data preprocessing and training setup for the skysql model using the verl-tool framework.
 
 ## Prerequisites
 
 ⚠️ **Important**: All operations below assume you are in the parent directory of the `verl-tool` repository.
 
+```bash
+uv pip install -e .[sql_tool]
+```
+
 ## 📋 Overview
 
-The SkyRL-SQL training requires two main datasets:
+The skysql training requires two main datasets:
 - **Omni-SQL dataset** (~50GB): Contains evaluation data for Spider-series and BIRD datasets, plus the SynSQL-2.5M training dataset
 - **Preprocessed training/evaluation datasets**: Ready-to-use parquet files for training
 
@@ -23,7 +27,7 @@ The SkyRL-SQL training requires two main datasets:
 **Option B: Automated Script**
 ```bash
 cd <verl-tool-parent-path>
-bash ./examples/data_preprocess/skyrl-sql.sh
+bash ./examples/data_preprocess/skysql/download_skysql.sh
 ```
 
 ### Step 2: Verify Data Structure
@@ -31,7 +35,7 @@ bash ./examples/data_preprocess/skyrl-sql.sh
 After downloading, your folder structure should look like:
 
 ```bash
-📁 verl-tool/data/
+📁 verl-tool/data/synsql/data
 ├── 📁 bird/
 ├── 📁 spider/
 ├── 📁 Spider-DK/
@@ -50,12 +54,12 @@ After downloading, your folder structure should look like:
 Clone the preprocessed datasets directly:
 
 ```bash
-git clone https://huggingface.co/datasets/VerlTool/SkyRL-SQL-Reproduction/tree/main/data
+huggingface-cli download --local-dir "data/skysql" --repo-type dataset VerlTool/SkyRL-SQL-Reproduction train.parquet test.parquet
 ```
 
 ### Configure Training Script
 
-Update the dataset paths in `sql_experiment/verl-tool/examples/train/skyrl-sql/train.sh`:
+Update the dataset paths in `sql_experiment/verl-tool/examples/train/skysql/train.sh`:
 
 ```bash
 # Set these paths according to your downloaded data
@@ -80,7 +84,7 @@ If you need to reprocess the datasets from scratch:
 
 The training dataset is converted from SynSQL-2.5M format to verl-tool format.
 
-**Script Location**: `verl-tool/examples/data_preprocess/skyrl-sql/prepare_train.py`
+**Script Location**: `verl-tool/examples/data_preprocess/skysql/prepare_train.py`
 
 **Configuration**:
 - Modify `DEFAULT_DATABASE_PATH` to point to the SynSQL-2.5M dataset's `databases` subfolder
@@ -90,7 +94,7 @@ The training dataset is converted from SynSQL-2.5M format to verl-tool format.
 
 The evaluation dataset merges 6 subsets from the Omni-SQL dataset.
 
-**Script Location**: `verl-tool/examples/data_preprocess/skyrl-sql/prepare_test.py`
+**Script Location**: `verl-tool/examples/data_preprocess/skysql/prepare_test.py`
 
 **Before Running**:
 1. Check the demo instructions at the bottom of the script (commented out)
@@ -107,7 +111,7 @@ The evaluation dataset merges 6 subsets from the Omni-SQL dataset.
 
 After completing the data setup:
 1. Verify all paths in your training script
-2. Run the training script: `bash sql_experiment/verl-tool/examples/train/skyrl-sql/train.sh`
+2. Run the training script: `bash sql_experiment/verl-tool/examples/train/skysql/train.sh`
 3. Monitor training progress (via W&B if configured)
 
 ## 🆘 Troubleshooting
