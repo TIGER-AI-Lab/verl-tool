@@ -2,7 +2,7 @@
 
 | Recipe | Description | Related Tool | Results |
 |--------|-------------|--------------|---------|
-| [Math Tool-Integrated RL](./math_tir/README.md) | Training a model that can call the code interpreter to solve mathematical problems | `python_code.py` | TBD |
+| [Math Tool-Integrated RL](./math_tir/README.md) | Training a model that can call the code interpreter to solve mathematical problems | `python_code.py` | [link](../../assets/docs/math_results.md) |
 | [AceCoder](./acecoder/README.md) | Training a model that can call the code interpreter to solve coding problems | `ipython_code.py` / - | TBD |
 | [Search R1](./search_r1/README.md) | Training a model that can call the search tool to retrieve relevant information | `search_retrieval.py` | TBD |
 | [DeepSearch](./deepsearch/README.md) | Training a model that can call the web search tool (google search via serper) to retrieve relevant information | `google_search.py` | TBD |
