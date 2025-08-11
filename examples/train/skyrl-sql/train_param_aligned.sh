@@ -1,6 +1,6 @@
 # pip install sqlparse
 # setup wandb experiments
-export WANDB_API_KEY="082808112389e2ce87f085cabf4ed7cc73511828"
+export WANDB_API_KEY="<placeholder>"
 export https_proxy="http://100.64.117.161:3128"
 
 

@@ -591,3 +591,6 @@ if __name__ == "__main__":
 
 # in reality nobody is using the realistic dataset so skip it
 # python ./prepare_test_dataset.py --process_dev --process_test --process_dk --process_syn --process_bird --local_dir "./processed_spider_datasets"
+
+# python ./prepare_test_dataset.py --process_syn --local_dir "./processed_spider_datasets"
+
