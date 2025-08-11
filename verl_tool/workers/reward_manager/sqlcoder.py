@@ -200,100 +200,49 @@ class SQLCoderRewardManager:
         final_rewards = []
         format_scores = []
         execution_scores = []
+        positive_rewards = []
         
         for i in range(len(data)):
             # Get the entire response for format checking
             entire_block = data.batch['responses'][i]
             entire_block_decoded = self.tokenizer.decode(entire_block, skip_special_tokens=False)
+            # Get database and ground truth information
+            extra_info = data[i].non_tensor_batch.get('extra_info', {})
+            meta = {
+                "db_id": extra_info.get("db_id"),
+                "gold_sql": extra_info.get("gt_sql"),
+                "cmp_method": "bird",
+                "db_path": extra_info.get("db_path")
+            }
+            
+            is_valid, thoughts, parsed_solution, _ = verify_format_and_extract(entire_block_decoded)
+            final_reward = -1.0
+            
+            if is_valid and parsed_solution:
+                try:
+                    execution_score = score(parsed_solution, meta)
+                    final_reward = execution_score
+                except Exception as e:
+                    execution_score = 0.0
+                    print(f"Execution error for trajectory {i}: {str(e)}")
+            elif not is_valid:
+                # Format validation failed - assign penalty (same as SkyRL)
+                final_reward = -1.0
+            format_score = 0.0 if is_valid else -1.0
+            execution_score = final_reward if is_valid else 0.0
+            
+            
+            if final_reward > 0:
+                positive_rewards.append(1)
             
             if self.num_examine == 1:
-                # do not check format score, directly match the <solution>...</solution>
-                solution_code = re.findall(r"(<solution>.*?</solution>)", entire_block_decoded, re.DOTALL)
-                final_reward = 0.0
-                if len(solution_code) > 0:
-                    parsed_solution = solution_code[-1].strip()
-                    
-                    parsed_solution = parsed_solution.replace(SOLUTION_START, "").replace(SOLUTION_END, "")
-                    
-                    # Get database and ground truth information
-                    extra_info = data[i].non_tensor_batch.get('extra_info', {})
-                    meta = {
-                        "db_id": extra_info.get("db_id"),
-                        "gold_sql": extra_info.get("gt_sql"),
-                        "cmp_method": "bird",
-                        "db_path": extra_info.get("db_path")
-                    }
-                
-                    try:
-                        execution_score = score(parsed_solution, meta)
-                        
-                        
-                        # if correctness:
-                        #     execution_score = 1.0  # Perfect execution
-                        # else:
-                        #     execution_score = 0.0  # Execution failed or incorrect result
-                        
-                        
-                    except Exception as e:
-                        execution_score = 0.0  # Execution error
-                        print(f"Execution error for trajectory {i}: {str(e)}")
-                    
-                    final_reward = execution_score
-                
-                # also return dummy format and execution score
-                format_score = 0.0
-                execution_score = final_reward
-                
-            else:
-                
-                # Initialize scores
-                format_score = -1.0  # Default: format penalty
-                execution_score = 0.0  # Default: execution failure
-                
-                # 1. Format reward: Check for required thinking and solution tags
-                has_think_tags = "<think>" in entire_block_decoded and "</think>" in entire_block_decoded
-                has_solution_tags = "<solution>" in entire_block_decoded and "</solution>" in entire_block_decoded
-                
-                if has_think_tags and has_solution_tags:
-                    format_score = 0.0  # No penalty for correct format
-                    
-                    # 2. Execution reward: Extract and evaluate the final solution
-                    solution_code = re.findall(r"(<solution>.*?</solution>)", entire_block_decoded, re.DOTALL)
-                    
-                    if len(solution_code) > 0:
-                        parsed_solution = solution_code[-1].strip()
-                        
-                        # Get database and ground truth information
-                        extra_info = data[i].non_tensor_batch.get('extra_info', {})
-                        meta = {
-                            "db_id": extra_info.get("db_id"),
-                            "gold_sql": extra_info.get("gt_sql"),
-                            "cmp_method": "bird",
-                            "db_path": extra_info.get("db_path")
-                        }
-                        
-                        try:
-                            correctness, execution_result, error_message = score(parsed_solution, meta)
-                            if correctness:
-                                execution_score = 1.0  # Perfect execution
-                            else:
-                                execution_score = 0.0  # Execution failed or incorrect result
-                        except Exception as e:
-                            execution_score = 0.0  # Execution error
-                            print(f"Execution error for trajectory {i}: {str(e)}")
-                
-                # Final reward combines format and execution scores
-                # If format is incorrect (-1), that's the final reward
-                # If format is correct (0), the final reward is the execution score
-                if format_score == -1.0:
-                    final_reward = -1.0
-                else:
-                    final_reward = execution_score
+                final_reward = max(final_reward, 0.0)
+            
             
             final_rewards.append(final_reward)
             format_scores.append(format_score)
             execution_scores.append(execution_score)
-            
+        
             # Set reward at the last token position
             reward_tensor[i, valid_response_length[i].item() - 1] = final_reward
 
@@ -350,7 +299,8 @@ class SQLCoderRewardManager:
             reward_extra_info = {
                 "format_scores": format_scores,
                 "execution_scores": execution_scores,
-                "final_rewards": final_rewards
+                "final_rewards": final_rewards,
+                "positive_rewards": positive_rewards,
             }
             
         if return_dict:
