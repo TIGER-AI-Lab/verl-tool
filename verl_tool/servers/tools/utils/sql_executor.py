@@ -1,16 +1,12 @@
 import os
-import re
-import random
 import sqlite3
-import time
-import itertools
-from collections import defaultdict, namedtuple
-from contextlib import contextmanager
 from typing import (
-    Tuple, Any, List, Set, Literal, Iterator, Dict, Optional, Union
+    Tuple, Any, Dict, Optional
 )
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-import sqlparse
+
+from func_timeout import func_timeout, FunctionTimedOut
+import sys
+import pandas as pd
 
 def score(
     predicted_query_str: str,
@@ -64,12 +60,7 @@ def score(
     else:
         return 0.0, "", ""
 
-def _execute_sql_query(db_file: str, sql: str) -> Tuple[bool, Optional[frozenset], Optional[str]]:
-    """
-    Internal function to execute SQL query.
-    This runs in a separate thread to enable timeout handling.
-    """
-    conn = None
+def _execute_sql(db_file, sql):
     try:
         conn = sqlite3.connect(db_file)
         cursor = conn.cursor()
@@ -78,53 +69,34 @@ def _execute_sql_query(db_file: str, sql: str) -> Tuple[bool, Optional[frozenset
         execution_res = frozenset(cursor.fetchall())
         conn.rollback()
         conn.close()
-        return True, execution_res, None
+        return execution_res
     except Exception as e:
-        try:
-            if conn:
-                conn.rollback()
-                conn.close()
-        except:
-            pass
-        return False, None, str(e)
+        conn.rollback()
+        conn.close()
+        return f"Error executing SQL: {str(e)}, db file: {db_file}"
 
-def _execute_sql_for_score(db_file: str, sql: str, timeout_seconds: int = 10) -> Tuple[bool, Optional[frozenset], Optional[str]]:
+def _execute_sql_for_score(db_file: str, sql: str, timeout:int=5) -> Tuple[bool, Optional[frozenset], Optional[str]]:
     """
-    Execute SQL query for scoring purposes with timeout protection.
-    
-    Args:
-        db_file: Path to the SQLite database file
-        sql: SQL query to execute
-        timeout_seconds: Maximum execution time in seconds (default: 30)
+    Execute SQL query for scoring purposes.
     
     Returns:
         success: bool, whether execution was successful
         results: frozenset or None, the query results
         error: str or None, error message if any
     """
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        try:
-            # Submit the SQL execution task
-            future = executor.submit(_execute_sql_query, db_file, sql)
-            # Wait for completion with timeout
-            success, results, error = future.result(timeout=timeout_seconds)
-            return success, results, error
-            
-        except TimeoutError:
-            error_msg = f"SQL execution timed out after {timeout_seconds} seconds"
-            return False, None, error_msg
-        except Exception as e:
-            return False, None, str(e)
-
-
-from func_timeout import func_timeout, FunctionTimedOut
-import sys
-import pandas as pd
+    try:
+        res = func_timeout(timeout, _execute_sql, args=(db_file, sql))
+        if isinstance(res, frozenset):
+            return True, res, None
+        else:
+            return False, None, str(res)
+    except FunctionTimedOut:
+        return False, None, f"SQL Timeout:\n{sql}"
 
 def sql_observation(
     predicted_query_str: str,
     ground_truth_info: Dict[str, Any],
-    timeout: int = 10
+    timeout: int = 5
 ) -> str:
     """
     Generate an observation string for the SQL query.
@@ -132,7 +104,6 @@ def sql_observation(
     
     db_path = ground_truth_info['db_path']
     sql = predicted_query_str
-    
     
     if sql is None or sql == "":
         obs = "Your previous action is invalid. Follow the format of outputting thinking process and sql tool, and try again."
@@ -145,45 +116,30 @@ def sql_observation(
         obs = _execute_sql_wrapper(db_file, sql, timeout)
 
     return obs
-    
-def _execute_sql(db_file, sql):
-        try:
-            conn = sqlite3.connect(db_file)
-            cursor = conn.cursor()
-            conn.execute("BEGIN TRANSACTION;")
-            cursor.execute(sql)
-            execution_res = frozenset(cursor.fetchall())
-            conn.rollback()
-            conn.close()
-            return execution_res
-        except Exception as e:
-            conn.rollback()
-            conn.close()
-            return f"Error executing SQL: {str(e)}, db file: {db_file}"
         
 def _execute_sql_wrapper(db_file, sql, timeout=5) -> str:
-        try:
-            res = func_timeout(timeout, _execute_sql, args=(db_file, sql))
-            if isinstance(res, frozenset):
-                df = pd.DataFrame(res)
-                res = df.to_string(index=False)
-                # NOTE: observation too long, just truncate
-                if len(res) > 9000:
-                    # just truncate
-                    truncated_df = df.head(50)
-                    res = "Truncated to 50 lines since returned response too long: " + truncated_df.to_string(
-                        index=False
-                    )  # or index=True if you want row numbers
-            else:
-                res = str(res)
+    try:
+        res = func_timeout(timeout, _execute_sql, args=(db_file, sql))
+        if isinstance(res, frozenset):
+            df = pd.DataFrame(res)
+            res = df.to_string(index=False)
+            # NOTE: observation too long, just truncate
+            if len(res) > 9000:
+                # just truncate
+                truncated_df = df.head(50)
+                res = "Truncated to 50 lines since returned response too long: " + truncated_df.to_string(
+                    index=False
+                )  # or index=True if you want row numbers
+        else:
+            res = str(res)
 
-        except KeyboardInterrupt:
-            sys.exit(0)
-        except FunctionTimedOut:
-            res = f"SQL Timeout:\n{sql}"
-        except Exception as e:
-            res = str(e)
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except FunctionTimedOut:
+        res = f"SQL Timeout:\n{sql}"
+    except Exception as e:
+        res = str(e)
 
-        return res
+    return res
 
     
