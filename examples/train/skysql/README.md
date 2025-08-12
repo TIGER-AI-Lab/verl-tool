@@ -57,6 +57,19 @@ Clone the preprocessed datasets directly:
 huggingface-cli download --local-dir "data/skysql" --repo-type dataset VerlTool/SkyRL-SQL-Reproduction train.parquet test.parquet
 ```
 
+Split test.parquet by data_sources:
+
+```python
+import datasets
+import json
+dataset = datasets.load_dataset('parquet', data_files="./data/skysql/test.parquet", split="train")
+all_data_sources = dataset.unique('data_source')
+for data_source in all_data_sources:
+    subset_dataset = dataset.filter(lambda x: x['data_source'] == data_source)
+    subset_dataset.to_parquet(f"./data/skysql/{data_source}.parquet")
+    print(f"Saved {data_source} dataset with {len(subset_dataset)} records to ./data/skysql/{data_source}.parquet")
+```
+
 ### Configure Training Script
 
 Update the dataset paths in `sql_experiment/verl-tool/examples/train/skysql/train.sh`:

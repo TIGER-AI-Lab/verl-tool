@@ -31,7 +31,7 @@ sailctl job create verltooldebug -g 2 -r 1 -p high -f ~/sailctl_high_shm_config.
 sailctl job create verltool -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug
 sailctl job create verltoolmath -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug
 sailctl job create verltool80g -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug 
-sailctl job create verltooldebug -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug 
+sailctl job create verltooldebug -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug 
 
 sailctl job create vtmath15dapo -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtmath7dapo -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args

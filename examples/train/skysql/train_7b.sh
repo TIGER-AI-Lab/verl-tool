@@ -1,7 +1,11 @@
 set -x
 dataset_name=skysql
 train_data=$(pwd)/data/${dataset_name}/train.parquet
-val_data=$(pwd)/data/${dataset_name}/test.parquet
+val_data=[$(pwd)/data/${dataset_name}/spider_dev.parquet,\
+$(pwd)/data/${dataset_name}/spider_dk.parquet,\
+$(pwd)/data/${dataset_name}/spider_test.parquet,\
+$(pwd)/data/${dataset_name}/spider_syn.parquet,\
+$(pwd)/data/${dataset_name}/spider_realistic.parquet]
 model_name=Qwen/Qwen2.5-Coder-7B-Instruct # should use coder model
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
@@ -134,9 +138,9 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=$n_nodes \
     +trainer.remove_previous_ckpt_in_save=True \
-    trainer.save_freq=20 \
-    trainer.test_freq=50 \
-    trainer.total_epochs=10
+    trainer.save_freq=5 \
+    trainer.test_freq=10 \
+    trainer.total_epochs=14
 
 
 pkill -P -9 $server_pid
