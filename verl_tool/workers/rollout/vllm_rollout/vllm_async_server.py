@@ -10,7 +10,17 @@ from starlette.responses import JSONResponse, StreamingResponse
 from vllm.entrypoints.logger import RequestLogger
 from vllm.entrypoints.openai.protocol import ErrorResponse, CompletionRequest, CompletionResponse
 from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
-
+from verl.workers.rollout.vllm_rollout.vllm_async_server import (
+    AsyncEngineArgs,
+    copy_to_local,
+    ExternalZeroMQDistributedExecutor,
+    ExternalRayDistributedExecutor,
+    OpenAIServingChat,
+    OpenAIServingModels,
+    BaseModelPath,
+    SamplingParams,
+    AsyncLLM,
+)
 @ray.remote(num_cpus=1)
 class AsyncvLLMServer(VerlAsyncvLLMServer.__ray_actor_class__):
     async def init_engine(self):
@@ -64,7 +74,7 @@ class AsyncvLLMServer(VerlAsyncvLLMServer.__ray_actor_class__):
             disable_log_stats=config.disable_log_stats,
             max_num_batched_tokens=max_num_batched_tokens,
             enable_chunked_prefill=config.enable_chunked_prefill,
-            enable_prefix_caching=False, # changed to False by verl-tool for higher output quality
+            enable_prefix_caching=True, # changed to False by verl-tool for higher output quality
             trust_remote_code=trust_remote_code,
             seed=config.get("seed", 0),
         )
