@@ -74,7 +74,7 @@ class AsyncvLLMServer(VerlAsyncvLLMServer.__ray_actor_class__):
             disable_log_stats=config.disable_log_stats,
             max_num_batched_tokens=max_num_batched_tokens,
             enable_chunked_prefill=config.enable_chunked_prefill,
-            enable_prefix_caching=True, # changed to False by verl-tool for higher output quality
+            enable_prefix_caching=False, # changed to False by verl-tool for higher output quality
             trust_remote_code=trust_remote_code,
             seed=config.get("seed", 0),
         )

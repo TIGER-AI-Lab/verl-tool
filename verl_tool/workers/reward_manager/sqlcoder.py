@@ -219,7 +219,7 @@ class SQLCoderRewardManager:
             else:
                 score['is_format_correct'] = 0
                 
-            execution_score = sql_score_func(parsed_solution, meta) if parsed_solution else 0.0
+            execution_score = sql_score_func(parsed_solution, meta)[0] if parsed_solution else 0.0
             score['accuracy'] = execution_score
             
             score['score'] = score['accuracy'] if is_format_correct else -1.0 # final score

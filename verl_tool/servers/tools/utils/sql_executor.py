@@ -53,16 +53,16 @@ def score(
     
     # Compare results
     if not pred_success:
-        return 0.0
+        return 0.0, "", ""
     
     if not gt_success:
-        return 0.0
+        return 0.0, "", ""
     
     # Compare the actual data
     if pred_data == gt_data:
-        return 1.0
+        return 1.0, "", ""
     else:
-        return 0.0
+        return 0.0, "", ""
 
 
 def _execute_sql_for_score(db_file: str, sql: str) -> Tuple[bool, Optional[frozenset], Optional[str]]:
