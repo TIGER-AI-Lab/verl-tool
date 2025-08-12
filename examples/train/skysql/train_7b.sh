@@ -1,10 +1,7 @@
-# pip install sqlparse
-# setup wandb experiments
-
 set -x
 dataset_name=skysql
 train_data=$(pwd)/data/${dataset_name}/train.parquet
-val_data=$(pwd)/data/${dataset_name}/test.parquet
+val_data=$(pwd)/data/${dataset_name}/spider_dev.parquet
 model_name=Qwen/Qwen2.5-Coder-7B-Instruct # should use coder model
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
@@ -16,10 +13,10 @@ max_prompt_length=4096
 max_response_length=4096
 max_obs_length=1024
 max_action_length=2048
-temperature=1.0
+temperature=0.6
 top_p=0.95
 strategy="fsdp"
-action_stop_tokens=''
+action_stop_tokens='</sql>'
 max_turns=3 #5
 min_turns=0
 kl_loss_coef=0.0
@@ -36,9 +33,8 @@ do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollo
 use_dynamic_bsz=True # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
-additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
-enable_mtrl=True # enable multi-turn training
+enable_mtrl=False # enable multi-turn training
 rollout_mode='async'
 
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
@@ -101,7 +97,6 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.agent.max_start_length=$max_prompt_length \
     actor_rollout_ref.agent.max_obs_length=$max_obs_length \
     actor_rollout_ref.agent.max_turns=$max_turns \
-    actor_rollout_ref.agent.additional_eos_token_ids=$additional_eos_token_ids \
     actor_rollout_ref.agent.mask_observations=$mask_observations \
     actor_rollout_ref.agent.action_stop_tokens=$action_stop_tokens_file \
     actor_rollout_ref.agent.enable_mtrl=$enable_mtrl \
@@ -134,7 +129,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.logger=['console','wandb','tensorboard'] \
     trainer.project_name=$reward_manager \
     trainer.experiment_name=$run_name \
-    trainer.val_before_train=False \
+    trainer.val_before_train=True \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=$n_nodes \

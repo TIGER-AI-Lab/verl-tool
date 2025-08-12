@@ -493,11 +493,11 @@ class AgentActorManager:
         new_rollings.meta_info.update(rollings.meta_info)
         
         # update raw_prompt_ids, required for vllm inference
-        ray_prompt_ids = []
+        raw_prompt_ids = []
         for i in range(new_rollings.batch['input_ids'].size(0)):
             non_pad_index = torch.nonzero(new_rollings.batch['input_ids'][i] != self.tokenizer.pad_token_id, as_tuple=False)[0][0]
-            ray_prompt_ids.append(new_rollings.batch['input_ids'][i][non_pad_index:].tolist())
-        new_rollings.non_tensor_batch['raw_prompt_ids'] = np.array(ray_prompt_ids, dtype=object)
+            raw_prompt_ids.append(new_rollings.batch['input_ids'][i][non_pad_index:].tolist())
+        new_rollings.non_tensor_batch['raw_prompt_ids'] = np.array(raw_prompt_ids, dtype=object)
 
         effective_lens = new_attention_mask.sum(dim=1)
         min_effective_len = effective_lens.min().item()

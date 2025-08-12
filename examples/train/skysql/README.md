@@ -121,6 +121,8 @@ After completing the data setup:
 - **Memory issues**: Ensure sufficient RAM for processing large datasets
 - **Permission errors**: Check file permissions and disk space 
 
+(**Note: please set `enable_prefix_caching=False` when running!!!**)
+
 Reference:
 
 - https://github.com/RUCKBReasoning/OmniSQL/tree/main/train_and_evaluate

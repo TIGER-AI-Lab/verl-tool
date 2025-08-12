@@ -35,7 +35,7 @@ from verl import DataProto
 from verl.protocol import collate_fn
 from .reward_score import _default_compute_score
 from verl.workers.reward_manager import register
-from verl_tool.servers.tools.utils.sql_executor import score
+from verl_tool.servers.tools.utils.sql_executor import score as sql_score_func
 
 
 THINK_START, THINK_END = "<think>", "</think>"
@@ -84,29 +84,29 @@ def parse_action(action: str, tag_type: str = "sql") -> Tuple[str, bool]:
 
 # Copied from SkyRL-SQL/skyrl_gym/envs/sql/utils.py
 def verify_format_and_extract(output: str):
-    if output.count(SOLUTION_START) != 1:
-        return False, None, None, None
-    pre_solution, tail = output.split(SOLUTION_START, 1)
+    """
+    Verify the format of the output and extract thoughts, solution, and SQL code.
+    Args:
+        output (str): The output string to verify and extract from.
+    Returns:
+        solution (str): The extracted solution SQL code.
+        is_correct_format (bool): Whether the output format is correct.
+    """
+    is_correct_format = True
+    # verify the <solution> tags
+    if not re.search(rf"{SOLUTION_START}.*?{SOLUTION_END}", output, re.S):
+        is_correct_format = False
 
-    if tail.count(SOLUTION_END) != 1:
-        return False, None, None, None
-
-    solution_text, _ = tail.split(SOLUTION_END, 1)
-
-    if re.search(r"</?(think|sql|observation)\b", solution_text, re.I):
-        return False, None, None, None
-
-    thoughts = re.findall(r"<think>(.*?)</think>", output, re.S)
-    if not thoughts:
-        return False, None, None, None
-
-    for m in re.finditer(r"</observation>", pre_solution, re.I):
-        rest = pre_solution[m.end() :].lstrip()
-        if not rest.lower().startswith(THINK_START):
-            return False, None, None, None
-
-    return True, thoughts, solution_text.strip(), None
-
+    # verify the <think> tags
+    if not re.search(rf"{THINK_START}.*?{THINK_END}", output, re.S):
+        is_correct_format = False
+    
+    solution, found_solution = parse_action(output, "solution")
+    
+    if not found_solution:
+        solution, found_solution = parse_action(output, "sql")
+        
+    return solution, is_correct_format
 
 def hash_string(s):
     return hashlib.sha256(s.encode()).hexdigest()
@@ -150,7 +150,6 @@ class SQLCoderRewardManager:
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score if compute_score else _default_compute_score
         self.reward_fn_key = reward_fn_key
-        
         self.step = 0
         
         # Initialize async JSONL writer
@@ -195,17 +194,15 @@ class SQLCoderRewardManager:
         response_ids = data.batch['responses']
         valid_prompt_length = data.batch['attention_mask'][:, :prompt_length].sum(dim=-1)
         valid_response_length = data.batch['attention_mask'][:, prompt_length:].sum(dim=-1)
-        non_tensor_batch = data.non_tensor_batch # dict
+        reward_extra_info = defaultdict(list)
         
-        final_rewards = []
-        format_scores = []
-        execution_scores = []
-        positive_rewards = []
+        scores = []
         
         for i in range(len(data)):
             # Get the entire response for format checking
-            entire_block = data.batch['responses'][i]
-            entire_block_decoded = self.tokenizer.decode(entire_block, skip_special_tokens=False)
+            response = self.tokenizer.decode(
+                response_ids[i][:valid_response_length[i].item()], skip_special_tokens=False
+            )
             # Get database and ground truth information
             extra_info = data[i].non_tensor_batch.get('extra_info', {})
             meta = {
@@ -214,37 +211,35 @@ class SQLCoderRewardManager:
                 "cmp_method": "bird",
                 "db_path": extra_info.get("db_path")
             }
+            score = {}
             
-            is_valid, thoughts, parsed_solution, _ = verify_format_and_extract(entire_block_decoded)
-            final_reward = -1.0
+            parsed_solution, is_format_correct = verify_format_and_extract(response)
+            if is_format_correct:
+                score['is_format_correct'] = 1
+            else:
+                score['is_format_correct'] = 0
+                
+            execution_score = sql_score_func(parsed_solution, meta) if parsed_solution else 0.0
+            score['accuracy'] = execution_score
             
-            if is_valid and parsed_solution:
-                try:
-                    execution_score = score(parsed_solution, meta)
-                    final_reward = execution_score
-                except Exception as e:
-                    execution_score = 0.0
-                    print(f"Execution error for trajectory {i}: {str(e)}")
-            elif not is_valid:
-                # Format validation failed - assign penalty (same as SkyRL)
-                final_reward = -1.0
-            format_score = 0.0 if is_valid else -1.0
-            execution_score = final_reward if is_valid else 0.0
+            score['score'] = score['accuracy'] if is_format_correct else -1.0 # final score
             
-            
-            if final_reward > 0:
-                positive_rewards.append(1)
-            
-            if self.num_examine == 1:
-                final_reward = max(final_reward, 0.0)
-            
-            
-            final_rewards.append(final_reward)
-            format_scores.append(format_score)
-            execution_scores.append(execution_score)
-        
-            # Set reward at the last token position
-            reward_tensor[i, valid_response_length[i].item() - 1] = final_reward
+            scores.append(score)
+
+            if isinstance(score, dict):
+                reward = score["score"]
+                # Store the information including original reward
+                for key, value in score.items():
+                    reward_extra_info[key].append(value)
+                if self.num_examine == 1:
+                    reward = score["accuracy"] # for validation
+            else:
+                if self.num_examine == 1:
+                    reward = score if score > 0 else 0.0
+                else:
+                    reward = score
+
+            reward_tensor[i, valid_response_length - 1] = reward
 
         # Check for additional trajectory statistics if available
         if "turns_stats" in data.non_tensor_batch:
@@ -264,9 +259,7 @@ class SQLCoderRewardManager:
                     "prompt_ntokens": valid_prompt_length[i].item(),
                     "response": self.tokenizer.decode(response_ids[i][:valid_response_length[i].item()], skip_special_tokens=False),
                     "response_ntokens": valid_response_length[i].item(),
-                    "final_reward": final_rewards[i],
-                    "format_score": format_scores[i],
-                    "execution_score": execution_scores[i],
+                    "score": scores[i],
                     "tool_interact_info": data[i].non_tensor_batch.get('tool_interact_info', None),
                     'extra_info': data[i].non_tensor_batch.get('extra_info', None),
                     "step": self.step,  # Add step info for easier tracking
@@ -291,17 +284,6 @@ class SQLCoderRewardManager:
             print(f"===> Queued {len(to_save_records)} records for async save to {temp_file}")
             
             self.step += 1
-            
-        if self.num_examine == 1:
-            # for validation, empty the reward_extra_info, because there are None items and cannot be mean
-            reward_extra_info = defaultdict(list)
-        else:
-            reward_extra_info = {
-                "format_scores": format_scores,
-                "execution_scores": execution_scores,
-                "final_rewards": final_rewards,
-                "positive_rewards": positive_rewards,
-            }
             
         if return_dict:
             return {
