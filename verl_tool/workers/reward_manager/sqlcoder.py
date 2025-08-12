@@ -28,7 +28,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from typing import Tuple
-
+from tqdm import tqdm
 import torch
 from collections import defaultdict
 from verl import DataProto
@@ -197,8 +197,7 @@ class SQLCoderRewardManager:
         reward_extra_info = defaultdict(list)
         
         scores = []
-        
-        for i in range(len(data)):
+        for i in tqdm(range(len(data)), desc="Processing SQLCoder responses", total=len(data)):
             # Get the entire response for format checking
             response = self.tokenizer.decode(
                 response_ids[i][:valid_response_length[i].item()], skip_special_tokens=False

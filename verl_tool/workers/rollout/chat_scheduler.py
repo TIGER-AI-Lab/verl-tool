@@ -375,5 +375,7 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 **kwargs
             )
         output_batch.meta_info["timing"] = {"generate_sequences": time.time() - t_start}
-        logger.info(f"[VerlToolChatCompletionScheduler] generate_sequences for {len(repeated_batch)} number of trajectories done, took", output_batch.meta_info["timing"]["generate_sequences"], "seconds")
+        logger.info("[VerlToolChatCompletionScheduler] generate_sequences for {} number of trajectories done, took {:.2f} seconds".format(
+            len(repeated_batch), output_batch.meta_info["timing"]["generate_sequences"]
+        ))
         return output_batch

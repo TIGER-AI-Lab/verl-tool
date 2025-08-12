@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from typing import (
     Tuple, Any, List, Set, Literal, Iterator, Dict, Optional, Union
 )
-
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import sqlparse
 
 def score(
@@ -64,16 +64,12 @@ def score(
     else:
         return 0.0, "", ""
 
-
-def _execute_sql_for_score(db_file: str, sql: str) -> Tuple[bool, Optional[frozenset], Optional[str]]:
+def _execute_sql_query(db_file: str, sql: str) -> Tuple[bool, Optional[frozenset], Optional[str]]:
     """
-    Execute SQL query for scoring purposes.
-    
-    Returns:
-        success: bool, whether execution was successful
-        results: frozenset or None, the query results
-        error: str or None, error message if any
+    Internal function to execute SQL query.
+    This runs in a separate thread to enable timeout handling.
     """
+    conn = None
     try:
         conn = sqlite3.connect(db_file)
         cursor = conn.cursor()
@@ -85,11 +81,40 @@ def _execute_sql_for_score(db_file: str, sql: str) -> Tuple[bool, Optional[froze
         return True, execution_res, None
     except Exception as e:
         try:
-            conn.rollback()
-            conn.close()
+            if conn:
+                conn.rollback()
+                conn.close()
         except:
             pass
         return False, None, str(e)
+
+def _execute_sql_for_score(db_file: str, sql: str, timeout_seconds: int = 10) -> Tuple[bool, Optional[frozenset], Optional[str]]:
+    """
+    Execute SQL query for scoring purposes with timeout protection.
+    
+    Args:
+        db_file: Path to the SQLite database file
+        sql: SQL query to execute
+        timeout_seconds: Maximum execution time in seconds (default: 30)
+    
+    Returns:
+        success: bool, whether execution was successful
+        results: frozenset or None, the query results
+        error: str or None, error message if any
+    """
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        try:
+            # Submit the SQL execution task
+            future = executor.submit(_execute_sql_query, db_file, sql)
+            # Wait for completion with timeout
+            success, results, error = future.result(timeout=timeout_seconds)
+            return success, results, error
+            
+        except TimeoutError:
+            error_msg = f"SQL execution timed out after {timeout_seconds} seconds"
+            return False, None, error_msg
+        except Exception as e:
+            return False, None, str(e)
 
 
 from func_timeout import func_timeout, FunctionTimedOut
@@ -99,7 +124,7 @@ import pandas as pd
 def sql_observation(
     predicted_query_str: str,
     ground_truth_info: Dict[str, Any],
-    timeout: int = 5
+    timeout: int = 10
 ) -> str:
     """
     Generate an observation string for the SQL query.
