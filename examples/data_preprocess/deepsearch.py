@@ -16,6 +16,8 @@ def main(
     dataset['train'].to_parquet(output_directory / "hard_search_1k.parquet")
     dataset['test_hle'].to_parquet(output_directory / "hle_test.parquet")
     dataset['test_gaia'].to_parquet(output_directory / "gaia_test.parquet")
+    dataset['test_webwalker'].to_parquet(output_directory / "webwalker_test.parquet")
+    dataset['test_xbench'].to_parquet(output_directory / "xbench_test.parquet")
 
 if __name__ == "__main__":
     fire.Fire(main)

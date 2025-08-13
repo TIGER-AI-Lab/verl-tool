@@ -2,14 +2,16 @@ set -x
 dataset_name=deepsearch # or math_torl_offical to use torl training data
 train_data=$(pwd)/data/${dataset_name}/hard_search_1k.parquet
 val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
-$(pwd)/data/${dataset_name}/hle_test.parquet]
+$(pwd)/data/${dataset_name}/hle_test.parquet,\
+$(pwd)/data/${dataset_name}/webwalker_test.parquet,\
+$(pwd)/data/${dataset_name}/xbench_test.parquet]
 model_name=Qwen/Qwen3-8B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
 n=16
 batch_size=128
-ppo_mini_batch_size=32
+ppo_mini_batch_size=128
 max_prompt_length=2048
 max_response_length=8192
 max_action_length=2048
@@ -19,7 +21,7 @@ top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp"
 action_stop_tokens='</python>,</search>'
-max_turns=3
+max_turns=5
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0

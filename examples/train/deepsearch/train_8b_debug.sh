@@ -1,46 +1,45 @@
 set -x
-dataset_name=deepmath_torl # or math_torl_offical to use torl training data
-train_data=$(pwd)/data/${dataset_name}/train.parquet
-val_data=[$(pwd)/data/${dataset_name}/test.parquet,\
-$(pwd)/data/${dataset_name}/math500_test.parquet,\
-$(pwd)/data/${dataset_name}/aime24_test.parquet,\
-$(pwd)/data/${dataset_name}/aime25_test.parquet]
-model_name=Qwen/Qwen2.5-Math-1.5B
+dataset_name=deepsearch # or math_torl_offical to use torl training data
+train_data=$(pwd)/data/${dataset_name}/hard_search_1k.parquet
+val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet]
+model_name=Qwen/Qwen3-8B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=4
+n_gpus_per_node=8
 n_nodes=1
 n=16
 batch_size=128
-ppo_mini_batch_size=128
-max_prompt_length=1024
-max_response_length=3072
-max_obs_length=512
-temperature=1.0
-top_p=1.0
+ppo_mini_batch_size=32
+max_prompt_length=2048
+max_response_length=20480
+max_action_length=2048
+max_obs_length=8192
+temperature=0.6
+top_p=0.95
+val_top_p=0.95
+top_k=-1
 enable_agent=True # enable agent for tool use
 strategy="fsdp"
-action_stop_tokens='```output'
-max_turns=1
+action_stop_tokens='</python>,</search>'
+max_turns=15
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
 kl_loss_type=low_var_kl
 lr=1e-6
-reward_manager=torl
+reward_manager=deepsearch
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
 tensor_model_parallel_size=1
 gpu_memory_utilization=0.6 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
 do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
-use_dynamic_bsz=True # faster
+use_dynamic_bsz=False # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
 additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
-max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="acc-only"
+run_name_postfix="debug-512-64"
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -60,7 +59,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "python_code" --workers_per_tool 8 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "google_search,python_code" --workers_per_tool 4 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"
@@ -115,8 +114,13 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \
     actor_rollout_ref.rollout.temperature=$temperature \
     actor_rollout_ref.rollout.top_p=$top_p \
-    actor_rollout_ref.rollout.top_k=-1 \
+    actor_rollout_ref.rollout.top_k=$top_k \
     actor_rollout_ref.rollout.n=$n \
+    actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
+    actor_rollout_ref.rollout.val_kwargs.top_p=${val_top_p} \
+    actor_rollout_ref.rollout.val_kwargs.top_k=${top_k} \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.n=1 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=$use_dynamic_bsz \
     actor_rollout_ref.rollout.max_num_seqs=512 \
     actor_rollout_ref.rollout.mode=$rollout_mode \
@@ -132,7 +136,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     critic.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
     algorithm.kl_ctrl.kl_coef=$kl_coef \
     trainer.logger=['console','wandb'] \
-    trainer.project_name=$reward_manager \
+    trainer.project_name=deepsearch \
     trainer.experiment_name=$run_name \
     trainer.val_before_train=True \
     trainer.default_hdfs_dir=null \
@@ -141,7 +145,8 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     +trainer.remove_previous_ckpt_in_save=True \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.total_epochs=10
+    trainer.total_epochs=10 \
+    trainer.total_training_steps=100 \
 
 
 pkill -P -9 $server_pid

@@ -9,6 +9,9 @@ import regex as re
 
 import langid
 from .base import BaseTool, register_tool
+from .utils.deepsearch_utils import extract_relevant_info_serper, extract_text_from_url, extract_snippet_with_context
+from .utils.web_agent_utils import generate_webpage_to_reasonchain, get_prev_reasoning_chain
+from tqdm import tqdm
 
 class GoogleSearchEngine:
     """
@@ -26,6 +29,9 @@ class GoogleSearchEngine:
         location: str = "us",
         language: str = "en",
         cache_file: Optional[str] = None,
+        process_snippets: bool = False,
+        summ_model_url: str = None,
+        summ_model_path: str = None  # Default model path
     ):
         """
         Initialize the Google search engine.
@@ -37,6 +43,9 @@ class GoogleSearchEngine:
             location: Country code for search localization
             language: Language code for search results
             cache_file: Path to cache file
+            process_snippets: whether to further process snippets to extract relevant information through web scraping
+            summ_model_url: the model used to summarize the processed snippets results
+            summ_model_path: the path to the model used for summarization
         """
         # API configuration
         self._api_key = api_key
@@ -50,6 +59,11 @@ class GoogleSearchEngine:
         self._cache_lock = threading.Lock()
         self._lang_id_lock = threading.Lock()
         self._search_count = 0
+        self.process_snippets = process_snippets
+        self.summ_model_url = summ_model_url
+        self.summ_model_path = summ_model_path
+        if not summ_model_url or not summ_model_path:
+            self.process_snippets = False
         
         # Setup cache file
         self._setup_cache_file(cache_file)
@@ -62,7 +76,10 @@ class GoogleSearchEngine:
         if cache_file is None:
             cache_dir = pathlib.Path.home() / ".verl_cache"
             cache_dir.mkdir(exist_ok=True)
-            self._cache_file = cache_dir / "google_search_cache.jsonl"
+            if not self.process_snippets:
+                self._cache_file = cache_dir / "google_search_cache.jsonl"
+            else:
+                self._cache_file = cache_dir / "google_search_with_summ_cache.jsonl"
         else:
             self._cache_file = pathlib.Path(cache_file)
             self._cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -136,7 +153,7 @@ class GoogleSearchEngine:
             timeout=timeout  # This will raise requests.exceptions.Timeout if exceeded
         )
 
-    def execute(self, query: str, timeout: int = 30) -> str:
+    def execute(self, query: str, timeout: int = 30, prev_steps: Union[List[str], str]=None) -> str:
         """
         Execute Google search query with simplified error handling.
 
@@ -152,31 +169,37 @@ class GoogleSearchEngine:
         if not query:
             return "Empty search query provided."
         
-        # Check cache first
-        if query in self._cache:
-            print(f"Cache hit for: {query}")
-            return self._cache[query]
-
         try:
-            # Make API request with timeout
-            response = self._make_request(query, timeout)
+            # Check cache first
+            if query in self._cache:
+                # print(f"Cache hit for: {query}") # debug
+                if not self.process_snippets:
+                    return self._cache[query]
+                else:
+                    data = json.loads(self._cache[query])
+            else:
+                # Make API request with timeout
+                response = self._make_request(query, timeout)
 
-            if response.status_code != 200:
-                error_msg = f"Search API error {response.status_code}: {response.text[:200]}"
-                print(error_msg)
-                return f"Search failed: {error_msg}"
+                if response.status_code != 200:
+                    error_msg = f"Search API error {response.status_code}: {response.text[:200]}"
+                    print(error_msg)
+                    return f"Search failed: {error_msg}"
 
-            # Parse and format results
-            data = response.json()
-            result = self._extract_and_format_results(data)
+                # Parse and format results
+                data = response.json()
             
+            result = self._extract_and_format_results(query, data, prev_steps)
+            if not self.process_snippets:
+                cache_item = result
+            else:
+                cache_item = json.dumps(data, ensure_ascii=False)
             # Update cache
             with self._cache_lock:
-                self._cache[query] = result
+                self._cache[query] = cache_item
                 self._search_count += 1
-            
             # Save cache item
-            self._append_cache(query, result)
+            self._append_cache(query, cache_item)
             
             return result
 
@@ -195,32 +218,62 @@ class GoogleSearchEngine:
             print(error_msg)
             return f"Search failed: {error_msg}"
     
-    def _extract_and_format_results(self, data: Dict) -> str:
+    def _extract_and_format_results(self, query, data: Dict, prev_steps: Union[List[str], str]=None) -> str:
         """Extract and format search results."""
         if 'organic' not in data or not data['organic']:
             return "No search results found."
-
-        results = []
-        seen_snippets = set()
         
-        for idx, result in enumerate(data['organic'][:self._max_results], 1):
-            title = result.get('title', 'No title').strip()
-            link = result.get('link', '').strip()
-            snippet = result.get('snippet', result.get('description', '')).strip()
+        if not self.process_snippets:
+            results = []
+            seen_snippets = set()
             
-            # Skip duplicates
-            if snippet and snippet not in seen_snippets:
-                # Truncate if needed
-                if len(snippet) > self._result_length:
-                    snippet = snippet[:self._result_length] + "..."
+            for idx, result in enumerate(data['organic'][:self._max_results], 1):
+                title = result.get('title', 'No title').strip()
+                link = result.get('link', '').strip()
+                snippet = result.get('snippet', result.get('description', '')).strip()
                 
-                formatted = f"Result {idx}:\n{title}\n{link}\n{snippet}\n"
-                results.append(formatted)
-                seen_snippets.add(snippet)
+                # Skip duplicates
+                if snippet and snippet not in seen_snippets:
+                    # Truncate if needed
+                    if len(snippet) > self._result_length:
+                        snippet = snippet[:self._result_length] + "..."
+                    formatted = f"**Page {idx}**\n**Title:** {title}\n**Link:** {link}\n**Snippet:** {snippet}\n"
+                    results.append(formatted)
+                    seen_snippets.add(snippet)
 
-        return "\n".join(results) if results else "No search results found."
+            return "\n".join(results) if results else "No search results found."
+        else:
+            assert self.summ_model_url is not None, "Summarization model URL must be provided when process_snippets is True"
+            assert self.summ_model_path is not None, "Summarization model path must be provided when process_snippets is True"
+            
+            extracted_info = extract_relevant_info_serper(data)
+            print("Fetching and extracting context for each snippet...")
+            for info in tqdm(extracted_info, desc="Processing Snippets"):
+                full_text = extract_text_from_url(info['url'], use_jina=False)  # Get full webpage text
+                if full_text and not full_text.startswith("Error"):
+                    success, context = extract_snippet_with_context(full_text, info['snippet'])
+                    if success:
+                        info['context'] = context
+                    else:
+                        info['context'] = f"Could not extract context. Returning first 8000 chars: {full_text[:8000]}"
+                else:
+                    info['context'] = f"Failed to fetch full text: {full_text}"
+            
+            formatted_document = ""
+            for i, doc_info in enumerate(extracted_info):
+                formatted_document += f"**Web Page {i + 1}:**\n"
+                formatted_document += json.dumps(doc_info, ensure_ascii=False, indent=2) + "\n"
 
-
+            prev_reasoning_chain = get_prev_reasoning_chain(prev_steps, begin_search_tag="<search>", begin_search_result_tag="<result>")
+            summary = generate_webpage_to_reasonchain(
+                prev_reasoning_chain,
+                query,
+                formatted_document,
+                summ_model_url=self.summ_model_url,
+                summ_model_path=self.summ_model_path
+            )
+            return summary
+            
 @register_tool
 class GoogleSearchTool(BaseTool):
     """
@@ -238,7 +291,10 @@ class GoogleSearchTool(BaseTool):
         location: str = "us",
         language: str = "en",
         cache_file: Optional[str] = None,
-        default_timeout: int = 10
+        default_timeout: int = 10,
+        process_snippets: bool = False,
+        summ_model_url: str = None,
+        summ_model_path: str = None  # Default model path
     ):
         """
         Initialize the Google search tool.
@@ -258,10 +314,16 @@ class GoogleSearchTool(BaseTool):
             result_length=result_length,
             location=location,
             language=language,
-            cache_file=cache_file
+            cache_file=cache_file,
+            process_snippets=process_snippets,
+            summ_model_url=summ_model_url,
+            summ_model_path=summ_model_path
         )
         
         self.default_timeout = default_timeout
+        self.summ_model_url = summ_model_url
+        self.summ_model_path = summ_model_path
+        self.process_snippets = process_snippets
     
     def get_usage_inst(self):
         """Get usage instructions."""
@@ -319,9 +381,11 @@ class GoogleSearchTool(BaseTool):
             if extra_field and 'timeout' in extra_field:
                 timeout = min(extra_field['timeout'], 60)  # Cap at 60 seconds
             
+            prev_actions = [x['action'] for x in env['previous_obs']] if self.process_snippets else None
+            
             try:
                 # Execute search
-                search_results = self.search_engine.execute(parsed_query, timeout)
+                search_results = self.search_engine.execute(parsed_query, timeout, prev_actions)
                 observation = f"Search results for '{parsed_query}':\n\n{search_results}"
                 done, valid = False, True
                 

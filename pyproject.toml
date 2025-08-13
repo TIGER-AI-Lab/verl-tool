@@ -39,7 +39,9 @@ search_tool = [
     "google-api-python-client",
     "chardet",
     "bs4",
-    "langid"
+    "langid",
+    "pdfplumber",
+    "nltk"
 ]
 sql_tool = [
     "func_timeout",
