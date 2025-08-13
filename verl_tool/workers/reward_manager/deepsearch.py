@@ -17,7 +17,7 @@ from .torl import ToRLRewardManager
 import regex as re
 
 from typing import Union, List
-def compute_score(solution_str, ground_truth: Union[List[str], str]):
+def deepsearch_compute_score(solution_str, ground_truth: Union[List[str], str]):
     if isinstance(ground_truth, str):
         ground_truth = [ground_truth]
     score = 0.0
@@ -36,8 +36,7 @@ class PixelReasonerRewardManager(ToRLRewardManager):
     def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source') -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
-        # self.compute_score = compute_score if compute_score else _default_compute_score
-        self.compute_score = compute_score if compute_score else compute_score
+        self.compute_score = deepsearch_compute_score
         self.reward_fn_key = reward_fn_key
         self.step = None
         self.add_tool_call_reward = True # +0.1 if the response contains a tool call
