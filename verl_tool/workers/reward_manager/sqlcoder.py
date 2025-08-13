@@ -83,7 +83,7 @@ def parse_action(action: str, tag_type: str = "sql") -> Tuple[str, bool]:
     return sql_code, True
 
 # Copied from SkyRL-SQL/skyrl_gym/envs/sql/utils.py
-def verify_format_and_extract(output: str):
+def verify_format_and_extract(output: str, action_list: list) -> Tuple[str, bool]:
     """
     Verify the format of the output and extract thoughts, solution, and SQL code.
     Args:
@@ -93,13 +93,15 @@ def verify_format_and_extract(output: str):
         is_correct_format (bool): Whether the output format is correct.
     """
     is_correct_format = True
-    # verify the <solution> tags
-    if not re.search(rf"{SOLUTION_START}.*?{SOLUTION_END}", output, re.S):
+    # verify the <solution> tags in the last action
+    if not re.search(rf"{SOLUTION_START}.*?{SOLUTION_END}", action_list[-1], re.S):
         is_correct_format = False
 
-    # verify the <think> tags
-    if not re.search(rf"{THINK_START}.*?{THINK_END}", output, re.S):
-        is_correct_format = False
+    # verify the <think> tags in as starts in each action
+    for action in action_list:
+        if not (action.startswith(THINK_START) and re.search(rf"{THINK_START}.*?{THINK_END}", action, re.S)):
+            is_correct_format = False
+            break
     
     solution, found_solution = parse_action(output, "solution")
     
@@ -211,8 +213,9 @@ class SQLCoderRewardManager:
                 "db_path": extra_info.get("db_path")
             }
             score = {}
+            action_list = [x['action'] for x in data[i].non_tensor_batch['tool_interact_info']]
             
-            parsed_solution, is_format_correct = verify_format_and_extract(response)
+            parsed_solution, is_format_correct = verify_format_and_extract(response, action_list)
             if is_format_correct:
                 score['is_format_correct'] = 1
             else:

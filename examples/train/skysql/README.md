@@ -10,13 +10,41 @@ This guide covers data preprocessing and training setup for the skysql model usi
 uv pip install -e .[sql_tool]
 ```
 
-## 📋 Overview
+## Data Preparation
+```bash
+# prepare the the training databases
+huggingface-cli download --local-dir "data/skysql" --repo-type dataset VerlTool/SkyRL-SQL-Reproduction databases.zip
+unzip data/skysql/databases.zip -d data/skysql
+python examples/data_preprocess/skysql/sql.py --dataset_path VerlTool/SkyRL-SQL-Reproduction --train_databases_dir ./data/skysql/databases --test_databases_dir ./data/skysql/databases --save_dir ./data/skysql
+```
 
+## Training
+```bash
+bash examples/train/skysql/train_7b.sh
+```
+
+## 📝 Important Notes
+
+- **Note: please set `enable_prefix_caching=False` when running to reproduce the validation results!!!**
+
+
+
+## Reference:
+
+- https://github.com/RUCKBReasoning/OmniSQL/tree/main/train_and_evaluate
+- https://github.com/RUCKBReasoning/OmniSQL/blob/main/train_and_evaluate/eval_open_source_models.py
+- https://skyrl.readthedocs.io/en/latest/examples/multi_turn_text2sql.html
+- https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-train
+- https://novasky-ai.notion.site/skyrl-sql
+
+
+
+## Others
+<details>
+  <summary>Other Dataset Preparation logs (Optional, might be outdated)</summary>
 The skysql training requires two main datasets:
 - **Omni-SQL dataset** (~50GB): Contains evaluation data for Spider-series and BIRD datasets, plus the SynSQL-2.5M training dataset
 - **Preprocessed training/evaluation datasets**: Ready-to-use parquet files for training
-
-## 🗄️ Dataset Setup
 
 ### Step 1: Download Omni-SQL Dataset
 
@@ -72,7 +100,7 @@ for data_source in all_data_sources:
 
 ### Configure Training Script
 
-Update the dataset paths in `sql_experiment/verl-tool/examples/train/skysql/train.sh`:
+Update the dataset paths in `examples/train/skysql/train_7b.sh`:
 
 ```bash
 # Set these paths according to your downloaded data
@@ -113,33 +141,4 @@ The evaluation dataset merges 6 subsets from the Omni-SQL dataset.
 1. Check the demo instructions at the bottom of the script (commented out)
 2. **Critical**: Update all database paths for `DEV_PROMPT` and `DEV_SCHEMA` (lines 25-41 in the script)
 
-## 📝 Important Notes
-
-- Ensure you have sufficient disk space (~50GB+ for datasets)
-- The SynSQL-2.5M dataset is embedded within the Omni-SQL dataset
-- All paths in preprocessing scripts must be absolute paths to avoid issues
-- Review and update file paths before running any preprocessing scripts
-
-## 🏃‍♂️ Next Steps
-
-After completing the data setup:
-1. Verify all paths in your training script
-2. Run the training script: `bash sql_experiment/verl-tool/examples/train/skysql/train.sh`
-3. Monitor training progress (via W&B if configured)
-
-## 🆘 Troubleshooting
-
-- **Path issues**: Ensure all paths are absolute and point to existing files/directories
-- **Missing data**: Verify the Omni-SQL download completed successfully
-- **Memory issues**: Ensure sufficient RAM for processing large datasets
-- **Permission errors**: Check file permissions and disk space 
-
-(**Note: please set `enable_prefix_caching=False` when running!!!**)
-
-Reference:
-
-- https://github.com/RUCKBReasoning/OmniSQL/tree/main/train_and_evaluate
-- https://github.com/RUCKBReasoning/OmniSQL/blob/main/train_and_evaluate/eval_open_source_models.py
-- https://skyrl.readthedocs.io/en/latest/examples/multi_turn_text2sql.html
-- https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-train
-- https://novasky-ai.notion.site/skyrl-sql
+</details>

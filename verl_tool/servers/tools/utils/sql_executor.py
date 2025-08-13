@@ -73,7 +73,8 @@ def _execute_sql(db_file, sql):
     except Exception as e:
         conn.rollback()
         conn.close()
-        return f"Error executing SQL: {str(e)}, db file: {db_file}"
+        # return f"Error executing SQL: {str(e)}, db file: {db_file}" # for debug
+        return f"Error executing SQL: {str(e)}"
 
 def _execute_sql_for_score(db_file: str, sql: str, timeout:int=5) -> Tuple[bool, Optional[frozenset], Optional[str]]:
     """
