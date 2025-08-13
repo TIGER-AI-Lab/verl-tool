@@ -31,7 +31,8 @@ class GoogleSearchEngine:
         cache_file: Optional[str] = None,
         process_snippets: bool = False,
         summ_model_url: str = None,
-        summ_model_path: str = None  # Default model path
+        summ_model_path: str = None,
+        max_doc_len: int = 3000
     ):
         """
         Initialize the Google search engine.
@@ -62,8 +63,7 @@ class GoogleSearchEngine:
         self.process_snippets = process_snippets
         self.summ_model_url = summ_model_url
         self.summ_model_path = summ_model_path
-        if not summ_model_url or not summ_model_path:
-            self.process_snippets = False
+        self._max_doc_len = max_doc_len
         
         # Setup cache file
         self._setup_cache_file(cache_file)
@@ -243,19 +243,22 @@ class GoogleSearchEngine:
 
             return "\n".join(results) if results else "No search results found."
         else:
-            assert self.summ_model_url is not None, "Summarization model URL must be provided when process_snippets is True"
-            assert self.summ_model_path is not None, "Summarization model path must be provided when process_snippets is True"
+            if self.summ_model_url is None or self.summ_model_path is None:
+                max_doc_len = self._result_length
+                do_summarization = False
+            else:
+                max_doc_len = self._max_doc_len
+                do_summarization = True
             
             extracted_info = extract_relevant_info_serper(data)
-            print("Fetching and extracting context for each snippet...")
-            for info in tqdm(extracted_info, desc="Processing Snippets"):
+            for info in tqdm(extracted_info, desc="Processing Snippets", disable=True):
                 full_text = extract_text_from_url(info['url'], use_jina=False)  # Get full webpage text
                 if full_text and not full_text.startswith("Error"):
-                    success, context = extract_snippet_with_context(full_text, info['snippet'])
+                    success, context = extract_snippet_with_context(full_text, info['snippet'], context_chars=max_doc_len)
                     if success:
                         info['context'] = context
                     else:
-                        info['context'] = f"Could not extract context. Returning first 8000 chars: {full_text[:8000]}"
+                        info['context'] = f"Could not extract context. Returning first {max_doc_len} chars: {full_text[:max_doc_len]}"
                 else:
                     info['context'] = f"Failed to fetch full text: {full_text}"
             
@@ -264,15 +267,19 @@ class GoogleSearchEngine:
                 formatted_document += f"**Web Page {i + 1}:**\n"
                 formatted_document += json.dumps(doc_info, ensure_ascii=False, indent=2) + "\n"
 
-            prev_reasoning_chain = get_prev_reasoning_chain(prev_steps, begin_search_tag="<search>", begin_search_result_tag="<result>")
-            summary = generate_webpage_to_reasonchain(
-                prev_reasoning_chain,
-                query,
-                formatted_document,
-                summ_model_url=self.summ_model_url,
-                summ_model_path=self.summ_model_path
-            )
-            return summary
+            if do_summarization:
+                prev_reasoning_chain = get_prev_reasoning_chain(prev_steps, begin_search_tag="<search>", begin_search_result_tag="<result>")
+                summary = generate_webpage_to_reasonchain(
+                    prev_reasoning_chain,
+                    query,
+                    formatted_document,
+                    summ_model_url=self.summ_model_url,
+                    summ_model_path=self.summ_model_path
+                )
+                return summary
+            else:
+                # If no summarization, just return the formatted document
+                return formatted_document if formatted_document else "No relevant information found."
             
 @register_tool
 class GoogleSearchTool(BaseTool):
