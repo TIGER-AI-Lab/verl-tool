@@ -42,5 +42,6 @@ search_tool = [
     "langid"
 ]
 sql_tool = [
-    "func_timeout"
+    "func_timeout",
+    "sqlparse",
 ]

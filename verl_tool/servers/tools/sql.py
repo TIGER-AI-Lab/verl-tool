@@ -8,7 +8,7 @@ import json
 import uuid
 import hashlib
 from typing import Tuple, Dict, Any, Optional
-from .utils.sql_executor import score, sql_observation
+from .utils.sql_executor import sql_observation
 
 # Timeout for code execution in seconds
 TIMEOUT = 5

@@ -37,13 +37,10 @@ from .reward_score import _default_compute_score
 from verl.workers.reward_manager import register
 from verl_tool.servers.tools.utils.sql_executor import score as sql_score_func
 
-
 THINK_START, THINK_END = "<think>", "</think>"
 SQL_START, SQL_END = "<sql>", "</sql>"
 SOLUTION_START, SOLUTION_END = "<solution>", "</solution>"
 OBS_START, OBS_END = "<observation>", "</observation>"
-
-
 
 def parse_action(action: str, tag_type: str = "sql") -> Tuple[str, bool]:
     """
@@ -113,37 +110,6 @@ def verify_format_and_extract(output: str, action_list: list) -> Tuple[str, bool
 def hash_string(s):
     return hashlib.sha256(s.encode()).hexdigest()
 
-class AsyncJSONLWriter:
-    """Async JSONL writer that saves records without blocking the main process."""
-    
-    def __init__(self):
-        self.write_queue = Queue()
-        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jsonl_writer")
-        self.running = True
-        
-    def _write_worker(self, file_path, records):
-        """Worker function to write records to JSONL file."""
-        try:
-            with open(file_path, 'a', encoding='utf-8') as f:
-                for record in records:
-                    json_line = json.dumps(record, ensure_ascii=False)
-                    f.write(json_line + '\n')
-            print(f"===> Successfully saved {len(records)} records to {file_path}")
-        except Exception as e:
-            print(f"===> Error saving records to {file_path}: {str(e)}")
-    
-    def save_async(self, file_path, records):
-        """Queue records for async saving."""
-        if self.running:
-            future = self.executor.submit(self._write_worker, file_path, records)
-            return future
-        return None
-    
-    def shutdown(self):
-        """Shutdown the async writer gracefully."""
-        self.running = False
-        self.executor.shutdown(wait=True)
-
 @register("sqlcoder")
 class SQLCoderRewardManager:
     def __init__(
@@ -153,9 +119,6 @@ class SQLCoderRewardManager:
         self.compute_score = compute_score if compute_score else _default_compute_score
         self.reward_fn_key = reward_fn_key
         self.step = 0
-        
-        # Initialize async JSONL writer
-        self.async_writer = AsyncJSONLWriter()
         
 
     def __call__(self, data: DataProto, return_dict=False):
@@ -282,8 +245,11 @@ class SQLCoderRewardManager:
                 temp_file = self.record_dir / f"sqlcoder-step-{self.step}.jsonl"
             
             # Save asynchronously without blocking
-            future = self.async_writer.save_async(temp_file, to_save_records)
-            print(f"===> Queued {len(to_save_records)} records for async save to {temp_file}")
+            with open(temp_file, 'a') as f:
+                for record in to_save_records:
+                    json_line = json.dumps(record, ensure_ascii=False)
+                    f.write(json_line + '\n')
+            print(f"===> {len(to_save_records)} records for async save to {temp_file}")
             
             self.step += 1
             
@@ -294,15 +260,3 @@ class SQLCoderRewardManager:
             }
         else:
             return reward_tensor
-    
-    def shutdown(self):
-        """Gracefully shutdown the reward manager and async writer."""
-        if hasattr(self, 'async_writer'):
-            self.async_writer.shutdown()
-    
-    def __del__(self):
-        """Ensure cleanup when object is destroyed."""
-        try:
-            self.shutdown()
-        except:
-            pass  # Ignore cleanup errors during destruction
