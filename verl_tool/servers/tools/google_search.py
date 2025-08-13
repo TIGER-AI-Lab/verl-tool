@@ -172,7 +172,7 @@ class GoogleSearchEngine:
         try:
             # Check cache first
             if query in self._cache:
-                print(f"Cache hit for: {query}")
+                # print(f"Cache hit for: {query}") # debug
                 if not self.process_snippets:
                     return self._cache[query]
                 else:
@@ -237,8 +237,7 @@ class GoogleSearchEngine:
                     # Truncate if needed
                     if len(snippet) > self._result_length:
                         snippet = snippet[:self._result_length] + "..."
-                    
-                    formatted = f"Result {idx}:\n{title}\n{link}\n{snippet}\n"
+                    formatted = f"**Page {idx}**\n**Title:** {title}\n**Link:** {link}\n**Snippet:** {snippet}\n"
                     results.append(formatted)
                     seen_snippets.add(snippet)
 
