@@ -42,7 +42,7 @@ enable_mtrl=False # enable multi-turn training
 rollout_mode='async'
 
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="debug-sqlcoder"
+run_name_postfix="debug"
 run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 port=$(shuf -i 30000-31000 -n 1)
 export VERL_RUN_ID=$run_name

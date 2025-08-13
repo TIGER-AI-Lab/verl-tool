@@ -164,8 +164,9 @@ class SQLCoderRewardManager:
         scores = []
         for i in tqdm(range(len(data)), desc="Processing SQLCoder responses", total=len(data)):
             # Get the entire response for format checking
+            valid_response_length_i = valid_response_length[i].item()
             response = self.tokenizer.decode(
-                response_ids[i][:valid_response_length[i].item()], skip_special_tokens=False
+                response_ids[i][:valid_response_length_i], skip_special_tokens=False
             )
             # Get database and ground truth information
             extra_info = data[i].non_tensor_batch.get('extra_info', {})
@@ -204,7 +205,7 @@ class SQLCoderRewardManager:
                 else:
                     reward = score
 
-            reward_tensor[i, valid_response_length - 1] = reward
+            reward_tensor[i, valid_response_length_i - 1] = reward
 
         # Check for additional trajectory statistics if available
         if "turns_stats" in data.non_tensor_batch:
