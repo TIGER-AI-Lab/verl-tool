@@ -11,13 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from .reward_score import _default_compute_score
 from .reward_score.torl_math import compute_score as torl_compute_score
 from verl.workers.reward_manager import register
-from collections import defaultdict
 from .torl import ToRLRewardManager
-from math_verify import parse, verify
 import regex as re
+
+from typing import Union, List
+def compute_score(solution_str, ground_truth: Union[List[str], str]):
+    if isinstance(ground_truth, str):
+        ground_truth = [ground_truth]
+    score = 0.0
+    for gt in ground_truth:
+        score = max(score, torl_compute_score(solution_str, gt))
+    return score
 
 @register("deepsearch")
 class PixelReasonerRewardManager(ToRLRewardManager):
@@ -31,7 +37,7 @@ class PixelReasonerRewardManager(ToRLRewardManager):
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         # self.compute_score = compute_score if compute_score else _default_compute_score
-        self.compute_score = torl_compute_score
+        self.compute_score = compute_score if compute_score else compute_score
         self.reward_fn_key = reward_fn_key
         self.step = None
         self.add_tool_call_reward = True # +0.1 if the response contains a tool call

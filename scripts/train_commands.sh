@@ -56,7 +56,10 @@ export HF_HOME="/home/aiops/jiangdf/.cache/huggingface"
 source /home/aiops/jiangdf/Workspace/verl-tool/.venv/bin/activate
 cd /home/aiops/jiangdf/Workspace/verl-tool 
 
-bash examples/train/torl/train_qwen_1.5B_math_deep_math_dapo.sh
+bash examples/train/math_tir/train_1.5b_grpo.sh
+bash examples/train/math_tir/train_7b_grpo.sh
+
+
 bash examples/train/torl/train_qwen_7B_math_deep_math_dapo.sh
 bash examples/train/torl/train_qwen_1.5B_math_deep_math.sh
 bash examples/train/torl/train_qwen_7B_math_deep_math.sh
