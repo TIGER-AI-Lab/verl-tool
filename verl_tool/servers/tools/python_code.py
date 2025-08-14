@@ -394,7 +394,7 @@ class PythonCodeTool(BaseTool):
             if action.count("```") % 2 == 0:  # Even number of backticks (closed block)
                 formatted_obs = f"\n```{output_tag}\n{raw_observation}\n```\n"
             else:  # Odd number (unclosed block)
-                formatted_obs = f"{output_tag}\n{raw_observation}\n```\n"
+                formatted_obs = f"\n{raw_observation}\n```\n"
         elif any(pattern in action for pattern in ["</tool_call>"]):
             # Tool call patterns - prefer code blocks, give in <tool_response> format
             formatted_obs = f"\n<tool_response>\n```{output_tag}\n{raw_observation}\n```\n</tool_response>\n"
