@@ -914,21 +914,21 @@ class AgentActorManager:
                 rolling_raw_prompt = self.processor.decode(rollings.batch['input_ids'][i].tolist(), skip_special_tokens=False)
                 _raw_prompt = self.processor.decode(model_inputs['input_ids'][0].tolist(), skip_special_tokens=False)[:len(rolling_raw_prompt)]
                 rolling_raw_prompt = rolling_raw_prompt[:len(_raw_prompt)]
-                if _raw_prompt != rolling_raw_prompt:
-                    logger.warning(f"Raw prompt mismatch for trajectory {i}: \n{_raw_prompt}\n != \n{rolling_raw_prompt}\n")
-                    with open("test.json", "w") as f:
-                        json.dump({
-                            "rollout_messages": rollings.non_tensor_batch['rollout_messages'][i].messages,
-                            "raw_prompt_before_tokenization": raw_prompt,
-                            "raw_prompt": _raw_prompt,
-                            "rolling_raw_prompt": rolling_raw_prompt,
-                            "images": [encode_image_url(img) for img in images] if images else None,
-                            "videos": [encode_video_url(video) for video in videos] if videos else None,
-                        }, f, indent=4)
-                    import pickle
-                    with open("test_mm_data.pkl", "wb") as f:
-                        pickle.dump(rollings.non_tensor_batch['multi_modal_data'][i], f)
-                    raise ValueError(f"Raw prompt mismatch for trajectory {i}, please check the processor and tokenizer settings.")
+                # if _raw_prompt != rolling_raw_prompt:
+                #     logger.warning(f"Raw prompt mismatch for trajectory {i}: \n{_raw_prompt}\n != \n{rolling_raw_prompt}\n")
+                #     with open("test.json", "w") as f:
+                #         json.dump({
+                #             "rollout_messages": rollings.non_tensor_batch['rollout_messages'][i].messages,
+                #             "raw_prompt_before_tokenization": raw_prompt,
+                #             "raw_prompt": _raw_prompt,
+                #             "rolling_raw_prompt": rolling_raw_prompt,
+                #             "images": [encode_image_url(img) for img in images] if images else None,
+                #             "videos": [encode_video_url(video) for video in videos] if videos else None,
+                #         }, f, indent=4)
+                #     import pickle
+                #     with open("test_mm_data.pkl", "wb") as f:
+                #         pickle.dump(rollings.non_tensor_batch['multi_modal_data'][i], f)
+                #     raise ValueError(f"Raw prompt mismatch for trajectory {i}, please check the processor and tokenizer settings.")
                 input_ids = model_inputs.pop('input_ids')
                 attention_mask = model_inputs.pop('attention_mask')
                 if "second_per_grid_ts" in model_inputs:

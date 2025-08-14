@@ -5,7 +5,7 @@ val_data=[$(pwd)/data/${dataset_name}/val.parquet]
 model_name=VerlTool/pixel-reaoner-qwen2-5vl-3b-sft
 # model_name=TIGER-Lab/PixelReasoner-RL-v1
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=8
+n_gpus_per_node=4
 n_nodes=1
 n=8
 batch_size=128
@@ -147,7 +147,9 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     +trainer.remove_previous_ckpt_in_save=True \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.total_epochs=10
+    trainer.total_epochs=10 \
+    trainer.total_training_steps=100 \
+    
 
 pkill -P -9 $server_pid
 kill -9 $kill $server_pid
