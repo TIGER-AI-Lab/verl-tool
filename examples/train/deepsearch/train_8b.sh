@@ -1,7 +1,10 @@
 set -x
 dataset_name=deepsearch # or math_torl_offical to use torl training data
 train_data=$(pwd)/data/${dataset_name}/hard_search_1k.parquet
-val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet]
+val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
+$(pwd)/data/${dataset_name}/hle_test.parquet,\
+$(pwd)/data/${dataset_name}/webwalker_test.parquet,\
+$(pwd)/data/${dataset_name}/xbench_test.parquet]
 model_name=Qwen/Qwen3-8B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
@@ -146,7 +149,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
     trainer.total_epochs=10 \
-    trainer.total_training_steps=100 \
+    trainer.total_training_steps=100
 
 
 pkill -P -9 $server_pid
