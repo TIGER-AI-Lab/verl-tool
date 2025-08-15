@@ -3,6 +3,11 @@
 python examples/data_preprocess/deepsearch.py --dataset_path=VerlTool/deepsearch
 ```
 
+You can download our previous google serper cache to save your cost during the training:
+```bash
+huggingface-cli download VerlTool/deepsearch google_search_cache.jsonl --local-dir ~/.verl_cache --repo-type dataset
+```
+
 ### Test the Tool Server
 ```bash
 # Start the tool server
