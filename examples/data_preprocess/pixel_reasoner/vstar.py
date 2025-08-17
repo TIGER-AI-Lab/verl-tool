@@ -100,35 +100,21 @@ def get_mm_content_len(processor, example):
     return inputs.input_ids.shape[1]
 
 def main(
-    dataset_path: str = 'TIGER-Lab/PixelReasoner-RL-Data',
-    local_dir: str = 'data/pixel_reasoner',
-    version: str = None,
-    seed: int = 42,
+    dataset_path: str = 'JasperHaozhe/VStar-EvalData-PixelReasoner',
+    split: str = 'test',
+    local_dir: str = 'data/pixel_reasoner/vstar',
     image_sep = "<image>",
-    video_sep = "<video>",
-    filter_len=None,
-    include_videos=True,
 ):
-    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+    
     local_dir = Path(local_dir)
-    local_dir = local_dir / (dataset_path.split('/')[-1].replace('-', '_'))
     local_dir.mkdir(parents=True, exist_ok=True)
-    
-    dataset = datasets.load_dataset(dataset_path, split='train')
 
-    # 500 examples for testing
-    train_dataset = dataset
-    
-    # download images and videos
-    image_zip_file = hf_hub_download(repo_id=dataset_path, filename='images.zip', repo_type='dataset')
-    video_zip_file = hf_hub_download(repo_id=dataset_path, filename='videos.zip', repo_type='dataset')
-    # extract the zip files to local_dir/images and local_dir/videos
+    dataset = datasets.load_dataset(dataset_path, split=split)
     image_dir = local_dir / 'images'
-    video_dir = local_dir / 'videos'
-    image_dir.mkdir(parents=True, exist_ok=True)
-    video_dir.mkdir(parents=True, exist_ok=True)
+    image_zip_file = hf_hub_download(repo_id=dataset_path, filename='images.zip', local_dir=local_dir, repo_type='dataset')
     image_extraction_marker = image_dir / 'finish_extracting.txt'
-    video_extraction_marker = video_dir / 'finish_extracting.txt'
+
+    image_dir.mkdir(parents=True, exist_ok=True)
     if not image_extraction_marker.exists():
         print(f"Extracting images from {image_zip_file} to {image_dir}")
         with zipfile.ZipFile(image_zip_file, 'r') as zip_ref:
@@ -138,31 +124,21 @@ def main(
         print(f"Images extracted successfully to {image_dir}.")
     else:
         print(f"Images already extracted at {image_dir}. Skipping extraction.")
-    if not video_extraction_marker.exists():
-        print(f"Extracting videos from {video_zip_file} to {video_dir}")
-        with zipfile.ZipFile(video_zip_file, 'r') as zip_ref:
-            zip_ref.extractall(video_dir)
-        with open(video_dir / 'finish_extracting.txt', 'w') as f:
-            f.write('Videos extracted successfully.')
-        print(f"Videos extracted successfully to {video_dir}.")
-
     # add a row to each data item that represents a unique id
     def make_map_fn(split):
 
         def process_fn(example, idx):
+            question_id = example.get("qid")
             question_raw = example.pop('question')
             question_raw += f"\n\n{guideline}"
-            image = example.pop('image')
-            is_video = example.pop('is_video')
-            answer = example.pop('answer')[0]
-            # we use absolute paths for images and videos
-            if is_video:
-                assert all((video_dir / video).exists() for video in image), f"Some video files do not exist in {video_dir}"
-                extra_info_images = [(video_dir / video).absolute().as_posix() for video in image]
-            else:
-                assert (image_dir / image[0]).exists(), f"Image file {image[0]} does not exist in {image_dir}"
-                extra_info_images = [(image_dir / image[0]).absolute().as_posix()]
-            mm_content = image_sep * len(extra_info_images) + question_raw
+            # image = example.pop('image')[0]
+            images = example.pop('image')
+            is_video = example.get('is_video', False)
+            image_paths = [image_dir / image for image in images]
+            answer = example.pop('answer')
+
+            assert all([image_path.exists() for image_path in image_paths]), f"Some images do not exist: {image_paths}"
+            mm_content = question_raw
 
             data = {
                 "data_source": dataset_path,
@@ -176,7 +152,7 @@ def main(
                         "content": mm_content,
                     }
                 ],
-                "images": [{"image": image} for image in extra_info_images],
+                "images": [{"image": image_path.absolute().as_posix()} for image_path in image_paths],
                 "ability": "visual_reasoning",
                 "reward_model": {
                     "style": "rule",
@@ -185,48 +161,22 @@ def main(
                 "extra_info": {
                     'split': split,
                     'index': idx,
-                    'qid': example.get('qid', f'{split}_{idx}'),
-                    'is_video': bool(is_video),
-                    'images': extra_info_images,
+                    'qid': question_id,
+                    'is_video': is_video,
+                    'images': [image_path.absolute().as_posix() for image_path in image_paths]
                 }
             }
-            if filter_len and filter_len > 0:
-                mm_content_len = get_mm_content_len(processor, data)
-                data['extra_info']['mm_content_len'] = mm_content_len
             return data
 
         return process_fn
-
-    if not include_videos:
-        train_dataset = train_dataset.filter(lambda x: not x['is_video'], num_proc=8)
-        print(f"Filtered out video examples. Remaining {len(train_dataset)} examples.")
-    
-    train_dataset = train_dataset.map(function=make_map_fn('train'), with_indices=True, remove_columns=train_dataset.column_names, num_proc=32)
-    if filter_len and filter_len > 0:
-        _train_dataset = train_dataset.filter(lambda x: x['extra_info']['mm_content_len'] and x['extra_info']['mm_content_len'] <= filter_len, num_proc=8)
-        print(f"Filtered {len(train_dataset) - len(_train_dataset)}/{len(train_dataset)} examples from training dataset due to content length > {filter_len}")
-        train_dataset = _train_dataset
-    # split 400 as val
-    train_dataset, val_dataset = train_dataset.train_test_split(test_size=100, seed=seed).values()
-    
-    print(f"Loaded {len(train_dataset)} training samples")
-    print(f"Loaded {len(val_dataset)} validation samples")
-    print(f"Example of a training sample:")
-    print(train_dataset[0])
-    
-    if version is not None:
-        local_dir = local_dir / version
-    train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
-    val_dataset.to_parquet(os.path.join(local_dir, 'val.parquet'))
-    print(f"Saved to {len(train_dataset)} training samples to {local_dir}/train.parquet")
-    print(f"Saved to {len(val_dataset)} validation samples to {local_dir}/val.parquet")
+    dataset = dataset.map(function=make_map_fn(split), with_indices=True, remove_columns=dataset.column_names, num_proc=32)
+    print(dataset[0])
+    dataset.to_parquet(os.path.join(local_dir, 'test.parquet'))
+    print(f"Saved to {len(dataset)} testing samples to {local_dir}/train.parquet")
 
 if __name__ == '__main__':
     fire.Fire(main)
     
 """
-python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version max_8192 --include_videos=True --filter_len=8192
-python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version no_video --include_videos=False
-python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version no_video_max_8192 --include_videos=False --filter_len=8192
-python examples/data_preprocess/pixel_reasoner.py --dataset_path=TIGER-Lab/PixelReasoner-RL-Data --local_dir=data/pixel_reasoner --version no_video_max_2048 --include_videos=False --filter_len=2048
+python examples/data_preprocess/pixel_reasoner/vstar.py --dataset_path=JasperHaozhe/VStar-EvalData-PixelReasoner --split=test --local_dir=data/pixel_reasoner/vstar
 """
