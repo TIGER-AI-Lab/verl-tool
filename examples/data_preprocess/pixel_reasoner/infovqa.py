@@ -132,11 +132,13 @@ def main(
             question_id = example.get("qid")
             question_raw = example.pop('question')
             question_raw += f"\n\n{guideline}"
-            image = example.pop('image')[0]
-            image_path = image_dir / image
+            images = example.pop('image')
+            is_video = example.get('is_video', False)
+            image_paths = [image_dir / image for image in images]
             answer = example.pop('answer')
+            answer = [answer] if isinstance(answer, str) else answer
 
-            assert image_path.exists()
+            assert all([image_path.exists() for image_path in image_paths]), f"Some images do not exist: {image_paths}"
             mm_content = image_sep + question_raw
 
             data = {
@@ -151,7 +153,7 @@ def main(
                         "content": mm_content,
                     }
                 ],
-                "images": [{"image": image_path.absolute().as_posix()}],
+                "images": [{"image": image_path.absolute().as_posix()} for image_path in image_paths],
                 "ability": "visual_reasoning",
                 "reward_model": {
                     "style": "rule",
@@ -161,8 +163,8 @@ def main(
                     'split': split,
                     'index': idx,
                     'qid': question_id,
-                    'is_video': False,
-                    'images': [image_path.absolute().as_posix()]
+                    'is_video': is_video,
+                    'images': [image_path.absolute().as_posix() for image_path in image_paths]
                 }
             }
             return data

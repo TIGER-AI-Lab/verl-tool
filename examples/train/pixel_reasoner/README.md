@@ -22,12 +22,15 @@ Tips:
 ### Evaluation
 1. Dataset
 ```bash
-data_dir=data/pixel_reasoner
-mkdir -p $data_dir
-# tallyQA
-wget https://github.com/manoja328/tallyqa/blob/master/tallyqa.zip?raw=true -O $data_dir/tallyqa.zip
-mkdir -p $data_dir/tallyqa
-unzip $data_dir/tallyqa.zip -d $data_dir/tallyqa
+python examples/data_preprocess/pixel_reasoner/infovqa.py --dataset_path=JasperHaozhe/InfoVQA-EvalData-PixelReasoner --split=test --local_dir=data/pixel_reasoner/info_vqa
+python examples/data_preprocess/pixel_reasoner/mvbench.py --dataset_path=JasperHaozhe/MVBench-EvalData-PixelReasoner --split=test --local_dir=data/pixel_reasoner/mvbench
+python examples/data_preprocess/pixel_reasoner/tallyqa.py --dataset_path=JasperHaozhe/TallyQA-EvalData-PixelReasoner --split=test --local_dir=data/pixel_reasoner/tallyqa
+python examples/data_preprocess/pixel_reasoner/vstar.py --dataset_path=JasperHaozhe/VStar-EvalData-PixelReasoner --split=test --local_dir=data/pixel_reasoner/vstar
+```
+
+2. Evaluation
+```bash
+bash examples/train/pixel_reasoner/eval.sh
 ```
 
 ### Notes

@@ -42,6 +42,8 @@ def normalize_answer(answer):
 
 
 def pixel_reasoner_score(solution_str, ground_truth):
+    if isinstance(ground_truth, list):
+        return max([pixel_reasoner_score(solution_str, gt) for gt in ground_truth])
     solution_str = normalize_answer(solution_str)
     if "\\boxed" in ground_truth:
         ground_truth = normalize_answer(ground_truth)

@@ -1,10 +1,10 @@
 set -x
 dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
-# val_data=[$(pwd)/data/info_vqa/DocVQA/test.parquet]
-val_data=[$(pwd)/data/pixel_reasoner/info_vqa/test.parquet,\
-$(pwd)/data/pixel_reasoner/tallyqa/test.parquet,\
-$(pwd)/data/pixel_reasoner/vstar/test.parquet]
+val_data=[$(pwd)/data/info_vqa/vstar/test.parquet]
+# val_data=[$(pwd)/data/pixel_reasoner/info_vqa/test.parquet,\
+# $(pwd)/data/pixel_reasoner/tallyqa/test.parquet,\
+# $(pwd)/data/pixel_reasoner/vstar/test.parquet]
 # $(pwd)/data/pixel_reasoner/mvbench/test.parquet
 model_name=VerlTool/pixel_reasoner-3b-grpo-n8-b128-t1.0-lr1e-6_global_step_90
 # model_name=TIGER-Lab/PixelReasoner-RL-v1
@@ -14,7 +14,7 @@ n_nodes=1
 n=8
 batch_size=128
 ppo_mini_batch_size=64
-max_prompt_length=16384
+max_prompt_length=32768
  #should be big to avoid any truncation of image tokens which will cause error
 max_response_length=16384
 max_obs_length=8192 # should be big to avoid any truncation of image tokens which will cause error
@@ -45,7 +45,7 @@ enable_mtrl=True # enable multi-turn training
 max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 max_num_batched_tokens=5000
-run_name_postfix="debug-complex-reward"
+run_name_postfix="eval"
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -74,7 +74,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     algorithm.adv_estimator=$rl_alg \
     data.train_files=$train_data \
     data.val_files=$val_data \
-    data.dataloader_num_workers=4 \
+    data.dataloader_num_workers=2 \
     data.train_batch_size=$batch_size \
     data.val_batch_size=250 \
     data.max_prompt_length=$max_prompt_length \

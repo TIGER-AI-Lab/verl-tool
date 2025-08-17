@@ -136,6 +136,7 @@ def main(
             is_video = example.get('is_video', False)
             image_paths = [image_dir / image for image in images]
             answer = example.pop('answer')
+            answer = [answer] if isinstance(answer, str) else answer
 
             assert all([image_path.exists() for image_path in image_paths]), f"Some images do not exist: {image_paths}"
             mm_content = question_raw
