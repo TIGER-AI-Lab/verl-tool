@@ -198,9 +198,9 @@ class GoogleSearchEngine:
             with self._cache_lock:
                 self._cache[query] = cache_item
                 self._search_count += 1
-            # Save cache item
-            self._append_cache(query, cache_item)
-            
+                # Save cache item
+                self._append_cache(query, cache_item)
+                
             return result
 
         except requests.exceptions.Timeout:
