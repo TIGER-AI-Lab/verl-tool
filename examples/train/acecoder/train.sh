@@ -8,10 +8,10 @@ val_data=[$(pwd)/data/${dataset_name1}/test.parquet]
 
 model_name=VerlTool/Qwen2.5-Coder-7B-Inst-Interpreter-thinking
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=8
+n_gpus_per_node=4
 n_nodes=1
 n=16
-batch_size=128
+batch_size=64
 ppo_mini_batch_size=$batch_size
 max_prompt_length=1024
 max_response_length=3072

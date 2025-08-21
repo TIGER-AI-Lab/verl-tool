@@ -15,8 +15,9 @@ naive
 # $(pwd)/data/${dataset_name2}/train.parquet]
 # val_data=[$(pwd)/data/${dataset_name1}/test.parquet,\
 # $(pwd)/data/${dataset_name2}/test.parquet]
-train_data=[$(pwd)/data/${dataset_name8}/train.parquet]
-val_data=[$(pwd)/data/${dataset_name8}/test.parquet]
+dataset_name=${dataset_name1}
+train_data=[$(pwd)/data/${dataset_name}/train.parquet]
+val_data=[$(pwd)/data/${dataset_name}/test.parquet]
 model_name='/map-vepfs/chi/huggingface/hub/Qwen2.5-Coder-7B'
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can 
 not be effective
