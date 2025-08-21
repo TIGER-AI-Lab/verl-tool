@@ -44,7 +44,7 @@ sailctl job create vtsrdapo7b -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_sh
 sailctl job create vtsr3b -g 4 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 sailctl job create vtsr7b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
 
-sailctl job create vtds8b -g 8 -r 1 -p high -f ~/sailctl_high_shm_config.yaml --debug --args
+sailctl job create vtds8b80g -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug --args
 
 sailctl job create vtpr8b -g 8 -r 1 -p high --high-vram -f ~/sailctl_high_shm_config.yaml --debug --args
 
