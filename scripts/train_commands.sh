@@ -20,6 +20,7 @@ bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.lo
 
 bash examples/train/skysql/train_7b.sh > logs/skysql_7b_debug.log 2>&1 &
 
+bash examples/train/pixel_reasoner/eval.sh > logs/pixel_reasoner_eval.log 2>&1 &
 
 # add-apt-repository ppa:deki/firejail
 # apt-get update
@@ -85,5 +86,6 @@ bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug.lo
 bash examples/train/pixel_reasoner/train_3b.sh > logs/pixel_reasoner_3b_debug_complex_reward.log 2>&1 &
 bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug.log 2>&1 &
 bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_qwen25vl_debug_complex_reward.log 2>&1 &
+bash examples/train/pixel_reasoner/train_qwen25vl.sh > logs/pixel_reasoner_reproduce.log 2>&1 &
 
 bash examples/train/skysql/train_7b.sh > logs/skysql_7b_debug.log 2>&1 &

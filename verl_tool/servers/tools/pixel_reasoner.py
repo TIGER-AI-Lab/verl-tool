@@ -8,6 +8,8 @@ import base64
 import io
 from PIL import Image
 from pathlib import Path
+from verl_tool.llm_agent.vision_utils import process_image
+
 def crop( str_image, bbox_2d,padding=(0.1,0.1)):
     """
     Crop the image based on the bounding box coordinates.
@@ -18,6 +20,8 @@ def crop( str_image, bbox_2d,padding=(0.1,0.1)):
         isinstance(str_image, str) and os.path.exists(str_image):
         # If the image is a file path, open it directly
         image = Image.open(str_image)
+    elif isinstance(str_image, Image.Image):
+        image = str_image
     else:
         image = decode_image_url(str_image)
     img_x, img_y = image.size
@@ -76,7 +80,7 @@ class PixelReaonerTool(BaseTool):
     tool_type = "pixel_reasoner"
 
     stop_tokens = [ "</tool_call>"]
-    valid_mcp_func_names = ['zoom_in', 'crop_image_normalized', 'select_frames']
+    valid_mcp_func_names = ['zoom_in', 'crop_image_normalized', 'select_frames', 'crop_image']
 
     def get_usage_inst(self):
         return ""
@@ -199,8 +203,6 @@ class PixelReaonerTool(BaseTool):
             observation = f"Missing parameters: {', '.join(missing_parameters)}"
         elif not isinstance(parameters['bbox_2d'], list) or len(parameters['bbox_2d']) != 4:
             observation = "Invalid bbox_2d format. It should be a list of four numbers."
-        elif not all(float(x) >= 0 and float(x) <= 1 for x in parameters['bbox_2d']):
-            observation = "Invalid bbox_2d values. They should be normalized coordinates within [0.0, 1.0]."
         elif not isinstance(parameters['target_image'], int) or parameters['target_image'] <= 0 or parameters['target_image'] > len(env['images']):
             observation = f"Invalid target_image index. It should be an integer between 1 and the number of previous images ({len(env['images'])})."
         else:
@@ -208,9 +210,11 @@ class PixelReaonerTool(BaseTool):
                 previous_images = env['images']
                 img_to_crop = previous_images[parameters['target_image']-1]
                 cropped_img = crop(img_to_crop, parameters['bbox_2d'])
+                cropped_img = process_image({"image": cropped_img})
                 encoded_cropped_img = encode_image_url(cropped_img)
+                image_width, image_height = cropped_img.size
                 observation = {
-                    'obs': "Here is the cropped image.\n<image>",
+                    'obs': f"Here is the cropped image. (Image Size: {image_width}x{image_height})\n<image>",
                     'image': encoded_cropped_img,
                 }
                 valid = True
@@ -236,9 +240,13 @@ class PixelReaonerTool(BaseTool):
         else:
             try:
                 target_frames = [env['images'][frame - 1] for frame in parameters['target_frames']]
+                target_frames = [crop(img, (0, 0, 1, 1)) for img in target_frames]  # Crop to full size
+                target_frames = [process_image({"image": img}) for img in target_frames]
+                target_frame_width, target_frame_height = target_frames[0].size
+                num_frames = len(target_frames)
                 observation = {
-                    'obs': "Here are the selected frames.\n"+"<image>"*len(target_frames),
-                    'image': [encode_image_url(crop(img, (0, 0, 1, 1))) for img in target_frames],
+                    'obs': f"Here are the selected frames. (Frame Size: {target_frame_width}x{target_frame_height}, Numbered 1 to {num_frames}):"+"<image>"*len(target_frames),
+                    'image': [encode_image_url(img) for img in target_frames]
                 }
                 valid = True
             except Exception as e:
@@ -280,7 +288,7 @@ class PixelReaonerTool(BaseTool):
             elif not isinstance(parsed_action['arguments'], dict):
                 observation = f"'arguments' should be a dictionary of parameters key-value pairs, got {type(parsed_action['arguments'])}."
                 valid = False
-            elif parsed_action['name'] in ['zoom_in', 'crop_image_normalized']:
+            elif parsed_action['name'] in ['zoom_in', 'crop_image_normalized', 'crop_image']:
                 try:
                     observation, valid = self.conduct_zoom_in_action(parsed_action['arguments'], env)
                 except Exception as e:
@@ -297,13 +305,13 @@ class PixelReaonerTool(BaseTool):
             else:
                 observation = "Unknown action name."
                 valid = False
-            # warp with <tool_response> and </tool_response>
-            if isinstance(observation, dict):
-                observation['obs'] = f"\n<tool_response>{observation['obs']}</tool_response>"
-            elif isinstance(observation, str):
-                observation = f"\n<tool_response>{observation}</tool_response>"
-            else:
-                raise ValueError("Observation must be a string or a dictionary.")
+            # Original Pixel Reasoner did not wrap with <tool_response>
+            # if isinstance(observation, dict):
+            #     observation['obs'] = f"\n<tool_response>{observation['obs']}</tool_response>"
+            # elif isinstance(observation, str):
+            #     observation = f"\n<tool_response>{observation}</tool_response>"
+            # else:
+            #     raise ValueError("Observation must be a string or a dictionary.")
 
         self.update_env(trajectory_id, env, parsed_action, is_valid, extra_field, observation)
         self.save_env(trajectory_id, env)

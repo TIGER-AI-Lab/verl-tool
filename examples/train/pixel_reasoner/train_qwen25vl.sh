@@ -1,16 +1,17 @@
 set -x
-dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
+dataset_name=pixel_reasoner/PixelReasoner_RL_Data
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
-val_data=[$(pwd)/data/${dataset_name}/val.parquet]
+val_data=[$(pwd)/data/${dataset_name}/val.parquet,\
+$(pwd)/data/pixel_reasoner/vstar/test.parquet]
 model_name=TIGER-Lab/PixelReasoner-WarmStart
 # model_name=TIGER-Lab/PixelReasoner-RL-v1
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
 n=8
-batch_size=128
-ppo_mini_batch_size=64
-max_prompt_length=16384 #should be big to avoid any truncation of image tokens which will cause error
+batch_size=512
+ppo_mini_batch_size=32
+max_prompt_length=32768 #should be big to avoid any truncation of image tokens which will cause error
 max_response_length=16384
 max_obs_length=8192
 ppo_max_token_len_per_gpu=$(expr $max_prompt_length + $max_response_length)
@@ -19,7 +20,7 @@ top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp2"
 action_stop_tokens='</tool_call>'
-max_turns=2
+max_turns=3
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0

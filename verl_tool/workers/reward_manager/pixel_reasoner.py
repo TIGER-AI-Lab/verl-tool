@@ -244,7 +244,7 @@ class PixelReasonerRewardManager:
                         if isinstance(tool_interact['image'], list):
                             tool_interact['image'] = [x[:50] for x in tool_interact['image']]  # crop the image to first 50 characters
                         elif isinstance(tool_interact['image'], str):
-                            tool_interact['image'] = tool_interact['image'][:50]
+                            tool_interact['image'] = tool_interact['image'][:50] # for debug
             
             to_save_prompt = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=False)
             to_save_resposne = self.tokenizer.decode(response_ids[:valid_response_length], skip_special_tokens=False)

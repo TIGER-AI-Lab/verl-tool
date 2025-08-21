@@ -1,15 +1,19 @@
 set -x
 dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
-val_data=[$(pwd)/data/info_vqa/vstar/test.parquet]
+val_data=[$(pwd)/data/pixel_reasoner/vstar/test.parquet]
 # val_data=[$(pwd)/data/pixel_reasoner/info_vqa/test.parquet,\
 # $(pwd)/data/pixel_reasoner/tallyqa/test.parquet,\
 # $(pwd)/data/pixel_reasoner/vstar/test.parquet]
 # $(pwd)/data/pixel_reasoner/mvbench/test.parquet
-model_name=VerlTool/pixel_reasoner-3b-grpo-n8-b128-t1.0-lr1e-6_global_step_90
-# model_name=TIGER-Lab/PixelReasoner-RL-v1
+# model_name=VerlTool/pixel_reasoner-3b-grpo-n8-b128-t1.0-lr1e-6_global_step_90
+# model_name=VerlTool/pixel_reasoner-7b-grpo-n8-b128-t1.0-lr1e-6_global_step_80
+# model_name=VerlTool/pixel_reasoner-7b-grpo-n8-b128-t1.0-lr1e-6-complex-reward_global_step_90
+# model_name=VerlTool/pixel-reaoner-3b-grpo-n8-b128-t1.0-lr1e-6-complex-reward_global_step_100
+model_name=TIGER-Lab/PixelReasoner-RL-v1
+# model_name=TIGER-Lab/PixelReasoner-WarmStart
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=8
+n_gpus_per_node=4
 n_nodes=1
 n=8
 batch_size=128
@@ -24,7 +28,7 @@ top_p=1.0
 enable_agent=True # enable agent for tool use
 strategy="fsdp2"
 action_stop_tokens='</tool_call>'
-max_turns=2
+max_turns=5
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -42,14 +46,14 @@ fsdp_size=-1
 additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=True # enable multi-turn training
-max_action_length=2048
+max_action_length=4096
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 max_num_batched_tokens=5000
-run_name_postfix="eval"
+run_name_postfix=""
 if [ "$enable_agent" = "True" ]; then
-    run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="eval_${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
-    run_name="${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="eval_${reward_manager}-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 fi
 export VERL_RUN_ID=$run_name
 export NCCL_DEBUG=INFO
