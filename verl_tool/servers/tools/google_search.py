@@ -12,6 +12,7 @@ from .base import BaseTool, register_tool
 from .utils.deepsearch_utils import extract_relevant_info_serper, extract_text_from_url, extract_snippet_with_context
 from .utils.web_agent_utils import generate_webpage_to_reasonchain, get_prev_reasoning_chain
 from tqdm import tqdm
+from func_timeout import func_set_timeout, FunctionTimedOut
 
 class GoogleSearchEngine:
     """
@@ -57,7 +58,6 @@ class GoogleSearchEngine:
         
         # Simple cache with thread lock
         self._cache = {}
-        self._cache_lock = threading.Lock()
         self._lang_id_lock = threading.Lock()
         self._search_count = 0
         self.process_snippets = process_snippets
@@ -102,7 +102,10 @@ class GoogleSearchEngine:
             print(f"Failed to load cache: {e}")
             self._cache = {}
     
+    @func_set_timeout(5)
     def _append_cache(self, cache_key: str, cache_value: Union[str, Dict]) -> None:
+        self._cache[cache_key] = cache_value
+        self._search_count += 1
         with open(self._cache_file, "a", encoding="utf-8") as f:
             entry = {
                 "query": cache_key,
@@ -110,6 +113,7 @@ class GoogleSearchEngine:
             }
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
+    @func_set_timeout(10)
     def _make_request(self, query: str, timeout: int) -> requests.Response:
         """
         Send request to Serper API with proper timeout handling.
@@ -194,17 +198,14 @@ class GoogleSearchEngine:
                 cache_item = result
             else:
                 cache_item = json.dumps(data, ensure_ascii=False)
-            # Update cache
-            with self._cache_lock:
-                self._cache[query] = cache_item
-                self._search_count += 1
-                # Save cache item
-                self._append_cache(query, cache_item)
-                
-            return result
 
         except requests.exceptions.Timeout:
             error_msg = f"Search request timed out after {timeout} seconds"
+            print(error_msg)
+            return f"Search failed: {error_msg}"
+        
+        except FunctionTimedOut:
+            error_msg = f"Search request timed out after {timeout} seconds in FunctionTimeOut"
             print(error_msg)
             return f"Search failed: {error_msg}"
             
@@ -217,6 +218,11 @@ class GoogleSearchEngine:
             error_msg = f"Unexpected error: {str(e)}"
             print(error_msg)
             return f"Search failed: {error_msg}"
+
+        # Save cache item
+        self._append_cache(query, cache_item)
+            
+        return result
     
     def _extract_and_format_results(self, query, data: Dict, prev_steps: Union[List[str], str]=None) -> str:
         """Extract and format search results."""
