@@ -8,7 +8,10 @@ dependencies = [
     "fire>=0.7.0",
     "psutils>=3.3.9",
     "timeout-decorator>=0.5.0",
-    "pyext"
+    "pyext",
+    "qwen_vl_utils",
+    "transformers<4.53.0",
+    "tensorboard"
 ]
 
 [tool.setuptools]
@@ -30,8 +33,11 @@ torl = [
 search_tool = [
     "google-api-python-client",
     "chardet",
-    "bs4"
+    "bs4",
+    "langid"
 ]
 sql_tool = [
-    "sqlparse"
+    "sqlparse",
+    "nltk",
+    "func_timeout"
 ]

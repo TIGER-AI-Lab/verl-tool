@@ -293,7 +293,7 @@ tests/e2e/toy_examples/deepspeed/synchronous/output.txt
 # ckpt
 *.lock
 
-data/
+/data
 *.parquet
 
 
@@ -310,3 +310,6 @@ verl_step_records/
 /*.txt
 /tensorboard_log
 /tensorboard_log/*
+/*.pkl
+/entropy_vis
+/*.sh

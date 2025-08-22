@@ -2,6 +2,18 @@ import time
 from collections import defaultdict
 from typing import Dict
 
+def nested_copy(obj):
+    """
+    Recursively copy nested objects (lists, dicts, etc.) to avoid reference issues.
+    """
+    if isinstance(obj, dict):
+        return {k: nested_copy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [nested_copy(item) for item in obj]
+    elif hasattr(obj, 'copy'):
+        return obj.copy()
+    else:
+        return obj
 class PerformanceTimer:
     """Helper class to track execution times"""
     def __init__(self, do_timer: bool = True):

@@ -114,8 +114,8 @@ class AceCoderRewardManager:
     """
     The Reward Manager used in https://github.com/TIGER-AI-Lab/AceCoder
     """
-
-    def __init__(self, tokenizer, num_examine, compute_score=None, run_id=None) -> None:
+    name = "acecoder"
+    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source'):
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
@@ -129,7 +129,8 @@ class AceCoderRewardManager:
         self.add_unfinished_traj_penalty = True # -0.25 if the traj is not finished
         self.add_no_tool_interact_penalty = True # -1.0 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
-        
+        self.reward_fn_key = reward_fn_key
+
         try:
             from acecoder import evaluate_test_cases
         except ImportError:
@@ -447,9 +448,9 @@ class AceCoderRewardManager:
                     to_save_records[i]['extra_info']['inputs_outputs'] = to_save_records[i]['extra_info']['inputs_outputs'][:1000]
             # Save the records to a file
             if self.num_examine == 1:
-                temp_file = self.record_dir / f"acecoder-step-val-{self.step_idx}.json"
+                temp_file = self.record_dir / f"{self.name}-step-val-{self.step_idx}.json"
             else:
-                temp_file = self.record_dir / f"acecoder-step-{self.step_idx}.json"
+                temp_file = self.record_dir / f"{self.name}-step-{self.step_idx}.json"
             self.step_idx += 1
             with open(temp_file, "w") as f:
                 json.dump(to_save_records, f, indent=4)

@@ -2,22 +2,20 @@
 Tool Server - A FastAPI server to manage and execute tools based on incoming requests.
 Using asyncio for concurrent processing.
 """
-import asyncio
+import asyncio, inspect
 import logging
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
 from tqdm import tqdm
 import regex as re
-
+import json
 import fire
 import uvicorn
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .utils import hash_requests
-from collections import defaultdict
 
 from .tools import get_tool_cls, ALL_TOOLS, set_use_tqdm
-from dataclasses import dataclass
 
 # Configure logging
 logging.basicConfig(
@@ -26,16 +24,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class DictObservation:
-    """Dataclass for structured observations"""
-    obs: str
-    reward: Union[int, float, None] = None
     
 class AgentResponse(BaseModel):
-    """Model for outgoing agent responses"""
-    observations: List[Union[str,  dict]]
+    """Model for outgoing agent responses
+        Observations: List[DictObservation] - List of observations for each action
+            - Keys:
+                - obs: str (required) - The main observation string
+                - reward: Union[int, float, None] - Optional reward value
+                - any other fields as needed
+        dones: List[bool] - List indicating if the action is done
+        valids: List[bool] - List indicating if the action is valid
+    """
+    observations: List[Union[str, dict]]
     dones: List[bool]
     valids: List[bool]
 
@@ -66,12 +66,12 @@ class AsyncToolManager:
             tool_types = tuple(t for t in tool_types if t != "finish")
             tool_types = tool_types + ("finish",)
             
-        logger.info(f"Initializing tools: {tool_types}")
+        print(f"Initializing tools: {tool_types}")
         for tool_type in tool_types:
             try:
                 tool_cls = get_tool_cls(tool_type)
                 self.tools[tool_type] = tool_cls(num_workers=num_workers)
-                logger.info(f"Initialized tool: {tool_type}")
+                print(f"Initialized tool: {tool_type}")
             except Exception as e:
                 logger.error(f"Failed to initialize tool {tool_type}: {e}")
         
@@ -80,14 +80,14 @@ class AsyncToolManager:
         self.tools["finish"] = finish_tool(num_workers=num_workers, other_tools=list(self.tools.values()))
                 
         # Log available vs. active tools with emoji indicators
-        logger.info("Available Tools:")
+        print("Available Tools:")
         for tool in ALL_TOOLS:
             if tool in self.tools:
                 status = "active 🟢"  # Green circle for active tools
-                logger.info(f"  - {tool}: {status}")
+                print(f"  - {tool}: {status}")
             else:
                 status = "inactive ⚪"  # White circle for inactive tools
-                logger.info(f"  - {tool}: {status}")
+                print(f"  - {tool}: {status}")
     
     def get_tool_usage_instructions(self) -> str:
         """Get usage instructions for all available tools"""
@@ -117,15 +117,22 @@ class AsyncToolManager:
         # If only one tool available, use it
         if len(self.tools) == 1:
             return list(self.tools.keys())[0]
-            
+        
         # Try to find matching tool (excluding finish tool)
         for tool_type, tool in self.tools.items():
-            if tool_type == "finish":
+            if tool_type in ["finish", 'mcp_interface']:
                 continue
             _, valid = tool.parse_action(action)
             if valid:
                 return tool_type
-                
+        
+        # try mcp_interface tool if has
+        if "mcp_interface" in self.tools:
+            tool = self.tools["mcp_interface"]
+            _, valid = tool.parse_action(action)
+            if valid:
+                return "mcp_interface"
+
         return None
     
     async def identify_tool_types(self, actions: List[str], extra_fields: List[Dict[str, Any]]) -> List[Optional[str]]:
@@ -224,12 +231,22 @@ class AsyncToolManager:
             
             # Create task for tool processing
             # We use asyncio.to_thread for potentially blocking operations
-            task = asyncio.to_thread(
-                tool.get_observations,
-                tool_trajectory_ids, 
-                tool_actions, 
-                tool_extra_fields
-            )
+            if hasattr(tool, "aget_observations") and \
+               inspect.iscoroutinefunction(tool.aget_observations):
+                task = asyncio.create_task(
+                    tool.aget_observations(
+                        tool_trajectory_ids,
+                        tool_actions,
+                        tool_extra_fields,
+                    )
+                )
+            else:
+                task = asyncio.to_thread(
+                    tool.get_observations,
+                    tool_trajectory_ids,
+                    tool_actions,
+                    tool_extra_fields,
+                )
             tasks.append((tool_type, task))
         
         # Process all non-matching actions
@@ -237,9 +254,7 @@ class AsyncToolManager:
             usage_instructions = self.get_tool_usage_instructions()
             indices = indices_by_tool[None]
             for idx in indices:
-                # all_observations[idx] = usage_instructions
-                all_observations[idx] = "" # no observation
-                # all_observations[idx] = "\nNo valid action found\n" # no observation
+                all_observations[idx] = {"obs": "", "invalid_reason": "no valid tool found for action"}
                 all_valids[idx] = False
                 if self.done_if_invalid:
                     all_dones[idx] = True
@@ -329,7 +344,7 @@ class AsyncToolServer:
                 # Parse request
                 data = await request.json()
                 data_hash_str = hash_requests(data)
-                logger.debug(f"Request hash: {data_hash_str}")
+                logger.info(f"Request hash: {data_hash_str}")
                 
                 # Check if this request is already being processed
                 if data_hash_str in self.processing_tasks:
@@ -430,7 +445,7 @@ def main(
     workers_per_tool: int = None,
     max_concurrent_requests: int = 128,
     use_tqdm: bool = False,
-    log_level: str = "error",
+    log_level: str = "warning",
     slient=False,
     done_if_invalid=False,
     use_ray: bool = False,
