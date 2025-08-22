@@ -11,7 +11,8 @@ dependencies = [
     "pyext",
     "qwen_vl_utils",
     "transformers<4.53.0",
-    "tensorboard"
+    "tensorboard",
+    "func_timeout"
 ]
 
 [tool.setuptools]
@@ -36,9 +37,8 @@ search_tool = [
     "bs4",
     "langid",
     "pdfplumber",
-    "nltk"
+    "nltk",
 ]
 sql_tool = [
-    "func_timeout",
     "sqlparse",
 ]

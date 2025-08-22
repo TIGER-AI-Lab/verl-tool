@@ -42,7 +42,8 @@ def test_google_search(
             print(f"Results:\n{observation}\n")
             
             # Check if search was successful
-            if "Search results for" in observation or "results" in observation.lower():
+            obs = observation['obs'] if isinstance(observation, dict) else observation
+            if "Search results for" in obs or "results" in obs.lower():
                 logger.info("✓ Google search executed successfully")
             else:
                 logger.warning("⚠ Unexpected response format")

@@ -58,6 +58,7 @@ class GoogleSearchEngine:
         
         # Simple cache with thread lock
         self._cache = {}
+        self._cache_lock = threading.Lock()
         self._lang_id_lock = threading.Lock()
         self._search_count = 0
         self.process_snippets = process_snippets
@@ -104,14 +105,15 @@ class GoogleSearchEngine:
     
     @func_set_timeout(5)
     def _append_cache(self, cache_key: str, cache_value: Union[str, Dict]) -> None:
-        self._cache[cache_key] = cache_value
-        self._search_count += 1
-        with open(self._cache_file, "a", encoding="utf-8") as f:
-            entry = {
-                "query": cache_key,
-                "result": cache_value
-            }
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with self._cache_lock:
+            self._cache[cache_key] = cache_value
+            self._search_count += 1
+            with open(self._cache_file, "a", encoding="utf-8") as f:
+                entry = {
+                    "query": cache_key,
+                    "result": cache_value
+                }
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     @func_set_timeout(10)
     def _make_request(self, query: str, timeout: int) -> requests.Response:
@@ -219,8 +221,14 @@ class GoogleSearchEngine:
             print(error_msg)
             return f"Search failed: {error_msg}"
 
-        # Save cache item
-        self._append_cache(query, cache_item)
+        try:
+            # Save cache item
+            self._append_cache(query, cache_item)
+        except FunctionTimedOut:
+            print("Cache save timed out, skipping cache update.")
+        except Exception as e:
+            print(f"Failed to save cache: {str(e)}")
+            raise e
             
         return result
     
