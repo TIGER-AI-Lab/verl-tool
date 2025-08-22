@@ -6,7 +6,7 @@ import threading
 import requests
 from typing import Optional, Union, Dict, List, Any
 import regex as re
-
+import faulthandler
 import langid
 from .base import BaseTool, register_tool
 from .utils.deepsearch_utils import extract_relevant_info_serper, extract_text_from_url, extract_snippet_with_context
@@ -14,6 +14,7 @@ from .utils.web_agent_utils import generate_webpage_to_reasonchain, get_prev_rea
 from tqdm import tqdm
 from func_timeout import func_set_timeout, FunctionTimedOut
 
+faulthandler.enable() # Enable faulthandler
 class GoogleSearchEngine:
     """
     Simplified Google search engine with basic caching.

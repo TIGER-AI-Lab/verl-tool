@@ -153,7 +153,7 @@ def main(
             question_raw += f"\n\n{guideline}"
             image = example.pop('image')
             is_video = example.pop('is_video')
-            answer = example.pop('answer')[0]
+            answer = example.pop('answer')
             # we use absolute paths for images and videos
             if is_video:
                 assert all((video_dir / video).exists() for video in image), f"Some video files do not exist in {video_dir}"

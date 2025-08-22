@@ -1101,18 +1101,37 @@ class AgentActorManager:
             raise
     
     async def _aiohttp_request(self, data):
-        try:
-            timeout = aiohttp.ClientTimeout(total=None)
-            session = aiohttp.ClientSession(timeout=timeout)
-            async with session.post(
-                url=self.config.tool_server_url,
-                json=data,
-            ) as resp:
-                data = await resp.json()
-                return data
-        finally:
-            await session.close()
+        timeout_seconds = self.config.tool_call_time_out
+        max_retries = self.config.tool_call_max_retries
+        for attempt in range(max_retries):
+            session = None
+            try:
+                timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+                session = aiohttp.ClientSession(timeout=timeout)
+                async with session.post(
+                    url=self.config.tool_server_url,
+                    json=data,
+                ) as resp:
+                    data = await resp.json()
+                    return data
+            except asyncio.TimeoutError as e:
+                if attempt == max_retries - 1:
+                    break
+                logging.warning(f"Attempt {attempt + 1} failed: {e}. traj_id: {data['trajectory_ids']}. Retrying...")
+                await asyncio.sleep(1)  # Brief delay before retry
+            finally:
+                if session:
+                    await session.close()
         
+        logging.error(f"Failed to interact after {max_retries} attempts. Ending the trajectory.")
+        # if we reach here, it means all retries failed, we return dummy data
+        num_samples = len(data['trajectory_ids'])
+        return {
+            "observations": [''] * num_samples,
+            "dones": [1] * num_samples,
+            "valids": [0] * num_samples,
+        }
+            
     async def send_batch_requests_async(self, batch_data: Dict[str, Any]) -> Dict[str, Any]:
         """Robust version with retry logic"""
         safe_payload = sanitize_request(batch_data)

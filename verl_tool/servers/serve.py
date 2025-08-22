@@ -290,6 +290,7 @@ class AsyncToolServer:
         use_tqdm: bool = False,
         done_if_invalid: bool = False,
         use_ray: bool = False,
+        enable_hashing: bool = False
     ):
         """
         Initialize the tool server
@@ -304,6 +305,7 @@ class AsyncToolServer:
         self.host = host
         self.port = port
         self.max_concurrent_requests = max_concurrent_requests
+        self.enable_hashing = enable_hashing
         
         if not use_ray:
             # Initialize async tool manager
@@ -347,7 +349,7 @@ class AsyncToolServer:
                 logger.info(f"Request hash: {data_hash_str}")
                 
                 # Check if this request is already being processed
-                if data_hash_str in self.processing_tasks:
+                if data_hash_str in self.processing_tasks and self.enable_hashing:
                     self.processing_tasks[data_hash_str]["ref_count"] += 1
                     logger.debug(f"Duplicate request detected: {data_hash_str}")
                     # Wait for the original request to complete
@@ -387,12 +389,15 @@ class AsyncToolServer:
                                 {key: data[key][i] for key in extra_keys} 
                                 for i in range(len(trajectory_ids))
                             ]
-                        
+                        logger.debug(f"Parsed request: trajectory_ids={trajectory_ids}")
+                        start = asyncio.get_event_loop().time()
                         observations, dones, valids = await self.tool_manager.process_actions(
                             trajectory_ids,
                             actions,
                             extra_fields
                         )
+                        end = asyncio.get_event_loop().time()
+                        logger.debug(f"Processed {len(actions)} actions in {end - start:.2f} seconds")
                         
                         # Create response
                         response = AgentResponse(
@@ -449,6 +454,7 @@ def main(
     slient=False,
     done_if_invalid=False,
     use_ray: bool = False,
+    enable_hashing: bool = False
 ):
     """
     Start the async tool server
@@ -486,6 +492,7 @@ def main(
         use_tqdm=use_tqdm,
         done_if_invalid=done_if_invalid,
         use_ray=use_ray,
+        enable_hashing=enable_hashing
     )
     if slient:
         import sys
