@@ -192,19 +192,21 @@ class AsyncToolManager:
             
             # Create task for tool processing with proper async/thread handling
             if hasattr(tool, "aget_observations") and inspect.iscoroutinefunction(tool.aget_observations):
+                task = await tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
                 # True async method
-                task = asyncio.create_task(
-                    tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
-                )
+                # task = asyncio.create_task(
+                #     tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
+                # )
             else:
-                # Blocking method - use thread pool
-                task = asyncio.get_event_loop().run_in_executor(
-                    self.thread_pool,
-                    tool.get_observations,
-                    tool_trajectory_ids,
-                    tool_actions,
-                    tool_extra_fields,
-                )
+                task = tool.get_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
+                # # Blocking method - use thread pool
+                # task = asyncio.get_event_loop().run_in_executor(
+                #     self.thread_pool,
+                #     tool.get_observations,
+                #     tool_trajectory_ids,
+                #     tool_actions,
+                #     tool_extra_fields,
+                # )
             tasks.append((tool_type, task))
         
         # Process all non-matching actions
@@ -219,7 +221,10 @@ class AsyncToolManager:
         # Await all tool processing tasks with proper error handling
         for tool_type, task in tasks:
             try:
-                observations, dones, valids = await task
+                if isinstance(task, asyncio.Task) or inspect.isawaitable(task):
+                    observations, dones, valids = await task
+                else:
+                    observations, dones, valids = task
                 
                 indices = indices_by_tool[tool_type]
                 for idx_pos, result_idx in enumerate(indices):

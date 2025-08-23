@@ -1116,21 +1116,21 @@ class AgentActorManager:
                     return data
             except asyncio.TimeoutError as e:
                 if attempt == max_retries - 1:
-                    break
+                    raise e
                 logging.warning(f"Attempt {attempt + 1} failed: {e}. traj_id: {data['trajectory_ids']}. Retrying...")
                 await asyncio.sleep(1)  # Brief delay before retry
             finally:
                 if session:
                     await session.close()
         
-        logging.error(f"Failed to interact after {max_retries} attempts. Ending the trajectory.")
-        # if we reach here, it means all retries failed, we return dummy data
-        num_samples = len(data['trajectory_ids'])
-        return {
-            "observations": [''] * num_samples,
-            "dones": [1] * num_samples,
-            "valids": [0] * num_samples,
-        }
+        # logging.error(f"Failed to interact after {max_retries} attempts. Ending the trajectory.")
+        # # if we reach here, it means all retries failed, we return dummy data
+        # num_samples = len(data['trajectory_ids'])
+        # return {
+        #     "observations": [''] * num_samples,
+        #     "dones": [1] * num_samples,
+        #     "valids": [0] * num_samples,
+        # }
             
     async def send_batch_requests_async(self, batch_data: Dict[str, Any]) -> Dict[str, Any]:
         """Robust version with retry logic"""
