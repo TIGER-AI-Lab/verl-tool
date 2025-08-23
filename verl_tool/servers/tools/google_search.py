@@ -82,7 +82,7 @@ class GoogleSearchEngine:
             cache_dir = pathlib.Path.home() / ".verl_cache"
             cache_dir.mkdir(exist_ok=True)
             if not self.process_snippets:
-                self._cache_file = cache_dir / "google_search_cache.debug.jsonl"
+                self._cache_file = cache_dir / "google_search_cache.jsonl"
             else:
                 self._cache_file = cache_dir / "google_search_with_summ_cache.jsonl"
         else:
