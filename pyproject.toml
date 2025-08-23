@@ -12,7 +12,7 @@ dependencies = [
     "qwen_vl_utils",
     "transformers<4.53.0",
     "tensorboard",
-    "func_timeout"
+    "func_timeout",
 ]
 
 [tool.setuptools]

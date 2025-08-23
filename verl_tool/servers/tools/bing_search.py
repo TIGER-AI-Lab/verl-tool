@@ -3,10 +3,10 @@ import json
 import time
 import queue
 import atexit
-import fcntl
 import pathlib
 import threading
-import requests
+import aiohttp
+import asyncio
 from typing import Optional, Union, Dict, List, Any
 from urllib.parse import urlencode
 import regex as re
@@ -16,14 +16,11 @@ from .base import BaseTool, register_tool
 
 class BingSearchEngine():
     """
-    Bing search engine that provides web search capability with caching.
+    Async Bing search engine that provides web search capability with caching.
     
     This tool interfaces with the Brightdata API to perform Bing searches.
     It includes robust caching to minimize redundant API calls and supports
-    both synchronous and asynchronous cache writing modes with JSONL format.
-    
-    Thread-safety is ensured via memory locks, and process-safety via file locks
-    for the cache file.
+    asynchronous operations with connection pooling.
     """
 
     def __init__(
@@ -34,7 +31,6 @@ class BingSearchEngine():
         result_length: int = 1000,
         location: str = "us",
         cache_file: Optional[str] = None,
-        async_cache_write: bool = True,
         cache_refresh_interval: float = 15.0
     ):
         """
@@ -47,7 +43,6 @@ class BingSearchEngine():
             result_length: Maximum length of each result snippet
             location: Country code for search localization
             cache_file: Path to cache file (if None, uses ~/.verl_cache/bing_search_cache.jsonl)
-            async_cache_write: Whether to write cache updates asynchronously
             cache_refresh_interval: Minimum seconds between cache file checks
         """
         # API configuration
@@ -61,8 +56,6 @@ class BingSearchEngine():
         self._cache = {}
         self._cache_lock = threading.Lock()
         self._lang_id_lock = threading.Lock()
-        self._async_cache_write = async_cache_write
-        self._write_queue = queue.Queue() if async_cache_write else None
         self._cache_refresh_interval = cache_refresh_interval
         self._last_cache_check = 0.0
         self._cache_mod_time = 0.0
@@ -73,13 +66,12 @@ class BingSearchEngine():
         # Load existing cache
         self._load_cache()
         
-        # Initialize async cache writer if enabled
-        if self._async_cache_write:
-            self._init_async_writer()
+        # HTTP session for connection pooling
+        self._session = None
     
     def _setup_cache_paths(self, cache_file: Optional[str]) -> None:
         """
-        Set up cache file and lock file paths.
+        Set up cache file path.
         
         Args:
             cache_file: Path to cache file or None for default
@@ -91,111 +83,13 @@ class BingSearchEngine():
         else:
             self._cache_file = pathlib.Path(cache_file)
             self._cache_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Create lock file path
-        self._lock_file = str(self._cache_file) + ".lock"
-    
-    def _init_async_writer(self) -> None:
-        """Initialize the asynchronous cache writer thread."""
-        self._stop_writer = threading.Event()
-        self._writer_thread = threading.Thread(
-            target=self._cache_writer_thread, 
-            daemon=True,
-            name="BingSearchCacheWriter"
-        )
-        self._writer_thread.start()
-        atexit.register(self._cleanup)
-    
-    def _cleanup(self) -> None:
-        """Ensure cache is saved when program exits."""
-        if self._async_cache_write and hasattr(self, '_stop_writer'):
-            self._stop_writer.set()
-            if self._writer_thread.is_alive():
-                self._writer_thread.join(timeout=5.0)
-            # No need to save remaining cache updates since JSONL is append-only
-    
-    def _cache_writer_thread(self) -> None:
-        """Background thread for asynchronous cache writing."""
-        while not self._stop_writer.is_set():
-            try:
-                # Wait for write requests, timeout after 1 second
-                try:
-                    query, result = self._write_queue.get(timeout=1.0)
-                    self._save_cache_sync(query, result)
-                    self._write_queue.task_done()
-                except queue.Empty:
-                    continue
-            except Exception as e:
-                print(f"Cache writer thread error: {str(e)}")
-    
-    def _acquire_file_lock(self, timeout: int = 10) -> Optional[Any]:
-        """
-        Acquire a file lock to prevent concurrent cache file access.
-        
-        Args:
-            timeout: Maximum seconds to wait for lock acquisition
-            
-        Returns:
-            File descriptor if lock acquired, None if failed
-        """
-        start_time = time.time()
-        lock_fd = None
-        
-        try:
-            # Create or open lock file
-            lock_fd = open(self._lock_file, 'w+')
-            
-            while True:
-                try:
-                    # Try to acquire exclusive lock
-                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    return lock_fd  # Successfully acquired lock
-                except IOError:
-                    # Could not immediately acquire lock
-                    if time.time() - start_time > timeout:
-                        lock_fd.close()
-                        raise TimeoutError(f"Failed to acquire file lock within {timeout} seconds")
-                    # Retry after a short delay
-                    time.sleep(0.1)
-        except Exception as e:
-            if lock_fd:
-                lock_fd.close()
-            print(f"Failed to acquire file lock: {str(e)}")
-            return None
-    
-    def _release_file_lock(self, lock_fd: Any) -> bool:
-        """
-        Release file lock.
-        
-        Args:
-            lock_fd: File descriptor to release
-            
-        Returns:
-            True if successfully released, False otherwise
-        """
-        if lock_fd:
-            try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                lock_fd.close()
-                return True
-            except Exception as e:
-                print(f"Failed to release file lock: {str(e)}")
-                return False
-        return False
     
     def _load_cache(self) -> None:
-        """Load the cache from JSONL file with file locking."""
+        """Load the cache from JSONL file."""
         if not self._cache_file.exists():
             return
             
-        lock_fd = None
         try:
-            # Acquire file lock for reading
-            lock_fd = self._acquire_file_lock()
-            if not lock_fd:
-                print("Unable to acquire file lock, using empty cache")
-                return
-            
             # Record file modification time
             self._cache_mod_time = os.path.getmtime(self._cache_file)
             
@@ -226,83 +120,51 @@ class BingSearchEngine():
         except Exception as e:
             print(f"Failed to load cache file: {str(e)}")
             self._cache = {}
-        finally:
-            if lock_fd:
-                self._release_file_lock(lock_fd)
-    
-    def _check_cache_update(self) -> bool:
-        """
-        Check if cache file has been updated by another process.
-        
-        Returns:
-            True if cache was reloaded, False otherwise
-        """
-        now = time.time()
-        # Limit check frequency to avoid excessive I/O
-        if now - self._last_cache_check < self._cache_refresh_interval:
-            return False
-        
-        self._last_cache_check = now
-        
-        if not self._cache_file.exists():
-            return False
-        
-        try:
-            current_mod_time = os.path.getmtime(self._cache_file)
-            if current_mod_time > self._cache_mod_time:
-                print(f"Cache file update detected, reloading")
-                self._load_cache()
-                return True
-        except Exception as e:
-            print(f"Failed to check cache file updates: {str(e)}")
-        
-        return False
 
-    def _save_cache(self, query: str, result: str) -> None:
-        """Save a single cache entry to JSONL file, either synchronously or asynchronously."""
-        if self._async_cache_write:
-            # Queue write request for background thread
-            try:
-                self._write_queue.put((query, result), block=False)
-            except queue.Full:
-                print("Cache write queue full, skipping this update")
-        else:
-            # Direct synchronous write
-            self._save_cache_sync(query, result)
-    
-    def _save_cache_sync(self, query: str = None, result: str = None) -> None:
-        """Append a single cache entry to JSONL file synchronously with file locking."""
+    async def _save_cache_async(self, query: str, result: str) -> None:
+        """Save a single cache entry to JSONL file asynchronously."""
         if query is None or result is None:
             return
             
-        lock_fd = None
-        try:
-            # Acquire exclusive file lock
-            lock_fd = self._acquire_file_lock()
-            if not lock_fd:
-                print("Unable to acquire file lock, skipping cache save")
-                return
-            
-            # Create cache entry
-            cache_entry = {
-                "query": query,
-                "result": result,
-                "timestamp": time.time()
-            }
-            
-            # Append to JSONL file
-            with open(self._cache_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(cache_entry, ensure_ascii=False) + "\n")
-            
-            # Update modification time record
-            self._cache_mod_time = os.path.getmtime(self._cache_file)
-            print(f"Cache entry appended to {self._cache_file}")
+        def _write_cache():
+            try:
+                # Create cache entry
+                cache_entry = {
+                    "query": query,
+                    "result": result,
+                    "timestamp": time.time()
+                }
                 
-        except Exception as e:
-            print(f"Failed to save cache entry: {str(e)}")
-        finally:
-            if lock_fd:
-                self._release_file_lock(lock_fd)
+                # Append to JSONL file
+                with open(self._cache_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(cache_entry, ensure_ascii=False) + "\n")
+                
+                # Update modification time record
+                self._cache_mod_time = os.path.getmtime(self._cache_file)
+                    
+            except Exception as e:
+                print(f"Failed to save cache entry: {str(e)}")
+        
+        # Run cache write in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write_cache)
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session with connection pooling."""
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool size
+                limit_per_host=30,  # Max connections per host
+                keepalive_timeout=30,
+                enable_cleanup_closed=True
+            )
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            self._session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={'User-Agent': 'AsyncBingSearchEngine/1.0'}
+            )
+        return self._session
 
     @property
     def name(self) -> str:
@@ -314,16 +176,16 @@ class BingSearchEngine():
         """Tag used to trigger this tool."""
         return "search"
 
-    def _make_request(self, query: str, timeout: int) -> requests.Response:
+    async def _make_request(self, query: str, timeout: int) -> Dict:
         """
-        Send request to Brightdata API.
+        Send async request to Brightdata API.
 
         Args:
             query: Search query
             timeout: Request timeout in seconds
 
         Returns:
-            API response object
+            API response data as dict
         """
         # Determine language settings based on query language
         with self._lang_id_lock:
@@ -352,17 +214,25 @@ class BingSearchEngine():
             "format": "raw"
         }
 
-        # Send request
-        return requests.post(
+        # Get session and make async request
+        session = await self._get_session()
+        
+        async with session.post(
             "https://api.brightdata.com/request",
             headers=headers,
             json=payload,
-            timeout=timeout
-        )
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as response:
+            if response.status != 200:
+                text = await response.text()
+                raise Exception(f"HTTP {response.status}: {text}")
+            
+            response_text = await response.text()
+            return json.loads(response_text)
 
-    def execute(self, query: str, timeout: int = 60) -> str:
+    async def execute(self, query: str, timeout: int = 60) -> str:
         """
-        Execute Bing search query.
+        Execute Bing search query asynchronously.
 
         Args:
             query: Search query string
@@ -374,9 +244,6 @@ class BingSearchEngine():
         # Clean query
         query = query.replace('"', '')
         
-        # # Check if cache file has been updated
-        # self._check_cache_update()
-        
         # Check cache for existing results
         with self._cache_lock:
             if query in self._cache:
@@ -384,16 +251,8 @@ class BingSearchEngine():
                 return self._cache[query]
 
         try:
-            # Make API request
-            response = self._make_request(query, timeout)
-
-            if response.status_code != 200:
-                error_msg = f"HTTP {response.status_code}: {response.text}"
-                print(error_msg)
-                raise Exception(error_msg)
-
-            # Parse response JSON
-            data = json.loads(response.text)
+            # Make async API request
+            data = await self._make_request(query, timeout)
 
             # Extract search results
             result = self._extract_and_format_results(data)
@@ -402,15 +261,19 @@ class BingSearchEngine():
             with self._cache_lock:
                 self._cache[query] = result
             
-            # Trigger cache save with query and result
-            self._save_cache(query, result)
+            # Save cache asynchronously
+            await self._save_cache_async(query, result)
                 
             return result
 
+        except asyncio.TimeoutError:
+            error_msg = f"Bing search request timed out after {timeout} seconds"
+            print(error_msg)
+            return f"Search failed: {error_msg}"
         except Exception as e:
             error_msg = f"Bing search failed: {str(e)}"
             print(error_msg)
-            return ""
+            return f"Search failed: {error_msg}"
     
     def _extract_and_format_results(self, data: Dict) -> str:
         """
@@ -459,11 +322,16 @@ class BingSearchEngine():
         
         return "\n".join(formatted)
 
+    async def close(self):
+        """Close the HTTP session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+
 
 @register_tool
 class BingSearchTool(BaseTool):
     """
-    Bing search tool that follows the BaseTool interface.
+    Async Bing search tool that follows the BaseTool interface.
     
     This tool wraps the BingSearchEngine to provide search functionality
     while adhering to the standard tool interface.
@@ -480,7 +348,6 @@ class BingSearchTool(BaseTool):
         result_length: int = 1000,
         location: str = "cn",
         cache_file: Optional[str] = None,
-        async_cache_write: bool = True,
         cache_refresh_interval: float = 15.0,
         timeout: int = 60
     ):
@@ -495,7 +362,6 @@ class BingSearchTool(BaseTool):
             result_length: Maximum length of each result snippet
             location: Country code for search localization
             cache_file: Path to cache file
-            async_cache_write: Whether to write cache updates asynchronously
             cache_refresh_interval: Minimum seconds between cache file checks
             timeout: Default timeout for search requests
         """
@@ -515,7 +381,6 @@ class BingSearchTool(BaseTool):
             result_length=result_length,
             location=location,
             cache_file=cache_file,
-            async_cache_write=async_cache_write,
             cache_refresh_interval=cache_refresh_interval
         )
         
@@ -595,9 +460,39 @@ class BingSearchTool(BaseTool):
             # If it's neither, return as is
             return observation
 
-    def conduct_action(self, trajectory_id, action, extra_field):
+    async def aget_observations(self, trajectory_ids: List[str], actions: List[str], extra_fields: List[Dict[str, Any]]):
         """
-        Conduct the search action and return the observation.
+        Async version of get_observations for better performance.
+        """
+        observations = []
+        dones = []
+        valids = []
+        
+        # Process all actions concurrently
+        tasks = []
+        for i, (trajectory_id, action, extra_field) in enumerate(zip(trajectory_ids, actions, extra_fields)):
+            task = self._conduct_action_async(trajectory_id, action, extra_field)
+            tasks.append(task)
+        
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                observations.append(f"Search error: {str(result)}")
+                dones.append(False)
+                valids.append(False)
+            else:
+                obs, done, valid = result
+                observations.append(obs)
+                dones.append(done)
+                valids.append(valid)
+        
+        return observations, dones, valids
+
+    async def _conduct_action_async(self, trajectory_id: str, action: str, extra_field: Dict[str, Any]):
+        """
+        Conduct the search action asynchronously and return the observation.
         
         Args:
             trajectory_id: The trajectory ID
@@ -623,10 +518,10 @@ class BingSearchTool(BaseTool):
                 # Get timeout from extra_field if provided
                 timeout = extra_field.get('timeout', self.timeout) if extra_field else self.timeout
                 
-                # Execute the search
-                search_results = self.search_engine.execute(parsed_query, timeout)
+                # Execute the async search
+                search_results = await self.search_engine.execute(parsed_query, timeout)
                 
-                if search_results:
+                if search_results and not search_results.startswith("Search failed:"):
                     observation = f"Search results for '{parsed_query}':\n\n{search_results}"
                     valid = True
                 else:
@@ -647,3 +542,26 @@ class BingSearchTool(BaseTool):
         self.update_env(trajectory_id, env, parsed_query, is_valid, extra_field, observation)
         self.save_env(trajectory_id, env)
         return observation, done, valid
+
+    def conduct_action(self, trajectory_id, action, extra_field):
+        """
+        Synchronous wrapper for backward compatibility.
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self._conduct_action_async(trajectory_id, action, extra_field))
+        finally:
+            loop.close()
+    
+    def __del__(self):
+        """Cleanup when tool is destroyed."""
+        if hasattr(self, 'search_engine') and hasattr(self.search_engine, '_session'):
+            if self.search_engine._session and not self.search_engine._session.closed:
+                # Try to close session gracefully
+                try:
+                    loop = asyncio.get_event_loop()
+                    if not loop.is_closed():
+                        loop.create_task(self.search_engine.close())
+                except:
+                    pass  # Best effort cleanup

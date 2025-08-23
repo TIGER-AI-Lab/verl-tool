@@ -3,7 +3,8 @@ import json
 import time
 import pathlib
 import threading
-import requests
+import aiohttp
+import asyncio
 from typing import Optional, Union, Dict, List, Any
 import regex as re
 import faulthandler
@@ -12,15 +13,14 @@ from .base import BaseTool, register_tool
 from .utils.deepsearch_utils import extract_relevant_info_serper, extract_text_from_url, extract_snippet_with_context
 from .utils.web_agent_utils import generate_webpage_to_reasonchain, get_prev_reasoning_chain
 from tqdm import tqdm
-from func_timeout import func_set_timeout, FunctionTimedOut
 
 faulthandler.enable() # Enable faulthandler
+
 class GoogleSearchEngine:
     """
-    Simplified Google search engine with basic caching.
+    Async Google search engine with basic caching.
     
-    Removed complex file locking and async operations that could cause deadlocks.
-    Uses simple in-memory cache with periodic file saves.
+    Uses aiohttp for non-blocking HTTP requests and simplified caching.
     """
 
     def __init__(
@@ -72,6 +72,9 @@ class GoogleSearchEngine:
         
         # Load existing cache
         self._load_cache()
+        
+        # HTTP session for connection pooling
+        self._session = None
     
     def _setup_cache_file(self, cache_file: Optional[str]) -> None:
         """Set up cache file path."""
@@ -79,7 +82,7 @@ class GoogleSearchEngine:
             cache_dir = pathlib.Path.home() / ".verl_cache"
             cache_dir.mkdir(exist_ok=True)
             if not self.process_snippets:
-                self._cache_file = cache_dir / "google_search_cache.jsonl"
+                self._cache_file = cache_dir / "google_search_cache.debug.jsonl"
             else:
                 self._cache_file = cache_dir / "google_search_with_summ_cache.jsonl"
         else:
@@ -104,29 +107,53 @@ class GoogleSearchEngine:
             print(f"Failed to load cache: {e}")
             self._cache = {}
     
-    @func_set_timeout(5)
-    def _append_cache(self, cache_key: str, cache_value: Union[str, Dict]) -> None:
-        with self._cache_lock:
-            self._cache[cache_key] = cache_value
-            self._search_count += 1
-            with open(self._cache_file, "a", encoding="utf-8") as f:
-                entry = {
-                    "query": cache_key,
-                    "result": cache_value
-                }
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    async def _append_cache(self, cache_key: str, cache_value: Union[str, Dict]) -> None:
+        """Async cache append without timeout decorator."""
+        def _write_cache():
+            with self._cache_lock:
+                self._cache[cache_key] = cache_value
+                self._search_count += 1
+                try:
+                    with open(self._cache_file, "a", encoding="utf-8") as f:
+                        entry = {
+                            "query": cache_key,
+                            "result": cache_value
+                        }
+                        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                except Exception as e:
+                    print(f"Failed to write cache: {e}")
+        
+        # Run cache write in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write_cache)
 
-    @func_set_timeout(10)
-    def _make_request(self, query: str, timeout: int) -> requests.Response:
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session with connection pooling."""
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool size
+                limit_per_host=30,  # Max connections per host
+                keepalive_timeout=30,
+                enable_cleanup_closed=True
+            )
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            self._session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={'User-Agent': 'AsyncSearchEngine/1.0'}
+            )
+        return self._session
+
+    async def _make_request(self, query: str, timeout: int) -> Dict:
         """
-        Send request to Serper API with proper timeout handling.
+        Send async request to Serper API.
 
         Args:
             query: Search query
             timeout: Request timeout in seconds
 
         Returns:
-            API response object
+            API response data as dict
         """
         # Determine language settings
         try:
@@ -152,21 +179,29 @@ class GoogleSearchEngine:
             'Content-Type': 'application/json'
         }
 
-        # Make request with explicit timeout
-        return requests.post(
+        # Get session and make async request
+        session = await self._get_session()
+        
+        async with session.post(
             "https://google.serper.dev/search",
             headers=headers,
             json=payload,
-            timeout=timeout  # This will raise requests.exceptions.Timeout if exceeded
-        )
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as response:
+            if response.status != 200:
+                text = await response.text()
+                raise Exception(f"Search API error {response.status}: {text[:200]}")
+            
+            return await response.json()
 
-    def execute(self, query: str, timeout: int = 30, prev_steps: Union[List[str], str]=None) -> str:
+    async def execute(self, query: str, timeout: int = 30, prev_steps: Union[List[str], str] = None) -> str:
         """
-        Execute Google search query with simplified error handling.
+        Execute Google search query asynchronously.
 
         Args:
             query: Search query string
             timeout: API request timeout in seconds
+            prev_steps: Previous reasoning steps
 
         Returns:
             Formatted search results as string
@@ -185,56 +220,39 @@ class GoogleSearchEngine:
                 else:
                     data = json.loads(self._cache[query])
             else:
-                # Make API request with timeout
-                response = self._make_request(query, timeout)
-
-                if response.status_code != 200:
-                    error_msg = f"Search API error {response.status_code}: {response.text[:200]}"
-                    print(error_msg)
-                    return f"Search failed: {error_msg}"
-
-                # Parse and format results
-                data = response.json()
+                # Make async API request
+                data = await self._make_request(query, timeout)
             
-            result = self._extract_and_format_results(query, data, prev_steps)
+            # Process results
+            result = await self._extract_and_format_results(query, data, prev_steps)
+            
+            # Determine cache item
             if not self.process_snippets:
                 cache_item = result
             else:
                 cache_item = json.dumps(data, ensure_ascii=False)
 
-        except requests.exceptions.Timeout:
+        except asyncio.TimeoutError:
             error_msg = f"Search request timed out after {timeout} seconds"
-            print(error_msg)
-            return f"Search failed: {error_msg}"
-        
-        except FunctionTimedOut:
-            error_msg = f"Search request timed out after {timeout} seconds in FunctionTimeOut"
-            print(error_msg)
-            return f"Search failed: {error_msg}"
-            
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Network error: {str(e)}"
             print(error_msg)
             return f"Search failed: {error_msg}"
             
         except Exception as e:
-            error_msg = f"Unexpected error: {str(e)}"
+            error_msg = f"Search error: {str(e)}"
             print(error_msg)
             return f"Search failed: {error_msg}"
 
         try:
-            # Save cache item
-            self._append_cache(query, cache_item)
-        except FunctionTimedOut:
-            print("Cache save timed out, skipping cache update.")
+            # Save cache item asynchronously
+            await self._append_cache(query, cache_item)
         except Exception as e:
             print(f"Failed to save cache: {str(e)}")
-            raise e
+            # Don't raise - cache failure shouldn't break search
             
         return result
     
-    def _extract_and_format_results(self, query, data: Dict, prev_steps: Union[List[str], str]=None) -> str:
-        """Extract and format search results."""
+    async def _extract_and_format_results(self, query: str, data: Dict, prev_steps: Union[List[str], str] = None) -> str:
+        """Extract and format search results asynchronously."""
         if 'organic' not in data or not data['organic']:
             return "No search results found."
         
@@ -265,17 +283,24 @@ class GoogleSearchEngine:
                 max_doc_len = self._max_doc_len
                 do_summarization = True
             
-            extracted_info = extract_relevant_info_serper(data)
-            for info in tqdm(extracted_info, desc="Processing Snippets", disable=True):
-                full_text = extract_text_from_url(info['url'], use_jina=False)  # Get full webpage text
-                if full_text and not full_text.startswith("Error"):
-                    success, context = extract_snippet_with_context(full_text, info['snippet'], context_chars=max_doc_len)
-                    if success:
-                        info['context'] = context
+            # Extract info and process in thread pool for CPU-bound work
+            loop = asyncio.get_event_loop()
+            
+            def extract_and_process():
+                extracted_info = extract_relevant_info_serper(data)
+                for info in tqdm(extracted_info, desc="Processing Snippets", disable=True):
+                    full_text = extract_text_from_url(info['url'], use_jina=False)
+                    if full_text and not full_text.startswith("Error"):
+                        success, context = extract_snippet_with_context(full_text, info['snippet'], context_chars=max_doc_len)
+                        if success:
+                            info['context'] = context
+                        else:
+                            info['context'] = f"Could not extract context. Returning first {max_doc_len} chars: {full_text[:max_doc_len]}"
                     else:
-                        info['context'] = f"Could not extract context. Returning first {max_doc_len} chars: {full_text[:max_doc_len]}"
-                else:
-                    info['context'] = f"Failed to fetch full text: {full_text}"
+                        info['context'] = f"Failed to fetch full text: {full_text}"
+                return extracted_info
+            
+            extracted_info = await loop.run_in_executor(None, extract_and_process)
             
             formatted_document = ""
             for i, doc_info in enumerate(extracted_info):
@@ -283,23 +308,31 @@ class GoogleSearchEngine:
                 formatted_document += json.dumps(doc_info, ensure_ascii=False, indent=2) + "\n"
 
             if do_summarization:
-                prev_reasoning_chain = get_prev_reasoning_chain(prev_steps, begin_search_tag="<search>", begin_search_result_tag="<result>")
-                summary = generate_webpage_to_reasonchain(
-                    prev_reasoning_chain,
-                    query,
-                    formatted_document,
-                    summ_model_url=self.summ_model_url,
-                    summ_model_path=self.summ_model_path
-                )
+                # Run summarization in thread pool
+                def run_summarization():
+                    prev_reasoning_chain = get_prev_reasoning_chain(prev_steps, begin_search_tag="<search>", begin_search_result_tag="<result>")
+                    return generate_webpage_to_reasonchain(
+                        prev_reasoning_chain,
+                        query,
+                        formatted_document,
+                        summ_model_url=self.summ_model_url,
+                        summ_model_path=self.summ_model_path
+                    )
+                
+                summary = await loop.run_in_executor(None, run_summarization)
                 return summary
             else:
-                # If no summarization, just return the formatted document
                 return formatted_document if formatted_document else "No relevant information found."
+
+    async def close(self):
+        """Close the HTTP session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
             
 @register_tool
 class GoogleSearchTool(BaseTool):
     """
-    Simplified Google search tool with improved reliability.
+    Async Google search tool with improved reliability.
     """
     
     tool_type = "google_search"
@@ -382,9 +415,39 @@ class GoogleSearchTool(BaseTool):
         
         return 0
     
-    def conduct_action(self, trajectory_id, action, extra_field):
+    async def aget_observations(self, trajectory_ids: List[str], actions: List[str], extra_fields: List[Dict[str, Any]]):
         """
-        Conduct search action with improved error handling.
+        Async version of get_observations for better performance.
+        """
+        observations = []
+        dones = []
+        valids = []
+        
+        # Process all actions concurrently
+        tasks = []
+        for i, (trajectory_id, action, extra_field) in enumerate(zip(trajectory_ids, actions, extra_fields)):
+            task = self._conduct_action_async(trajectory_id, action, extra_field)
+            tasks.append(task)
+        
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                observations.append(f"Search error: {str(result)}")
+                dones.append(False)
+                valids.append(False)
+            else:
+                obs, done, valid = result
+                observations.append(obs)
+                dones.append(done)
+                valids.append(valid)
+        
+        return observations, dones, valids
+    
+    async def _conduct_action_async(self, trajectory_id: str, action: str, extra_field: Dict[str, Any]):
+        """
+        Conduct search action asynchronously.
         """
         parsed_query, is_valid = self.parse_action(action)
         
@@ -406,8 +469,8 @@ class GoogleSearchTool(BaseTool):
             prev_actions = [x['action'] for x in env['previous_obs']] if self.process_snippets else None
             
             try:
-                # Execute search
-                search_results = self.search_engine.execute(parsed_query, timeout, prev_actions)
+                # Execute async search
+                search_results = await self.search_engine.execute(parsed_query, timeout, prev_actions)
                 observation = f"Search results for '{parsed_query}':\n\n{search_results}"
                 done, valid = False, True
                 
@@ -423,3 +486,26 @@ class GoogleSearchTool(BaseTool):
         self.save_env(trajectory_id, env)
         
         return observation, done, valid
+    
+    def conduct_action(self, trajectory_id, action, extra_field):
+        """
+        Synchronous wrapper for backward compatibility.
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self._conduct_action_async(trajectory_id, action, extra_field))
+        finally:
+            loop.close()
+    
+    def __del__(self):
+        """Cleanup when tool is destroyed."""
+        if hasattr(self, 'search_engine') and hasattr(self.search_engine, '_session'):
+            if self.search_engine._session and not self.search_engine._session.closed:
+                # Try to close session gracefully
+                try:
+                    loop = asyncio.get_event_loop()
+                    if not loop.is_closed():
+                        loop.create_task(self.search_engine.close())
+                except:
+                    pass  # Best effort cleanup
