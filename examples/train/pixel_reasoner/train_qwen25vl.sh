@@ -1,5 +1,5 @@
 set -x
-dataset_name=pixel_reasoner/PixelReasoner_RL_Data
+dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_16384
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 val_data=[$(pwd)/data/${dataset_name}/val.parquet,\
 $(pwd)/data/pixel_reasoner/vstar/test.parquet]
@@ -9,9 +9,9 @@ rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group
 n_gpus_per_node=8
 n_nodes=1
 n=8
-batch_size=512
-ppo_mini_batch_size=32
-max_prompt_length=50000 #should be big to avoid any truncation of image tokens which will cause error
+batch_size=128
+ppo_mini_batch_size=128
+max_prompt_length=16384 #should be big to avoid any truncation of image tokens which will cause error
 max_response_length=16384
 max_action_length=2048
 max_obs_length=8192
@@ -29,7 +29,7 @@ kl_loss_type=low_var_kl
 lr=1e-6
 reward_manager=pixel_reasoner # should be okay for simple match
 ppo_micro_batch_size_per_gpu=1
-log_prob_micro_batch_size_per_gpu=8
+log_prob_micro_batch_size_per_gpu=1
 tensor_model_parallel_size=2
 gpu_memory_utilization=0.8 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
 do_offload=False # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM

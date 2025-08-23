@@ -1,7 +1,9 @@
 from .base import BaseTool, register_tool
 import regex as re
 import json
-from typing import Tuple, Union
+import asyncio
+import concurrent.futures
+from typing import Tuple, Union, List, Dict, Any
 import os
 
 import base64
@@ -10,11 +12,11 @@ from PIL import Image
 from pathlib import Path
 from verl_tool.llm_agent.vision_utils import process_image
 
-def crop( str_image, bbox_2d,padding=(0.1,0.1)):
+def crop(str_image, bbox_2d, padding=(0.1,0.1)):
     """
     Crop the image based on the bounding box coordinates.
     """
-    if isinstance(str_image,list):
+    if isinstance(str_image, list):
         str_image = str_image[0]
     if isinstance(str_image, Path) and str_image.exists() or \
         isinstance(str_image, str) and os.path.exists(str_image):
@@ -25,23 +27,21 @@ def crop( str_image, bbox_2d,padding=(0.1,0.1)):
     else:
         image = decode_image_url(str_image)
     img_x, img_y = image.size
-    padding_tr = (600.0/img_x,600.0/img_y)
-    padding = (min(padding[0],padding_tr[0]),min(padding[1],padding_tr[1]))
+    padding_tr = (600.0/img_x, 600.0/img_y)
+    padding = (min(padding[0], padding_tr[0]), min(padding[1], padding_tr[1]))
 
     if bbox_2d[0] < 1 and bbox_2d[1] < 1 and bbox_2d[2] < 1 and bbox_2d[3] < 1:
         normalized_bbox_2d = (float(bbox_2d[0])-padding[0], float(bbox_2d[1])-padding[1], float(bbox_2d[2])+padding[0], float(bbox_2d[3])+padding[1])
     else:
         normalized_bbox_2d = (float(bbox_2d[0])/img_x-padding[0], float(bbox_2d[1])/img_y-padding[1], float(bbox_2d[2])/img_x+padding[0], float(bbox_2d[3])/img_y+padding[1])
     normalized_x1, normalized_y1, normalized_x2, normalized_y2 = normalized_bbox_2d
-    normalized_x1 =min(max(0, normalized_x1), 1)
-    normalized_y1 =min(max(0, normalized_y1), 1)
-    normalized_x2 =min(max(0, normalized_x2), 1)
-    normalized_y2 =min(max(0, normalized_y2), 1)
+    normalized_x1 = min(max(0, normalized_x1), 1)
+    normalized_y1 = min(max(0, normalized_y1), 1)
+    normalized_x2 = min(max(0, normalized_x2), 1)
+    normalized_y2 = min(max(0, normalized_y2), 1)
     cropped_img = image.crop((int(normalized_x1*img_x), int(normalized_y1*img_y), int(normalized_x2*img_x), int(normalized_y2*img_y)))
     return cropped_img
 
-
-#only when doing cropping the image is converted to pil
 def encode_image(img: Image.Image) -> str:
     buffered = io.BytesIO()
     # convert the image to RGB if it is not already
@@ -51,7 +51,6 @@ def encode_image(img: Image.Image) -> str:
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return img_str
 
-# Create JSON with the encoded image
 def decode_image(img_str):
     img_data = base64.b64decode(img_str)
     img = Image.open(io.BytesIO(img_data))
@@ -59,9 +58,8 @@ def decode_image(img_str):
 
 def encode_image_url(img: Image.Image) -> str:
     encoded_img = encode_image(img)
-    return f"data:image/jpeg;base64,{encoded_img}"  # Assume img is a base64 string or file path
+    return f"data:image/jpeg;base64,{encoded_img}"
 
-# Create JSON with the encoded image
 def decode_image_url(img_str):
     if img_str.startswith("data:image/jpeg;base64,"):
         img_str = img_str.split("data:image/jpeg;base64,")[1]
@@ -79,8 +77,16 @@ def rm_tree(pth: Path):
 class PixelReaonerTool(BaseTool):
     tool_type = "pixel_reasoner"
 
-    stop_tokens = [ "</tool_call>"]
+    stop_tokens = ["</tool_call>"]
     valid_mcp_func_names = ['zoom_in', 'crop_image_normalized', 'select_frames', 'crop_image']
+
+    def __init__(self, num_workers=1):
+        super().__init__(num_workers)
+        # Create a thread pool for CPU-intensive image processing
+        self.image_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(32, (os.cpu_count() or 1) + 4),
+            thread_name_prefix="image_processor"
+        )
 
     def get_usage_inst(self):
         return ""
@@ -96,7 +102,6 @@ class PixelReaonerTool(BaseTool):
         Returns:
             Tuple containing the extracted code and a validity flag
         """
-        # Try to find Python code in various formats
         try:
             call = json.loads(action.split('<tool_call>')[1].split('</tool_call>')[0])
             name = call.get('name', '')
@@ -112,7 +117,7 @@ class PixelReaonerTool(BaseTool):
         Load the environment for the given trajectory_id
         """
         env = self.env_cache.get(trajectory_id)
-        if env == None:
+        if env is None:
             env = {
                 "trajectory_id": trajectory_id,
                 "metadata": {
@@ -150,16 +155,8 @@ class PixelReaonerTool(BaseTool):
         Delete the environment for the given trajectory_id
         """
         env = self.env_cache.pop(trajectory_id, None)
-        if env is not None:
-            temporary_image_folder = env.get('temporary_image_folder')
-            # if temporary_image_folder:
-                # Remove the temporary image folder if it exists
-                # if isinstance(temporary_image_folder, str):
-                #     temporary_image_folder = Path(temporary_image_folder)
-                # if isinstance(temporary_image_folder, Path) and temporary_image_folder.exists():
-                #     rm_tree(temporary_image_folder)
 
-    def save_image_to_env(self, trajectory_id, image: Union[Image.Image,str]) -> str:
+    def save_image_to_env(self, trajectory_id, image: Union[Image.Image, str]) -> str:
         """
         Save the image to the environment for the given trajectory_id
         """
@@ -167,31 +164,32 @@ class PixelReaonerTool(BaseTool):
         env['temporary_images'].append(image)
         return image
 
-        # temporary_image_folder = env['temporary_image_folder']
-        # image_path = temporary_image_folder / f"image_{len(env['temporary_images'])}.jpg"
-        # image_path.parent.mkdir(parents=True, exist_ok=True)
-        # if isinstance(image, str):
-        #     # If the image is a base64 string, decode it
-        #     image = decode_image_url(image)
-        # elif isinstance(image, Image.Image):
-        #     # If the image is already a PIL Image, no need to decode
-        #     pass
-        # else:
-        #     raise ValueError("Image must be a PIL Image or a base64 encoded string.")
-        # image.save(image_path)
-        # env['temporary_images'].append(image_path)
-        # self.save_env(trajectory_id, env)
-        # return str(image_path.absolute())
-
-    def conduct_zoom_in_action(self, parameters, env):
-        """
-        Execute the zoom-in action based on the parsed parameters.
+    async def _process_single_image(self, img_source, bbox_2d):
+        """Process a single image crop operation asynchronously."""
+        def _crop_and_process():
+            cropped_img = crop(img_source, bbox_2d)
+            processed_img = process_image({"image": cropped_img})
+            return processed_img
         
-        Args:
-            parameters: Parsed action parameters containing bbox_2d and target_image
-            env: Current environment state
-        Returns:
-            Tuple containing observation, done flag, and validity flag
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.image_executor, _crop_and_process)
+
+    async def _process_multiple_images(self, img_sources, bbox_2d=(0, 0, 1, 1)):
+        """Process multiple images concurrently."""
+        def _crop_and_process_single(img_source):
+            cropped_img = crop(img_source, bbox_2d)
+            return process_image({"image": cropped_img})
+        
+        loop = asyncio.get_event_loop()
+        tasks = [
+            loop.run_in_executor(self.image_executor, _crop_and_process_single, img_source)
+            for img_source in img_sources
+        ]
+        return await asyncio.gather(*tasks)
+
+    async def conduct_zoom_in_action_async(self, parameters, env):
+        """
+        Execute the zoom-in action asynchronously.
         """
         valid = False
         missing_parameters = []
@@ -209,10 +207,12 @@ class PixelReaonerTool(BaseTool):
             try:
                 previous_images = env['images']
                 img_to_crop = previous_images[parameters['target_image']-1]
-                cropped_img = crop(img_to_crop, parameters['bbox_2d'])
-                cropped_img = process_image({"image": cropped_img})
-                encoded_cropped_img = encode_image_url(cropped_img)
-                image_width, image_height = cropped_img.size
+                
+                # Process image asynchronously
+                processed_img = await self._process_single_image(img_to_crop, parameters['bbox_2d'])
+                
+                encoded_cropped_img = encode_image_url(processed_img)
+                image_width, image_height = processed_img.size
                 observation = {
                     'obs': f"Here is the cropped image. (Image Size: {image_width}x{image_height})\n<image>",
                     'image': encoded_cropped_img,
@@ -223,10 +223,12 @@ class PixelReaonerTool(BaseTool):
                     json.dump(parameters, f, indent=4)
                 observation = f"Error processing image: {str(e)}"
                 print(f"Error processing zoom-in action: {str(e)}; parameters: {parameters}")
-                # raise e
         return observation, valid
     
-    def conduct_select_frames_action(self, parameters, env):
+    async def conduct_select_frames_action_async(self, parameters, env):
+        """
+        Execute the select frames action asynchronously with concurrent processing.
+        """
         valid = False
         missing_parameters = []
         if 'target_frames' not in parameters:
@@ -239,13 +241,15 @@ class PixelReaonerTool(BaseTool):
             observation = f"Invalid target_frames indices. Each index should be an integer between 1 and the number of previous images ({len(env['images'])})."
         else:
             try:
-                target_frames = [env['images'][frame - 1] for frame in parameters['target_frames']]
-                target_frames = [crop(img, (0, 0, 1, 1)) for img in target_frames]  # Crop to full size
-                target_frames = [process_image({"image": img}) for img in target_frames]
+                target_frame_sources = [env['images'][frame - 1] for frame in parameters['target_frames']]
+                
+                # Process all frames concurrently
+                target_frames = await self._process_multiple_images(target_frame_sources)
+                
                 target_frame_width, target_frame_height = target_frames[0].size
                 num_frames = len(target_frames)
                 observation = {
-                    'obs': f"Here are the selected frames. (Frame Size: {target_frame_width}x{target_frame_height}, Numbered 1 to {num_frames}):"+"<image>"*len(target_frames),
+                    'obs': f"Here are the selected frames. (Frame Size: {target_frame_width}x{target_frame_height}, Numbered 1 to {num_frames}):" + "<image>" * len(target_frames),
                     'image': [encode_image_url(img) for img in target_frames]
                 }
                 valid = True
@@ -254,22 +258,42 @@ class PixelReaonerTool(BaseTool):
                 with open('test.json', 'w') as f:
                     json.dump(parameters, f, indent=4)
                 print(f"Error processing select frames action: {str(e)}; parameters: {parameters}")
-                # raise e
         return observation, valid
 
-    def conduct_action(self, trajectory_id, action, extra_field):
+    async def aget_observations(self, trajectory_ids: List[str], actions: List[str], extra_fields: List[Dict[str, Any]]):
         """
-        Execute the parsed action
+        Async version of get_observations for concurrent processing.
+        """
+        observations = []
+        dones = []
+        valids = []
         
-        Args:
-            trajectory_id: ID for tracking the action
-            action: Raw action string
-            extra_field: Additional parameters
-            
-        Returns:
-            Tuple containing observation, done flag, and validity flag
-        """
+        # Process all actions concurrently
+        tasks = []
+        for i, (trajectory_id, action, extra_field) in enumerate(zip(trajectory_ids, actions, extra_fields)):
+            task = self._conduct_action_async(trajectory_id, action, extra_field)
+            tasks.append(task)
+        
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                observations.append(f"Processing error: {str(result)}")
+                dones.append(False)
+                valids.append(False)
+            else:
+                obs, done, valid = result
+                observations.append(obs)
+                dones.append(done)
+                valids.append(valid)
+        
+        return observations, dones, valids
 
+    async def _conduct_action_async(self, trajectory_id: str, action: str, extra_field: Dict[str, Any]):
+        """
+        Execute the parsed action asynchronously.
+        """
         parsed_action, is_valid = self.parse_action(action)
         env = self.load_env(trajectory_id)
         if env['images'] is None:
@@ -290,14 +314,14 @@ class PixelReaonerTool(BaseTool):
                 valid = False
             elif parsed_action['name'] in ['zoom_in', 'crop_image_normalized', 'crop_image']:
                 try:
-                    observation, valid = self.conduct_zoom_in_action(parsed_action['arguments'], env)
+                    observation, valid = await self.conduct_zoom_in_action_async(parsed_action['arguments'], env)
                 except Exception as e:
                     observation = f"Error processing {parsed_action['name']} action: {str(e)}"
                     valid = False
                     print(f"Error processing {parsed_action['name']} action: {str(e)}; parameters: {parsed_action['arguments']}")
             elif parsed_action['name'] == 'select_frames':
                 try:
-                    observation, valid = self.conduct_select_frames_action(parsed_action['arguments'], env)
+                    observation, valid = await self.conduct_select_frames_action_async(parsed_action['arguments'], env)
                 except Exception as e:
                     observation = f"Error processing select frames action: {str(e)}"
                     valid = False
@@ -305,16 +329,46 @@ class PixelReaonerTool(BaseTool):
             else:
                 observation = "Unknown action name."
                 valid = False
-            # Original Pixel Reasoner did not wrap with <tool_response>
-            # if isinstance(observation, dict):
-            #     observation['obs'] = f"\n<tool_response>{observation['obs']}</tool_response>"
-            # elif isinstance(observation, str):
-            #     observation = f"\n<tool_response>{observation}</tool_response>"
-            # else:
-            #     raise ValueError("Observation must be a string or a dictionary.")
 
         self.update_env(trajectory_id, env, parsed_action, is_valid, extra_field, observation)
         self.save_env(trajectory_id, env)
         
         return observation, done, valid
+
+    def conduct_zoom_in_action(self, parameters, env):
+        """
+        Synchronous wrapper for zoom-in action.
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.conduct_zoom_in_action_async(parameters, env))
+        finally:
+            loop.close()
     
+    def conduct_select_frames_action(self, parameters, env):
+        """
+        Synchronous wrapper for select frames action.
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.conduct_select_frames_action_async(parameters, env))
+        finally:
+            loop.close()
+
+    def conduct_action(self, trajectory_id, action, extra_field):
+        """
+        Synchronous wrapper for backward compatibility.
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self._conduct_action_async(trajectory_id, action, extra_field))
+        finally:
+            loop.close()
+
+    def __del__(self):
+        """Cleanup when tool is destroyed."""
+        if hasattr(self, 'image_executor'):
+            self.image_executor.shutdown(wait=False)
