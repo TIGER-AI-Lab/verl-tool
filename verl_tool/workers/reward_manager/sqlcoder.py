@@ -177,7 +177,7 @@ class SQLCoderRewardManager:
                 "db_path": extra_info.get("db_path")
             }
             score = {}
-            action_list = [x['action'] for x in data[i].non_tensor_batch['tool_interact_info']]
+            action_list = [x.get('action', "") for x in data[i].non_tensor_batch['tool_interact_info']]
             
             parsed_solution, is_format_correct = verify_format_and_extract(response, action_list)
             if is_format_correct:

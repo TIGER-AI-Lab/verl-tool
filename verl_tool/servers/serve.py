@@ -192,21 +192,21 @@ class AsyncToolManager:
             
             # Create task for tool processing with proper async/thread handling
             if hasattr(tool, "aget_observations") and inspect.iscoroutinefunction(tool.aget_observations):
-                task = await tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
+                # task = await tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields) # slow
                 # True async method
-                # task = asyncio.create_task(
-                #     tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
-                # )
+                task = asyncio.create_task(
+                    tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
+                )
             else:
-                task = tool.get_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
+                # task = tool.get_observations(tool_trajectory_ids, tool_actions, tool_extra_fields) # slow
                 # # Blocking method - use thread pool
-                # task = asyncio.get_event_loop().run_in_executor(
-                #     self.thread_pool,
-                #     tool.get_observations,
-                #     tool_trajectory_ids,
-                #     tool_actions,
-                #     tool_extra_fields,
-                # )
+                task = asyncio.get_event_loop().run_in_executor(
+                    self.thread_pool,
+                    tool.get_observations,
+                    tool_trajectory_ids,
+                    tool_actions,
+                    tool_extra_fields,
+                )
             tasks.append((tool_type, task))
         
         # Process all non-matching actions
@@ -359,13 +359,7 @@ class AsyncToolServer:
         
         async def _process_request(self, request: Request, background_tasks: BackgroundTasks):
             """Process the actual request logic"""
-            try:
-                # Parse request data
-                data = await asyncio.wait_for(request.json(), timeout=5.0)
-            except asyncio.TimeoutError:
-                raise HTTPException(status_code=400, detail="Request parsing timeout")
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+            data = await request.json()
             
             data_hash_str = hash_requests(data) if self.enable_hashing else str(id(data))
             
