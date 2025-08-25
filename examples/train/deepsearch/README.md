@@ -32,7 +32,7 @@ Deepsearch tasks can have a summarization model to do page summarization during 
 
 1. server summarization model
 ```bash
-CUDA_VISIBLE_DEVICES=4,5,6,7 vllm serve Qwen/Qwen3-8B \
+CUDA_VISIBLE_DEVICES=4,5,6,7 vllm serve Qwen/QwQ-32B \
   --dtype auto \
   --api-key "EMPTY" \
   --enforce-eager \
@@ -50,7 +50,7 @@ process_snippets: bool = True
 ```python
 process_snippets: bool = True,
 summ_model_url: str = "http://0.0.0.0:8000/v1",
-summ_model_path: str = "Qwen/Qwen3-8B"
+summ_model_path: str = "Qwen/QwQ-32B"
 ```
 3. Start the evaluation via the training script, set `val_before_train=True` and kill it once it finished the first step evaluation.
 ```bash

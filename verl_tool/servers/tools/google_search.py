@@ -260,7 +260,7 @@ class GoogleSearchEngine:
                 else:
                     raise
     
-    async def execute(self, query: str, timeout: int = 30, prev_steps: Union[List[str], str] = None) -> str:
+    async def execute(self, query: str, timeout: int = None, prev_steps: Union[List[str], str] = None) -> str:
         """
         Execute search with comprehensive error handling and caching.
         """
@@ -463,10 +463,10 @@ class GoogleSearchTool(BaseTool):
         location: str = "us",
         language: str = "en",
         cache_file: Optional[str] = None,
-        default_timeout: int = 300,
-        process_snippets: bool = True,
-        summ_model_url: str = "http://0.0.0.0:8000/v1",
-        summ_model_path: str = "Qwen/Qwen3-8B",
+        default_timeout: int = None,
+        process_snippets: bool = False,
+        summ_model_url: str = None,
+        summ_model_path: str = None,
         cache_size: int = 10000,
         cache_ttl: int = 3600
     ):
@@ -599,8 +599,6 @@ class GoogleSearchTool(BaseTool):
         else:
             # Get timeout from extra field
             timeout = self.default_timeout
-            if extra_field and 'timeout' in extra_field:
-                timeout = min(int(extra_field['timeout']), 300)
             
             # Extract previous actions for snippet processing
             prev_actions = None

@@ -75,7 +75,7 @@ class ServerConfig:
         port: int = 5000,
         workers_per_tool: int = 32,
         max_concurrent_requests: int = 64,
-        request_timeout: float = 600,
+        request_timeout: float = None,
         thread_pool_size: Optional[int] = None,
         enable_hashing: bool = True,
         log_level: str = "info"
@@ -337,9 +337,12 @@ class AsyncToolManager:
         
         # Check if tool has async method
         if hasattr(tool, "aget_observations") and inspect.iscoroutinefunction(tool.aget_observations):
-            return asyncio.create_task(
+            return asyncio.run(
                 tool.aget_observations(trajectory_ids, actions, extra_fields)
             )
+            # return asyncio.create_task(
+            #     tool.aget_observations(trajectory_ids, actions, extra_fields)
+            # )
         else:
             # Use thread pool for sync methods
             return asyncio.get_event_loop().run_in_executor(
@@ -360,7 +363,10 @@ class AsyncToolManager:
         """Execute tool tasks and collect results with proper error handling"""
         for tool_type, indices, task in tasks:
             try:
-                tool_observations, tool_dones, tool_valids = await task
+                if isinstance(task, asyncio.Task):
+                    tool_observations, tool_dones, tool_valids = await task
+                else:
+                    tool_observations, tool_dones, tool_valids = task
                 
                 # Assign results to correct positions
                 for idx_pos, result_idx in enumerate(indices):
@@ -550,8 +556,9 @@ class AsyncToolServer:
         if request_data.extra_fields:
             return request_data.extra_fields
         else:
-            # Create empty extra fields
-            return [{} for _ in request_data.trajectory_ids]
+            # Create empty extra fields, take all other fields except trajectory_ids and actions as extra_fields
+            keys = set(request_data.dict().keys()) - {"trajectory_ids", "actions", "extra_fields"}
+            return [{k: getattr(request_data, k) for k in keys} for _ in request_data.trajectory_ids]
     
     def start(self):
         """Start the server with optimal configuration"""
@@ -590,7 +597,7 @@ def main(
     port: int = 5000,
     workers_per_tool: int = 32,
     max_concurrent_requests: int = 128,
-    request_timeout: float = 600,
+    request_timeout: float = None,
     thread_pool_size: Optional[int] = None,
     use_tqdm: bool = False,
     log_level: str = "info",
