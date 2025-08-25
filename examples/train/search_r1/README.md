@@ -95,10 +95,6 @@ We mainly refer to Search-R1's [official implementation](https://github.com/Pete
    - Extracts answers from `<answer>` tags
    - Normalizes text for robust comparison
 
-4. **Training Scripts**
-   - `train_search_r1_reproduce.sh`: Main training script for reproduction, parameters are aligned with SGLang's training script
-   - `train_search_r1_qwen.sh`: Qwen-specific training configuration
-
 ### Data Flow
 
 ```
