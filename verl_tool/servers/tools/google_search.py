@@ -566,7 +566,6 @@ class GoogleSearchTool(BaseTool):
         else:
             results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        print("finish gathering results")
         
         # Unpack results and handle exceptions
         observations, dones, valids = [], [], []
