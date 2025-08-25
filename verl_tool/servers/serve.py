@@ -337,12 +337,9 @@ class AsyncToolManager:
         
         # Check if tool has async method
         if hasattr(tool, "aget_observations") and inspect.iscoroutinefunction(tool.aget_observations):
-            return asyncio.run(
+            return asyncio.create_task(
                 tool.aget_observations(trajectory_ids, actions, extra_fields)
             )
-            # return asyncio.create_task(
-            #     tool.aget_observations(trajectory_ids, actions, extra_fields)
-            # )
         else:
             # Use thread pool for sync methods
             return asyncio.get_event_loop().run_in_executor(
@@ -554,11 +551,17 @@ class AsyncToolServer:
     def _prepare_extra_fields(self, request_data: ActionRequest) -> List[Dict[str, Any]]:
         """Prepare and validate extra fields from request"""
         if request_data.extra_fields:
-            return request_data.extra_fields
+            extra_fields = request_data.extra_fields
         else:
-            # Create empty extra fields, take all other fields except trajectory_ids and actions as extra_fields
-            keys = set(request_data.dict().keys()) - {"trajectory_ids", "actions", "extra_fields"}
-            return [{k: getattr(request_data, k) for k in keys} for _ in request_data.trajectory_ids]
+            extra_fields = [{} for _ in request_data.trajectory_ids]
+        
+        # Create empty extra fields, take all other fields except trajectory_ids and actions as extra_fields
+        keys = set(request_data.dict().keys()) - {"trajectory_ids", "actions", "extra_fields"}
+        for key in keys:
+            if key not in extra_fields[0]:
+                for ef, value in zip(extra_fields, getattr(request_data, key)):
+                    ef[key] = value
+        return extra_fields
     
     def start(self):
         """Start the server with optimal configuration"""
