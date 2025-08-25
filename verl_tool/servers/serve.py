@@ -498,7 +498,6 @@ class AsyncToolServer:
                     valids=valids,
                     processing_time_ms=processing_time_ms
                 )
-                print(f"[Done] Processed request in {processing_time_ms:.1f}ms")
                 
                 # Cache successful responses
                 if self.config.enable_hashing:
