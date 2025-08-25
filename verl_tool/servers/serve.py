@@ -33,8 +33,8 @@ class ActionRequest(BaseModel):
     trajectory_ids: List[str] = Field(..., min_items=1)
     actions: List[str] = Field(..., min_items=1)
     extra_fields: Optional[List[Dict[str, Any]]] = None
-    finish: List[bool] = Field(..., min_items=1)
-    is_last_step: List[bool] = Field(..., min_items=1)
+    finish: Optional[List[bool]] = None
+    is_last_step: Optional[List[bool]] = None
 
     @validator('actions')
     def validate_actions_length(cls, v, values):
@@ -560,7 +560,7 @@ class AsyncToolServer:
         # Create empty extra fields, take all other fields except trajectory_ids and actions as extra_fields
         keys = set(request_data.dict().keys()) - {"trajectory_ids", "actions", "extra_fields"}
         for key in keys:
-            if key not in extra_fields[0]:
+            if key not in extra_fields[0] and getattr(request_data, key) is not None:
                 for ef, value in zip(extra_fields, getattr(request_data, key)):
                     ef[key] = value
         return extra_fields
