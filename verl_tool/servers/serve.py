@@ -362,7 +362,7 @@ class AsyncToolManager:
         """Execute tool tasks and collect results with proper error handling"""
         for tool_type, indices, task in tasks:
             try:
-                if isinstance(task, asyncio.Task):
+                if inspect.isawaitable(task):
                     tool_observations, tool_dones, tool_valids = await task
                 else:
                     tool_observations, tool_dones, tool_valids = task
