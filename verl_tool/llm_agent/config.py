@@ -31,5 +31,5 @@ class AgentActorConfig:
     max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
     over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
-    tool_call_time_out: int=60 # Timeout for tool calls in async rollout.
+    tool_call_time_out: int=300 # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.

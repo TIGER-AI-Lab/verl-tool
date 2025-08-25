@@ -3,7 +3,7 @@ from pathlib import Path
 from tqdm import tqdm
 registered_tools = {}
 ALL_TOOLS = []
-use_tqdm = True
+use_tqdm = False
 def set_use_tqdm(value: bool):
     """
     Set whether to use tqdm for progress bars.
@@ -150,6 +150,20 @@ class BaseTool:
         self.save_env(trajectory_id, env)
         
         return observation, done, valid
+    
+    def maybe_cleanup_env(self, trajectory_ids, actions, extra_fields):
+        """
+        Maybe clean up the environments for the given trajectory IDs and actions
+        Args:
+            trajectory_ids: The list of trajectory IDs
+            actions: The list of actions
+            extra_fields: Extra data to include in the request
+        """
+        for i in range(len(trajectory_ids)):
+            if extra_fields[i].get('is_last_step', False):
+                # delete the environment if it's the last step
+                if self.has_env(trajectory_ids[i]):
+                    self.delete_env(trajectory_ids[i])
         
     def get_observations(self, trajectory_ids, actions, extra_fields):
         """
@@ -177,11 +191,7 @@ class BaseTool:
                                                 disable=not use_tqdm))
         
         observations, dones, valids = zip(*results)
-        for i in range(len(trajectory_ids)):
-            if extra_fields[i].get('is_last_step', False) or dones[i]:
-                # delete the environment if it's the last step or done by the tool
-                if self.has_env(trajectory_ids[i]):
-                    self.delete_env(trajectory_ids[i])
+        self.maybe_cleanup_env(trajectory_ids, actions, extra_fields)
         return observations, dones, valids
 
 # go through all files in the tools directory and register them

@@ -1,158 +1,245 @@
 """
-Tool Server - Fixed version with proper async handling and resource management
+Improved Tool Server - Cleaner, more robust async tool execution server
 """
-import asyncio, inspect
+import asyncio
+import inspect
 import logging
+import time
+import weakref
+from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
-from tqdm import tqdm
-import regex as re
-import json
+
 import fire
 import uvicorn
-from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from .utils import hash_requests
-import weakref
-import time
+from pydantic import BaseModel, Field, validator
+import concurrent.futures
 
+from .utils import hash_requests
 from .tools import get_tool_cls, ALL_TOOLS, set_use_tqdm
 
-# Configure logging
+# Configure structured logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-    
+
+# === MODELS ===
+class ActionRequest(BaseModel):
+    """Model for incoming action requests with validation"""
+    trajectory_ids: List[str] = Field(..., min_items=1)
+    actions: List[str] = Field(..., min_items=1)
+    extra_fields: Optional[List[Dict[str, Any]]] = None
+
+    @validator('actions')
+    def validate_actions_length(cls, v, values):
+        if 'trajectory_ids' in values and len(v) != len(values['trajectory_ids']):
+            raise ValueError("Length of actions must match trajectory_ids")
+        return v
+
+    @validator('extra_fields')
+    def validate_extra_fields_length(cls, v, values):
+        if v is not None and 'trajectory_ids' in values and len(v) != len(values['trajectory_ids']):
+            raise ValueError("Length of extra_fields must match trajectory_ids")
+        return v
+
+
 class AgentResponse(BaseModel):
     """Model for outgoing agent responses"""
     observations: List[Union[str, dict]]
     dones: List[bool]
     valids: List[bool]
+    processing_time_ms: Optional[float] = None
 
 
+class HealthResponse(BaseModel):
+    """Health check response model"""
+    status: str
+    concurrent_requests: int
+    thread_pool_size: int
+    active_tasks: int
+    max_concurrent: int
+    tools: List[str]
+    uptime_seconds: float
+
+
+# === CONFIGURATION ===
+class ServerConfig:
+    """Central configuration for server settings"""
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: int = 5000,
+        workers_per_tool: int = 32,
+        max_concurrent_requests: int = 64,
+        request_timeout: float = 180.0,
+        thread_pool_size: Optional[int] = None,
+        enable_hashing: bool = True,
+        log_level: str = "info"
+    ):
+        self.host = host
+        self.port = port
+        self.workers_per_tool = workers_per_tool
+        self.max_concurrent_requests = max_concurrent_requests
+        self.request_timeout = request_timeout
+        self.enable_hashing = enable_hashing
+        self.log_level = log_level
+        
+        # Auto-configure thread pool size based on concurrency needs
+        if thread_pool_size is None:
+            self.thread_pool_size = max(max_concurrent_requests * 4, 512)
+        else:
+            self.thread_pool_size = thread_pool_size
+
+
+# === TOOL MANAGEMENT ===
 class AsyncToolManager:
-    """Manages all tools and their execution using asyncio"""
+    """Manages all tools and their execution with improved error handling"""
     
-    def __init__(self, tool_types: Tuple[str], num_workers_per_tool: int = 4, use_tqdm: bool = False, done_if_invalid: bool = False, thread_pool_size: int = 512):
-        """Initialize the tool manager with specified tools"""
+    def __init__(self, tool_types: Tuple[str], config: ServerConfig, use_tqdm: bool = False, done_if_invalid: bool = False):
         self.tools: Dict[str, Any] = {}
         self.use_tqdm = use_tqdm
-        set_use_tqdm(use_tqdm)
         self.done_if_invalid = done_if_invalid
-        self._initialize_tools(tool_types, num_workers_per_tool)
+        self.config = config
         
-        # Configure asyncio thread pool with proper sizing
-        import concurrent.futures
-        # Increase thread pool size significantly for high concurrency
-        actual_pool_size = max(thread_pool_size, num_workers_per_tool * len(self.tools) * 2)
+        set_use_tqdm(use_tqdm)
+        self._initialize_tools(tool_types)
+        self._setup_thread_pool()
+        
+    def _setup_thread_pool(self):
+        """Initialize thread pool with proper configuration"""
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=actual_pool_size,
-            thread_name_prefix="tool_server"
+            max_workers=self.config.thread_pool_size,
+            thread_name_prefix="tool_worker"
         )
-        logger.info(f"Thread pool initialized with {actual_pool_size} workers")
+        logger.info(f"Thread pool initialized with {self.config.thread_pool_size} workers")
         
-    def _initialize_tools(self, tool_types: Tuple[str], num_workers: int) -> None:
-        """Initialize all tools based on tool types"""
+    def _initialize_tools(self, tool_types: Tuple[str]) -> None:
+        """Initialize tools with better error handling and logging"""
+        # Ensure finish tool is last
         if "finish" in tool_types:
-            tool_types = tuple(t for t in tool_types if t != "finish")
-            tool_types = tool_types + ("finish",)
+            tool_types = tuple(t for t in tool_types if t != "finish") + ("finish",)
             
-        print(f"Initializing tools: {tool_types}")
+        logger.info(f"Initializing tools: {tool_types}")
+        
+        initialized_tools = []
+        failed_tools = []
+        
         for tool_type in tool_types:
             try:
                 tool_cls = get_tool_cls(tool_type)
-                self.tools[tool_type] = tool_cls(num_workers=num_workers)
-                print(f"Initialized tool: {tool_type}")
+                self.tools[tool_type] = tool_cls(num_workers=self.config.workers_per_tool)
+                initialized_tools.append(tool_type)
+                logger.info(f"✓ Initialized tool: {tool_type}")
             except Exception as e:
-                logger.error(f"Failed to initialize tool {tool_type}: {e}")
+                failed_tools.append((tool_type, str(e)))
+                logger.error(f"✗ Failed to initialize tool {tool_type}: {e}")
         
-        finish_tool = get_tool_cls("finish")
-        self.tools["finish"] = finish_tool(num_workers=num_workers, other_tools=list(self.tools.values()))
-                
-        print("Available Tools:")
+        # Initialize finish tool with proper dependencies
+        if "finish" not in failed_tools:
+            try:
+                finish_tool = get_tool_cls("finish")
+                self.tools["finish"] = finish_tool(
+                    num_workers=self.config.workers_per_tool, 
+                    other_tools=[self.tools[t] for t in initialized_tools if t != "finish"]
+                )
+                logger.info("✓ Initialized finish tool")
+            except Exception as e:
+                logger.error(f"✗ Failed to initialize finish tool: {e}")
+        
+        self._log_tool_status()
+        
+        if failed_tools:
+            logger.warning(f"Some tools failed to initialize: {failed_tools}")
+    
+    def _log_tool_status(self):
+        """Log the status of all available tools"""
+        logger.info("Tool Status Summary:")
         for tool in ALL_TOOLS:
-            if tool in self.tools:
-                print(f"  - {tool}: active 🟢")
-            else:
-                print(f"  - {tool}: inactive ⚪")
+            status = "🟢 ACTIVE" if tool in self.tools else "⚪ INACTIVE"
+            logger.info(f"  {tool}: {status}")
     
-    def get_tool_usage_instructions(self) -> str:
-        """Get usage instructions for all available tools"""
-        usage_instructions = {}
+    def get_usage_instructions(self) -> str:
+        """Generate usage instructions for available tools"""
+        instructions = []
         for tool_type, tool in self.tools.items():
-            if tool_type not in ["finish", "base"]:
-                usage_instructions[tool_type] = tool.get_usage_inst()
-                
-        message = "\nYour action did not match any of the available tools, please use one of the following tools: \n"
-        message += "\n".join([f"- {tool_type}: {usage_instructions[tool_type]}" for tool_type in usage_instructions])
-        return message
+            if tool_type not in ["finish", "base"] and hasattr(tool, 'get_usage_inst'):
+                instructions.append(f"• {tool_type}: {tool.get_usage_inst()}")
+        
+        if not instructions:
+            return "No tools available for usage instructions."
+            
+        return "\n".join([
+            "Available tools:",
+            *instructions
+        ])
     
-    def identify_tool_for_action(self, action: str, extra_field: Dict[str, Any]) -> Optional[str]:
-        """Identify which tool should process a given action - SYNCHRONOUS VERSION"""
+    def _identify_tool_for_action(self, action: str, extra_field: Dict[str, Any]) -> Optional[str]:
+        """Identify appropriate tool for a single action"""
+        # Check for explicit finish signal
         if extra_field.get("finish", False):
             return "finish"
             
+        # Single tool case
         if len(self.tools) == 1:
             return list(self.tools.keys())[0]
         
+        # Try each tool (except special ones) to parse action
         for tool_type, tool in self.tools.items():
-            if tool_type in ["finish", 'mcp_interface']:
+            if tool_type in ["finish", "mcp_interface"]:
                 continue
+                
             try:
-                _, valid = tool.parse_action(action)
-                if valid:
-                    return tool_type
+                if hasattr(tool, 'parse_action'):
+                    _, valid = tool.parse_action(action)
+                    if valid:
+                        return tool_type
             except Exception as e:
-                logger.debug(f"Tool {tool_type} failed to parse action: {e}")
+                logger.debug(f"Tool {tool_type} parse error: {e}")
                 continue
         
+        # Try MCP interface as fallback
         if "mcp_interface" in self.tools:
             try:
-                tool = self.tools["mcp_interface"]
-                _, valid = tool.parse_action(action)
+                _, valid = self.tools["mcp_interface"].parse_action(action)
                 if valid:
                     return "mcp_interface"
             except Exception as e:
-                logger.debug(f"MCP interface tool failed to parse action: {e}")
+                logger.debug(f"MCP interface parse error: {e}")
 
         return None
     
     async def identify_tool_types_batch(self, actions: List[str], extra_fields: List[Dict[str, Any]]) -> List[Optional[str]]:
-        """Efficiently identify tools for a batch of actions using CPU-bound processing"""
-        def process_batch(batch_data):
-            """CPU-bound function to process a batch"""
-            batch_actions, batch_extra_fields = batch_data
-            results = []
-            for action, extra_field in zip(batch_actions, batch_extra_fields):
-                tool_type = self.identify_tool_for_action(action, extra_field)
-                results.append(tool_type)
-            return results
+        """Efficiently identify tools for batch of actions"""
+        def process_batch_chunk(chunk_data):
+            chunk_actions, chunk_extra_fields = chunk_data
+            return [
+                self._identify_tool_for_action(action, extra_field)
+                for action, extra_field in zip(chunk_actions, chunk_extra_fields)
+            ]
         
-        # Process in smaller chunks to avoid blocking
-        chunk_size = min(50, len(actions))
+        # Process in optimal chunks to balance CPU usage and responsiveness
+        chunk_size = min(100, max(10, len(actions) // 4))
         tool_types = []
         
         for i in range(0, len(actions), chunk_size):
             chunk_end = min(i + chunk_size, len(actions))
-            chunk_actions = actions[i:chunk_end]
-            chunk_extra_fields = extra_fields[i:chunk_end]
+            chunk_data = (actions[i:chunk_end], extra_fields[i:chunk_end])
             
-            # Process chunk in thread pool
             chunk_results = await asyncio.get_event_loop().run_in_executor(
                 self.thread_pool,
-                process_batch,
-                (chunk_actions, chunk_extra_fields)
+                process_batch_chunk,
+                chunk_data
             )
             tool_types.extend(chunk_results)
             
-            # Yield control periodically
-            if i % (chunk_size * 4) == 0:
+            # Yield control periodically for large batches
+            if len(actions) > 500 and i % (chunk_size * 5) == 0:
                 await asyncio.sleep(0.001)
         
-        logger.debug(f"Identified tool types for {len(actions)} actions")
         return tool_types
     
     async def process_actions(
@@ -160,326 +247,336 @@ class AsyncToolManager:
         trajectory_ids: List[str], 
         actions: List[str], 
         extra_fields: List[Dict[str, Any]]
-    ) -> Tuple[List[str], List[bool], List[bool]]:
-        """Process a batch of actions asynchronously using appropriate tools"""
+    ) -> Tuple[List[Union[str, dict]], List[bool], List[bool]]:
+        """Process batch of actions with improved error handling and performance"""
         
-        # Use the more efficient batch processing
+        start_time = time.time()
+        num_actions = len(actions)
+        
+        # Identify tools for all actions
         tool_types = await self.identify_tool_types_batch(actions, extra_fields)
         
-        # Prepare result containers
-        all_observations = [None] * len(actions)
-        all_dones = [False] * len(actions)
-        all_valids = [False] * len(actions)
+        # Initialize results
+        observations = [None] * num_actions
+        dones = [False] * num_actions
+        valids = [False] * num_actions
         
-        # Group actions by tool type for batch processing
-        unique_tool_types: Set[Optional[str]] = set(tool_types)
+        # Group actions by tool type for efficient batch processing
+        tool_groups = self._group_actions_by_tool(tool_types, trajectory_ids, actions, extra_fields)
         
-        # Create tasks for each tool type
+        # Process each tool group
         tasks = []
-        indices_by_tool = {}
-        
-        for tool_type in unique_tool_types:
-            indices = [i for i, t in enumerate(tool_types) if t == tool_type]
-            indices_by_tool[tool_type] = indices
-            
+        for tool_type, (indices, data) in tool_groups.items():
             if tool_type is None:
+                # Handle invalid actions
+                self._handle_invalid_actions(indices, observations, dones, valids)
                 continue
                 
-            tool = self.tools[tool_type]
-            tool_trajectory_ids = [trajectory_ids[i] for i in indices]
-            tool_actions = [actions[i] for i in indices]
-            tool_extra_fields = [extra_fields[i] for i in indices]
-            
-            # Create task for tool processing with proper async/thread handling
-            if hasattr(tool, "aget_observations") and inspect.iscoroutinefunction(tool.aget_observations):
-                # task = await tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields) # slow
-                # True async method
-                task = asyncio.create_task(
-                    tool.aget_observations(tool_trajectory_ids, tool_actions, tool_extra_fields)
-                )
-            else:
-                # task = tool.get_observations(tool_trajectory_ids, tool_actions, tool_extra_fields) # slow
-                # # Blocking method - use thread pool
-                task = asyncio.get_event_loop().run_in_executor(
-                    self.thread_pool,
-                    tool.get_observations,
-                    tool_trajectory_ids,
-                    tool_actions,
-                    tool_extra_fields,
-                )
-            tasks.append((tool_type, task))
+            task = self._create_tool_processing_task(tool_type, data)
+            tasks.append((tool_type, indices, task))
         
-        # Process all non-matching actions
-        if None in indices_by_tool:
-            usage_instructions = self.get_tool_usage_instructions()
-            indices = indices_by_tool[None]
-            for idx in indices:
-                all_observations[idx] = {"obs": "", "invalid_reason": "no valid tool found for action"}
-                all_valids[idx] = False
-                all_dones[idx] = self.done_if_invalid
+        # Execute all tool tasks concurrently
+        await self._execute_tool_tasks(tasks, observations, dones, valids)
         
-        # Await all tool processing tasks with proper error handling
-        for tool_type, task in tasks:
-            try:
-                if isinstance(task, asyncio.Task) or inspect.isawaitable(task):
-                    observations, dones, valids = await task
-                else:
-                    observations, dones, valids = task
+        processing_time = (time.time() - start_time) * 1000
+        logger.debug(f"Processed {num_actions} actions in {processing_time:.1f}ms")
+        
+        return observations, dones, valids
+    
+    def _group_actions_by_tool(
+        self, 
+        tool_types: List[Optional[str]], 
+        trajectory_ids: List[str], 
+        actions: List[str], 
+        extra_fields: List[Dict[str, Any]]
+    ) -> Dict[Optional[str], Tuple[List[int], Tuple]]:
+        """Group actions by their assigned tool types"""
+        groups = {}
+        
+        for tool_type in set(tool_types):
+            indices = [i for i, t in enumerate(tool_types) if t == tool_type]
+            if not indices:
+                continue
                 
-                indices = indices_by_tool[tool_type]
+            if tool_type is None:
+                groups[tool_type] = (indices, None)
+            else:
+                tool_data = (
+                    [trajectory_ids[i] for i in indices],
+                    [actions[i] for i in indices],
+                    [extra_fields[i] for i in indices]
+                )
+                groups[tool_type] = (indices, tool_data)
+        
+        return groups
+    
+    def _handle_invalid_actions(
+        self, 
+        indices: List[int], 
+        observations: List[Any], 
+        dones: List[bool], 
+        valids: List[bool]
+    ):
+        """Handle actions that couldn't be matched to any tool"""
+        usage_instructions = self.get_usage_instructions()
+        error_response = {
+            "obs": "", 
+            "invalid_reason": "No valid tool found for action",
+            "available_tools": usage_instructions
+        }
+        
+        for idx in indices:
+            observations[idx] = error_response
+            valids[idx] = False
+            dones[idx] = self.done_if_invalid
+    
+    def _create_tool_processing_task(self, tool_type: str, data: Tuple):
+        """Create appropriate task for tool processing (async vs sync)"""
+        tool = self.tools[tool_type]
+        trajectory_ids, actions, extra_fields = data
+        
+        # Check if tool has async method
+        if hasattr(tool, "aget_observations") and inspect.iscoroutinefunction(tool.aget_observations):
+            return asyncio.create_task(
+                tool.aget_observations(trajectory_ids, actions, extra_fields)
+            )
+        else:
+            # Use thread pool for sync methods
+            return asyncio.get_event_loop().run_in_executor(
+                self.thread_pool,
+                tool.get_observations,
+                trajectory_ids,
+                actions,
+                extra_fields,
+            )
+    
+    async def _execute_tool_tasks(
+        self,
+        tasks: List[Tuple[str, List[int], Any]],
+        observations: List[Any],
+        dones: List[bool],
+        valids: List[bool]
+    ):
+        """Execute tool tasks and collect results with proper error handling"""
+        for tool_type, indices, task in tasks:
+            try:
+                tool_observations, tool_dones, tool_valids = await task
+                
+                # Assign results to correct positions
                 for idx_pos, result_idx in enumerate(indices):
-                    all_observations[result_idx] = observations[idx_pos]
-                    all_dones[result_idx] = dones[idx_pos]
-                    all_valids[result_idx] = valids[idx_pos]
+                    observations[result_idx] = tool_observations[idx_pos]
+                    dones[result_idx] = tool_dones[idx_pos]
+                    valids[result_idx] = tool_valids[idx_pos]
                     
             except Exception as e:
                 logger.error(f"Tool {tool_type} processing failed: {e}", exc_info=True)
-                # Handle failed tool processing
-                indices = indices_by_tool[tool_type]
-                for result_idx in indices:
-                    all_observations[result_idx] = {"obs": "", "error": f"Tool processing failed: {str(e)}"}
-                    all_dones[result_idx] = True
-                    all_valids[result_idx] = False
                 
-        return all_observations, all_dones, all_valids
+                # Handle failed tool processing gracefully
+                error_response = {
+                    "obs": "", 
+                    "error": f"Tool processing failed: {str(e)}",
+                    "tool_type": tool_type
+                }
+                
+                for result_idx in indices:
+                    observations[result_idx] = error_response
+                    dones[result_idx] = True
+                    valids[result_idx] = False
+    
+    def cleanup(self):
+        """Clean up resources"""
+        if hasattr(self, 'thread_pool'):
+            self.thread_pool.shutdown(wait=True)
+            logger.info("Thread pool shut down")
 
 
+# === SERVER ===
 class AsyncToolServer:
-    """Server to handle tool execution requests using asyncio"""
+    """Main server class with improved architecture"""
     
     def __init__(
         self,
         tool_types: Tuple[str],
-        host: str = "0.0.0.0",
-        port: int = 5000,
-        workers_per_tool: int = 32,
-        max_concurrent_requests: int = 64,
+        config: ServerConfig,
         use_tqdm: bool = False,
         done_if_invalid: bool = False,
         use_ray: bool = False,
-        enable_hashing: bool = False,
-        request_timeout: float = 60.0,
-        thread_pool_size: int = None
     ):
-        """Initialize the tool server"""
-        self.host = host
-        self.port = port
-        self.max_concurrent_requests = max_concurrent_requests
-        self.enable_hashing = enable_hashing
-        self.request_timeout = request_timeout
+        self.config = config
+        self.start_time = time.time()
         self.active_requests = 0
         
-        # Critical: Ensure thread pool is large enough
-        if thread_pool_size is None:
-            thread_pool_size = max(max_concurrent_requests * 3, 1024)  # 3x concurrency, min 1024
-        
-        if not use_ray:
-            self.tool_manager = AsyncToolManager(tool_types, workers_per_tool, use_tqdm, done_if_invalid, thread_pool_size)
-        else:
+        # Initialize tool manager
+        if use_ray:
             from .ray_utils import RayToolManager
-            self.tool_manager = RayToolManager(tool_types, workers_per_tool, use_tqdm, done_if_invalid)
+            self.tool_manager = RayToolManager(tool_types, config, use_tqdm, done_if_invalid)
+        else:
+            self.tool_manager = AsyncToolManager(tool_types, config, use_tqdm, done_if_invalid)
         
-        # Create FastAPI app with optimized settings
+        # Request deduplication (if enabled)
+        self.processing_cache = weakref.WeakValueDictionary() if config.enable_hashing else {}
+        
+        # Create app with lifespan management
         self.app = FastAPI(
             title="Async Tool Server",
-            description="A server for executing tools based on agent requests using asyncio",
-            version="1.0.0",
+            description="High-performance async tool execution server",
+            version="2.0.0",
+            lifespan=self._lifespan
         )
         
-        # Use WeakValueDictionary for automatic cleanup
-        self.processing_tasks = {}
-        self._task_cleanup_interval = 300  # 5 minutes
-        self._last_cleanup = time.time()
+        self._setup_routes()
+        self._setup_middleware()
+    
+    @asynccontextmanager
+    async def _lifespan(self, app: FastAPI):
+        """Manage app lifespan with proper cleanup"""
+        logger.info("Server starting up...")
+        # Startup logic here if needed
+        yield
+        logger.info("Server shutting down...")
+        self.tool_manager.cleanup()
+    
+    def _setup_middleware(self):
+        """Setup middleware for monitoring and performance"""
+        @self.app.middleware("http")
+        async def add_process_time_header(request: Request, call_next):
+            start_time = time.time()
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            response.headers["X-Process-Time"] = str(process_time)
+            return response
+    
+    def _setup_routes(self):
+        """Setup API routes with proper validation and error handling"""
         
-        self._configure_app()
+        # Concurrency limiter
+        semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
         
-    async def _cleanup_old_tasks(self):
-        """Clean up old completed tasks periodically"""
-        current_time = time.time()
-        if current_time - self._last_cleanup > self._task_cleanup_interval:
-            # The WeakValueDictionary will automatically clean up unreferenced tasks
-            # But we can also manually clean up old completed tasks
-            to_remove = []
-            for hash_str, task_info in list(self.processing_tasks.items()):
-                if (hasattr(task_info, 'get') and 
-                    task_info.get('completed_time') and 
-                    current_time - task_info['completed_time'] > 60):  # Remove after 1 minute
-                    to_remove.append(hash_str)
-            
-            for hash_str in to_remove:
-                self.processing_tasks.pop(hash_str, None)
-                
-            self._last_cleanup = current_time
-            logger.debug(f"Cleaned up {len(to_remove)} old tasks")
-        
-    def _configure_app(self):
-        """Configure FastAPI app with routes and event handlers"""
-        
-        # Create semaphore for concurrency control
-        semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        async def get_semaphore():
+            """Dependency to manage concurrency"""
+            async with semaphore:
+                self.active_requests += 1
+                try:
+                    yield
+                finally:
+                    self.active_requests -= 1
         
         @self.app.post("/get_observation", response_model=AgentResponse)
-        async def handle_observation_request(request: Request, background_tasks: BackgroundTasks):
-            """Handle incoming observation requests"""
-            request_start_time = time.time()
-            self.active_requests += 1
-            logger.debug(f"Request started. Active: {self.active_requests}")
-            request = await request.json()
-            try:
-                # Acquire semaphore with timeout
-                try:
-                    await semaphore.acquire()
-                except asyncio.TimeoutError:
-                    raise HTTPException(status_code=429, detail="Server overloaded - semaphore timeout")
-                
-                try:
-                    # Process request with timeout
-                    response = await asyncio.wait_for(
-                        self._process_request(request, background_tasks),
-                        timeout=self.request_timeout
-                    )
-                    
-                    processing_time = time.time() - request_start_time
-                    logger.debug(f"Request completed in {processing_time:.2f}s")
-                    return response
-                    
-                finally:
-                    semaphore.release()
-                    
-            except asyncio.TimeoutError:
-                logger.warning(f"Request timed out after {self.request_timeout}s")
-                raise HTTPException(status_code=408, detail="Request timeout")
-            except Exception as e:
-                logger.error(f"Request failed: {e}", exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-            finally:
-                self.active_requests -= 1
-                # Periodic cleanup
-                await self._cleanup_old_tasks()
-        
-        async def _process_request(self, data:dict, background_tasks: BackgroundTasks):
-            """Process the actual request logic"""
-            data_hash_str = hash_requests(data) if self.enable_hashing else str(id(data))
-            
-            # Check for duplicate processing (if hashing enabled)
-            if self.enable_hashing and data_hash_str in self.processing_tasks:
-                logger.debug(f"Duplicate request detected: {data_hash_str}")
-                task_info = self.processing_tasks[data_hash_str]
-                task_info['ref_count'] = task_info.get('ref_count', 0) + 1
-                
-                # Wait for result with proper timeout
-                for _ in range(int(self.request_timeout * 2)):  # Check every 0.5s
-                    if task_info.get('result') is not None:
-                        return task_info['result']
-                    await asyncio.sleep(0.5)
-                
-                # Timeout waiting for duplicate
-                raise HTTPException(status_code=408, detail="Timeout waiting for duplicate request")
-            
-            # Create new task entry
-            task_info = {"ref_count": 1, "result": None, "start_time": time.time()}
-            if self.enable_hashing:
-                self.processing_tasks[data_hash_str] = task_info
+        async def process_observations(
+            request_data: ActionRequest,
+            _: None = Depends(get_semaphore)
+        ):
+            """Main endpoint for processing observations"""
+            start_time = time.time()
             
             try:
-                # Validate and process request data
-                trajectory_ids = [str(tid) for tid in data.get("trajectory_ids", [])]
-                actions = data.get("actions", [])
-                
-                if not trajectory_ids or not actions:
-                    raise HTTPException(status_code=400, detail="Missing trajectory_ids or actions")
-                
-                if len(trajectory_ids) != len(actions):
-                    raise HTTPException(status_code=400, detail="trajectory_ids and actions length mismatch")
-                
                 # Process extra fields
-                if 'extra_fields' in data:
-                    extra_fields = data['extra_fields']
-                    for key in data:
-                        if key not in ["trajectory_ids", "actions", "extra_fields"]:
-                            if len(data[key]) != len(trajectory_ids):
-                                raise HTTPException(status_code=400, detail=f"Length mismatch for {key}")
-                            for i in range(len(trajectory_ids)):
-                                extra_fields[i][key] = data[key][i]
-                else:
-                    extra_keys = [k for k in data.keys() if k not in ["trajectory_ids", "actions"]]
-                    extra_fields = [
-                        {key: data[key][i] for key in extra_keys} 
-                        for i in range(len(trajectory_ids))
-                    ]
+                extra_fields = self._prepare_extra_fields(request_data)
                 
-                logger.debug(f"Processing {len(actions)} actions")
+                # Check for duplicate processing
+                if self.config.enable_hashing:
+                    cache_key = hash_requests(request_data.dict())
+                    cached_result = self.processing_cache.get(cache_key)
+                    if cached_result:
+                        logger.debug(f"Returning cached result for request")
+                        return cached_result
                 
-                # Process actions
-                observations, dones, valids = await self.tool_manager.process_actions(
-                    trajectory_ids, actions, extra_fields
+                # Process actions with timeout
+                observations, dones, valids = await asyncio.wait_for(
+                    self.tool_manager.process_actions(
+                        request_data.trajectory_ids,
+                        request_data.actions,
+                        extra_fields
+                    ),
+                    timeout=self.config.request_timeout
                 )
                 
-                # Create and store response
+                processing_time_ms = (time.time() - start_time) * 1000
                 response = AgentResponse(
                     observations=observations,
                     dones=dones,
-                    valids=valids
+                    valids=valids,
+                    processing_time_ms=processing_time_ms
                 )
+                print(f"[Done] Processed request in {processing_time_ms:.1f}ms")
                 
-                if self.enable_hashing:
-                    task_info['result'] = response
-                    task_info['completed_time'] = time.time()
+                # Cache successful responses
+                if self.config.enable_hashing:
+                    self.processing_cache[cache_key] = response
                 
                 return response
                 
+            except asyncio.TimeoutError:
+                raise HTTPException(status_code=408, detail="Request processing timeout")
             except Exception as e:
-                # Clean up on error
-                if self.enable_hashing and data_hash_str in self.processing_tasks:
-                    del self.processing_tasks[data_hash_str]
-                logger.error(f"Error processing request: {e}", exc_info=True)
+                logger.error(f"Request processing failed: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
         
-        # Bind method
-        self._process_request = _process_request.__get__(self, type(self))
-            
-        # Enhanced health check
-        @self.app.get("/health")
+        @self.app.get("/health", response_model=HealthResponse)
         async def health_check():
-            thread_count = "unknown"
-            if hasattr(self.tool_manager, 'thread_pool'):
-                try:
-                    thread_count = len(self.tool_manager.thread_pool._threads)
-                except:
-                    thread_count = "error"
-            
+            """Comprehensive health check endpoint"""
+            thread_pool_size = getattr(self.tool_manager, 'thread_pool', None)
+            if thread_pool_size:
+                thread_pool_size = thread_pool_size._max_workers
+            else:
+                thread_pool_size = 0
+                
+            return HealthResponse(
+                status="healthy",
+                concurrent_requests=self.active_requests,
+                thread_pool_size=thread_pool_size,
+                active_tasks=len(self.processing_cache),
+                max_concurrent=self.config.max_concurrent_requests,
+                tools=list(self.tool_manager.tools.keys()),
+                uptime_seconds=time.time() - self.start_time
+            )
+        
+        @self.app.get("/metrics")
+        async def metrics():
+            """Detailed metrics endpoint"""
             return {
-                "status": "healthy", 
-                "concurrent_requests": self.active_requests,
-                "thread_pool_threads": thread_count,
-                "processing_tasks": len(self.processing_tasks),
-                "max_concurrent": self.max_concurrent_requests,
-                "tools": list(self.tool_manager.tools.keys())
+                "active_requests": self.active_requests,
+                "cached_responses": len(self.processing_cache),
+                "tools_initialized": len(self.tool_manager.tools),
+                "uptime_seconds": time.time() - self.start_time,
+                "config": {
+                    "max_concurrent": self.config.max_concurrent_requests,
+                    "timeout": self.config.request_timeout,
+                    "hashing_enabled": self.config.enable_hashing,
+                }
             }
     
-    def start(self, log_level: str = "error"):
-        """Start the server with optimized uvicorn settings"""
-        logger.info(f"Starting server on {self.host}:{self.port}")
-        logger.info(f"Max concurrent requests: {self.max_concurrent_requests}")
-        logger.info(f"Request timeout: {self.request_timeout}s")
-        logger.info(f"Thread pool size: {getattr(self.tool_manager, 'thread_pool', {})._max_workers if hasattr(self.tool_manager, 'thread_pool') else 'unknown'}")
+    def _prepare_extra_fields(self, request_data: ActionRequest) -> List[Dict[str, Any]]:
+        """Prepare and validate extra fields from request"""
+        if request_data.extra_fields:
+            return request_data.extra_fields
+        else:
+            # Create empty extra fields
+            return [{} for _ in request_data.trajectory_ids]
+    
+    def start(self):
+        """Start the server with optimal configuration"""
+        logger.info(f"🚀 Starting Tool Server")
+        logger.info(f"   Host: {self.config.host}:{self.config.port}")
+        logger.info(f"   Max Concurrent: {self.config.max_concurrent_requests}")
+        logger.info(f"   Thread Pool: {self.config.thread_pool_size}")
+        logger.info(f"   Timeout: {self.config.request_timeout}s")
+        logger.info(f"   Tools: {list(self.tool_manager.tools.keys())}")
         
         uvicorn.run(
             self.app,
-            host=self.host,
-            port=self.port,
-            log_level=log_level,
-            access_log=False,  # Disable access logs for performance
-            # Optimize for high concurrency
+            host=self.config.host,
+            port=self.config.port,
+            log_level=self.config.log_level,
+            access_log=False,  # Disable for performance
             loop="uvloop" if self._has_uvloop() else "asyncio",
             http="httptools",
-            lifespan="on",
             timeout_keep_alive=30,
-            timeout_graceful_shutdown=30,
         )
     
-    def _has_uvloop(self):
-        """Check if uvloop is available"""
+    @staticmethod
+    def _has_uvloop():
+        """Check if uvloop is available for better performance"""
         try:
             import uvloop
             return True
@@ -487,65 +584,55 @@ class AsyncToolServer:
             return False
 
 
+# === MAIN ENTRY POINT ===
 def main(
     tool_type: Union[str, Tuple[str]] = "base",
     host: str = "0.0.0.0",
     port: int = 5000,
-    workers_per_tool: int = None,
+    workers_per_tool: int = 32,
     max_concurrent_requests: int = 128,
+    request_timeout: float = 60.0,
+    thread_pool_size: Optional[int] = None,
     use_tqdm: bool = False,
     log_level: str = "info",
-    slient=False,
-    done_if_invalid=False,
+    done_if_invalid: bool = False,
     use_ray: bool = False,
     enable_hashing: bool = True,
-    request_timeout: float = 180.0,
-    thread_pool_size: int = None
 ):
-    """Start the async tool servqer with improved defaults"""
-    
-    if workers_per_tool is None:
-        workers_per_tool = max_concurrent_requests
-    
-    # For 256 concurrent requests, ensure adequate thread pool
-    if thread_pool_size is None and max_concurrent_requests >= 256:
-        thread_pool_size = max_concurrent_requests * 4  # 4x for safety
+    """Start the tool server with clean configuration"""
     
     # Configure logging
-    numeric_level = getattr(logging, log_level.upper(), None)
-    if isinstance(numeric_level, int):
-        logging.basicConfig(level=numeric_level)
-        logger.setLevel(numeric_level)
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    logging.basicConfig(level=numeric_level)
     
-    # Convert tool_type string to tuple
+    # Parse tool types
     if isinstance(tool_type, str):
-        if "," in tool_type:
-            tool_type = tuple(t.strip() for t in tool_type.split(","))
-        else:
-            tool_type = (tool_type,)
+        tool_types = tuple(t.strip() for t in tool_type.split(","))
+    else:
+        tool_types = tool_type
     
-    # Create and start server
-    server = AsyncToolServer(
-        tool_types=tool_type,
+    # Create configuration
+    config = ServerConfig(
         host=host,
         port=port,
         workers_per_tool=workers_per_tool,
         max_concurrent_requests=max_concurrent_requests,
+        request_timeout=request_timeout,
+        thread_pool_size=thread_pool_size,
+        enable_hashing=enable_hashing,
+        log_level=log_level
+    )
+    
+    # Create and start server
+    server = AsyncToolServer(
+        tool_types=tool_types,
+        config=config,
         use_tqdm=use_tqdm,
         done_if_invalid=done_if_invalid,
         use_ray=use_ray,
-        enable_hashing=enable_hashing,
-        request_timeout=request_timeout,
-        thread_pool_size=thread_pool_size
     )
     
-    if slient:
-        import sys
-        import os
-        sys.stdout = open(os.devnull, 'w')
-        sys.stderr = open(os.devnull, 'w')
-    
-    server.start(log_level=log_level)
+    server.start()
 
 
 if __name__ == "__main__":
