@@ -324,11 +324,11 @@ class AsyncToolServer:
             request_start_time = time.time()
             self.active_requests += 1
             logger.debug(f"Request started. Active: {self.active_requests}")
-            
+            request = await request.json()
             try:
                 # Acquire semaphore with timeout
                 try:
-                    await asyncio.wait_for(semaphore.acquire(), timeout=30.0)
+                    await semaphore.acquire()
                 except asyncio.TimeoutError:
                     raise HTTPException(status_code=429, detail="Server overloaded - semaphore timeout")
                 
@@ -357,10 +357,8 @@ class AsyncToolServer:
                 # Periodic cleanup
                 await self._cleanup_old_tasks()
         
-        async def _process_request(self, request: Request, background_tasks: BackgroundTasks):
+        async def _process_request(self, data:dict, background_tasks: BackgroundTasks):
             """Process the actual request logic"""
-            data = await request.json()
-            
             data_hash_str = hash_requests(data) if self.enable_hashing else str(id(data))
             
             # Check for duplicate processing (if hashing enabled)
