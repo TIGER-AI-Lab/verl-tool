@@ -287,7 +287,7 @@ class AsyncToolServer:
         )
         
         # Use WeakValueDictionary for automatic cleanup
-        self.processing_tasks = weakref.WeakValueDictionary()
+        self.processing_tasks = {}
         self._task_cleanup_interval = 300  # 5 minutes
         self._last_cleanup = time.time()
         
@@ -500,11 +500,11 @@ def main(
     slient=False,
     done_if_invalid=False,
     use_ray: bool = False,
-    enable_hashing: bool = False,
-    request_timeout: float = 30.0,
+    enable_hashing: bool = True,
+    request_timeout: float = 180.0,
     thread_pool_size: int = None
 ):
-    """Start the async tool server with improved defaults"""
+    """Start the async tool servqer with improved defaults"""
     
     if workers_per_tool is None:
         workers_per_tool = max_concurrent_requests
