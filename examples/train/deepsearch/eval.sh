@@ -1,28 +1,32 @@
 set -x
 dataset_name=deepsearch # or math_torl_offical to use torl training data
 train_data=$(pwd)/data/${dataset_name}/hard_search_1k.parquet
-val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
-$(pwd)/data/${dataset_name}/hle_test.parquet,\
-$(pwd)/data/${dataset_name}/webwalker_test.parquet,\
-$(pwd)/data/${dataset_name}/xbench_test.parquet]
-model_name=Qwen/Qwen3-8B
+val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet]
+# val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
+# $(pwd)/data/${dataset_name}/hle_test.parquet]
+# val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
+# $(pwd)/data/${dataset_name}/hle_test.parquet,\
+# $(pwd)/data/${dataset_name}/webwalker_test.parquet,\
+# $(pwd)/data/${dataset_name}/xbench_test.parquet]
+model_name=VerlTool/deepsearch-qwen_qwen3-8b-grpo-n16-b128-t1.0-lr1e-6-new_global_step_70
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=8
+n_gpus_per_node=4
 n_nodes=1
 n=16
 batch_size=128
 ppo_mini_batch_size=128
 max_prompt_length=2048
-max_response_length=8196
-max_action_length=8196
+max_response_length=32768
+max_action_length=16384
 max_obs_length=4096
-temperature=1.0
+temperature=0.6
 top_p=1.0
+val_top_p=0.95
 top_k=-1
 enable_agent=True # enable agent for tool use
 strategy="fsdp"
 action_stop_tokens='</python>,</search>'
-max_turns=5
+max_turns=10
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -41,7 +45,7 @@ additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="-new"
+run_name_postfix="-qwen3-8b-summ"
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -109,7 +113,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.agent.enable_mtrl=$enable_mtrl \
     actor_rollout_ref.agent.max_action_length=$max_action_length \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$tensor_model_parallel_size \
-    actor_rollout_ref.rollout.max_num_batched_tokens=16384 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=35000 \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=True \
@@ -122,6 +126,11 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=$use_dynamic_bsz \
     actor_rollout_ref.rollout.max_num_seqs=512 \
     actor_rollout_ref.rollout.mode=$rollout_mode \
+    actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
+    actor_rollout_ref.rollout.val_kwargs.top_p=${val_top_p} \
+    actor_rollout_ref.rollout.val_kwargs.top_k=${top_k} \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.n=1 \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=$use_dynamic_bsz \
     actor_rollout_ref.ref.fsdp_config.param_offload=$do_offload \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
@@ -144,7 +153,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
     trainer.total_epochs=10 \
-    trainer.total_training_steps=100
+    trainer.total_training_steps=0
 
 
 pkill -P -9 $server_pid

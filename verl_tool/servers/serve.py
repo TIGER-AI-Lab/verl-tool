@@ -75,7 +75,7 @@ class ServerConfig:
         port: int = 5000,
         workers_per_tool: int = 32,
         max_concurrent_requests: int = 64,
-        request_timeout: float = 180.0,
+        request_timeout: float = 600,
         thread_pool_size: Optional[int] = None,
         enable_hashing: bool = True,
         log_level: str = "info"
@@ -590,7 +590,7 @@ def main(
     port: int = 5000,
     workers_per_tool: int = 32,
     max_concurrent_requests: int = 128,
-    request_timeout: float = 60.0,
+    request_timeout: float = 600,
     thread_pool_size: Optional[int] = None,
     use_tqdm: bool = False,
     log_level: str = "info",

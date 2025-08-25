@@ -463,10 +463,10 @@ class GoogleSearchTool(BaseTool):
         location: str = "us",
         language: str = "en",
         cache_file: Optional[str] = None,
-        default_timeout: int = 30,
-        process_snippets: bool = False,
-        summ_model_url: str = None,
-        summ_model_path: str = None,
+        default_timeout: int = 300,
+        process_snippets: bool = True,
+        summ_model_url: str = "http://0.0.0.0:8000/v1",
+        summ_model_path: str = "Qwen/Qwen3-8B",
         cache_size: int = 10000,
         cache_ttl: int = 3600
     ):
@@ -565,9 +565,7 @@ class GoogleSearchTool(BaseTool):
             results = await tqdm.gather(*tasks, desc="Processing searches")
         else:
             results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        print("finish gathering results")
-        
+                
         # Unpack results and handle exceptions
         observations, dones, valids = [], [], []
         for i, result in enumerate(results):
@@ -602,7 +600,7 @@ class GoogleSearchTool(BaseTool):
             # Get timeout from extra field
             timeout = self.default_timeout
             if extra_field and 'timeout' in extra_field:
-                timeout = min(int(extra_field['timeout']), 60)
+                timeout = min(int(extra_field['timeout']), 300)
             
             # Extract previous actions for snippet processing
             prev_actions = None
@@ -644,7 +642,7 @@ class GoogleSearchTool(BaseTool):
                 return asyncio.run_coroutine_threadsafe(
                     self._conduct_action_async(trajectory_id, action, extra_field), 
                     loop
-                ).result(timeout=60)
+                ).result(timeout=300)
             else:
                 return asyncio.run(self._conduct_action_async(trajectory_id, action, extra_field))
         except Exception as e:
