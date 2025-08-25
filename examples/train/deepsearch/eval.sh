@@ -10,7 +10,7 @@ val_data=[$(pwd)/data/${dataset_name}/hle_test.parquet]
 # $(pwd)/data/${dataset_name}/xbench_test.parquet]
 model_name=VerlTool/deepsearch-qwen_qwen3-8b-grpo-n16-b128-t1.0-lr1e-6-new_global_step_70
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=4
+n_gpus_per_node=8
 n_nodes=1
 n=16
 batch_size=128
@@ -76,7 +76,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.train_files=$train_data \
     data.val_files=$val_data \
     data.train_batch_size=$batch_size \
-    data.val_batch_size=1024 \
+    data.val_batch_size=128 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.truncation='right' \

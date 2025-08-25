@@ -11,6 +11,7 @@ huggingface-cli download VerlTool/deepsearch google_search_cache.jsonl --local-d
 ### Test the Tool Server
 ```bash
 # Start the tool server
+export SERPER_API_KEY="..."
 host=localhost
 port=5000
 tool_type=google_search,python_code # separate by comma if you want to start multiple tool servers
@@ -18,7 +19,8 @@ workers_per_tool=4 # number of workers for the tool server, meaning how many thr
 python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray True & # run in background
 ```
 ```bash
-python -m verl_tool.servers.tests.test_bing_search_tool bing_search --url=http://localhost:5000/get_observation
+python -m verl_tool.servers.tests.test_google_search_tool test_google_search --url=http://localhost:5000/get_observation
+python -m verl_tool.servers.tests.test_python_code_tool python --url=http://localhost:5000/get_observation
 ```
 ### Training
 ```bash

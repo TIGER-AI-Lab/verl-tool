@@ -1,6 +1,3 @@
-"""
-Improved Google Search Tool - Robust async implementation for high-concurrency servers
-"""
 import os
 import json
 import time
@@ -13,8 +10,6 @@ import regex as re
 import faulthandler
 import langid
 from collections import OrderedDict
-import weakref
-from contextlib import asynccontextmanager
 
 from .base import BaseTool, register_tool
 from .utils.deepsearch_utils import extract_relevant_info_serper, extract_text_from_url, extract_snippet_with_context
@@ -57,15 +52,11 @@ class AsyncLRUCache:
             
             self._cache[key] = value
             self._timestamps[key] = time.time()
-    
-    async def size(self) -> int:
-        async with self._lock:
-            return len(self._cache)
 
 
 class GoogleSearchEngine:
     """
-    Production-ready async Google search engine with robust error handling.
+    Simplified async Google search engine with proper session cleanup.
     """
 
     def __init__(
@@ -83,7 +74,7 @@ class GoogleSearchEngine:
         cache_size: int = 10000,
         cache_ttl: int = 3600
     ):
-        """Initialize the search engine with robust configuration."""
+        """Initialize the search engine with simplified configuration."""
         # API configuration
         self._api_key = api_key
         self._max_results = max_results
@@ -99,16 +90,8 @@ class GoogleSearchEngine:
         self._memory_cache = AsyncLRUCache(cache_size, cache_ttl)
         self._setup_cache_file(cache_file)
         
-        # Session management
-        self._session = None
-        self._session_lock = asyncio.Lock()
-        
         # Performance tracking
         self._search_count = 0
-        self._last_cleanup = time.time()
-        
-        # Language detection lock
-        self._lang_id_lock = asyncio.Lock()
     
     def _setup_cache_file(self, cache_file: Optional[str]) -> None:
         """Set up cache file path."""
@@ -154,46 +137,14 @@ class GoogleSearchEngine:
         except Exception as e:
             print(f"Cache write failed: {e}")
     
-    async def _get_or_create_session(self) -> aiohttp.ClientSession:
-        """Thread-safe session creation with proper configuration."""
-        async with self._session_lock:
-            if self._session is None or self._session.closed:
-                connector = aiohttp.TCPConnector(
-                    limit=200,  # Increased for high concurrency
-                    limit_per_host=50,
-                    keepalive_timeout=60,
-                    enable_cleanup_closed=True,
-                    ttl_dns_cache=300,  # DNS cache
-                    use_dns_cache=True
-                )
-                
-                timeout = aiohttp.ClientTimeout(
-                    total=45,  # Total timeout
-                    connect=10,  # Connection timeout
-                    sock_read=30  # Socket read timeout
-                )
-                
-                self._session = aiohttp.ClientSession(
-                    connector=connector,
-                    timeout=timeout,
-                    headers={
-                        'User-Agent': 'AsyncSearchEngine/2.0',
-                        'Accept': 'application/json',
-                        'Accept-Encoding': 'gzip, deflate'
-                    }
-                )
-        
-        return self._session
-    
     async def _detect_language(self, query: str) -> Tuple[str, str]:
-        """Safely detect language with async protection."""
+        """Detect language for the query."""
         try:
-            # Language detection with timeout protection
-            async with self._lang_id_lock:
-                # Run in executor to avoid blocking
-                lang_code = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: langid.classify(query)[0]
-                )
+            # Run in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            lang_code = await loop.run_in_executor(
+                None, lambda: langid.classify(query)[0]
+            )
             
             if lang_code == 'zh':
                 return "zh-cn", "cn"
@@ -206,7 +157,7 @@ class GoogleSearchEngine:
     
     async def _make_search_request(self, query: str, timeout: int) -> Dict:
         """
-        Make search request with improved error handling and retries.
+        Make search request with simple session management - create and close per request.
         """
         hl, gl = await self._detect_language(query)
         
@@ -219,46 +170,52 @@ class GoogleSearchEngine:
 
         headers = {
             'X-API-KEY': self._api_key,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'User-Agent': 'AsyncSearchEngine/2.0',
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip, deflate'
         }
 
-        session = await self._get_or_create_session()
+        # Create a new session for each request - simpler and avoids connection issues
+        timeout_config = aiohttp.ClientTimeout(total=timeout if timeout else 30)
         
         # Retry logic for transient failures
         max_retries = 2
         for attempt in range(max_retries + 1):
-            try:
-                async with session.post(
-                    "https://google.serper.dev/search",
-                    headers=headers,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=timeout)
-                ) as response:
-                    
-                    if response.status == 200:
-                        return await response.json()
-                    elif response.status == 429:  # Rate limited
-                        if attempt < max_retries:
-                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                            continue
-                        else:
-                            raise Exception(f"Rate limited after {max_retries} retries")
-                    else:
-                        text = await response.text()
-                        raise Exception(f"API error {response.status}: {text[:200]}")
+            # Create fresh session for each attempt
+            async with aiohttp.ClientSession(timeout=timeout_config) as session:
+                try:
+                    async with session.post(
+                        "https://google.serper.dev/search",
+                        headers=headers,
+                        json=payload
+                    ) as response:
                         
-            except asyncio.TimeoutError:
-                if attempt < max_retries:
-                    timeout = min(timeout * 1.5, 60)  # Increase timeout on retry
-                    continue
-                else:
-                    raise Exception(f"Request timed out after {max_retries} retries")
-            except Exception as e:
-                if attempt < max_retries and "timeout" in str(e).lower():
-                    await asyncio.sleep(1)
-                    continue
-                else:
-                    raise
+                        if response.status == 200:
+                            return await response.json()
+                        elif response.status == 429:  # Rate limited
+                            if attempt < max_retries:
+                                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                                continue
+                            else:
+                                raise Exception(f"Rate limited after {max_retries} retries")
+                        else:
+                            text = await response.text()
+                            raise Exception(f"API error {response.status}: {text[:200]}")
+                            
+                except asyncio.TimeoutError:
+                    if attempt < max_retries:
+                        timeout = min((timeout or 30) * 1.5, 60)  # Increase timeout on retry
+                        timeout_config = aiohttp.ClientTimeout(total=timeout)
+                        continue
+                    else:
+                        raise Exception(f"Request timed out after {max_retries} retries")
+                except Exception as e:
+                    if attempt < max_retries and "timeout" in str(e).lower():
+                        await asyncio.sleep(1)
+                        continue
+                    else:
+                        raise
     
     async def execute(self, query: str, timeout: int = None, prev_steps: Union[List[str], str] = None) -> str:
         """
@@ -283,7 +240,7 @@ class GoogleSearchEngine:
                     return await self._process_cached_data(query, data, prev_steps)
             
             # Make API request
-            data = await self._make_search_request(query, timeout)
+            data = await self._make_search_request(query, timeout or 30)
             
             # Process results
             result = await self._extract_and_format_results(query, data, prev_steps)
@@ -308,7 +265,7 @@ class GoogleSearchEngine:
             # Memory cache
             await self._memory_cache.set(query, data)
             
-            # Persistent cache (run in executor to avoid blocking)
+            # Persistent cache
             cache_item = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
             await self._append_to_persistent_cache(query, cache_item)
             
@@ -316,7 +273,6 @@ class GoogleSearchEngine:
             
         except Exception as e:
             print(f"Caching failed: {e}")
-            # Don't raise - cache failure shouldn't break search
     
     async def _extract_and_format_results(self, query: str, data: Dict, prev_steps: Union[List[str], str] = None) -> str:
         """Extract and format search results with async processing."""
@@ -398,7 +354,7 @@ class GoogleSearchEngine:
     async def _process_single_url(self, info: Dict, max_doc_len: int) -> Dict:
         """Process a single URL to extract context."""
         try:
-            # Run URL extraction in thread pool (may involve network I/O)
+            # Run URL extraction in thread pool
             loop = asyncio.get_event_loop()
             full_text = await loop.run_in_executor(
                 None, lambda: extract_text_from_url(info['url'], use_jina=False)
@@ -438,18 +394,12 @@ class GoogleSearchEngine:
         except Exception as e:
             print(f"Summarization failed: {e}")
             return formatted_document
-    
-    async def close(self):
-        """Properly close all resources."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-            self._session = None
 
 
 @register_tool
 class GoogleSearchTool(BaseTool):
     """
-    Production-ready async Google search tool.
+    Simplified async Google search tool with proper cleanup.
     """
     
     tool_type = "google_search"
@@ -467,9 +417,6 @@ class GoogleSearchTool(BaseTool):
         process_snippets: bool = False,
         summ_model_url: str = None,
         summ_model_path: str = None,
-        # process_snippets: bool = True,
-        # summ_model_url: str = "http://0.0.0.0:8000/v1",
-        # summ_model_path: str = "Qwen/QwQ-32B",
         cache_size: int = 10000,
         cache_ttl: int = 3600
     ):
@@ -501,10 +448,7 @@ class GoogleSearchTool(BaseTool):
         
         self.default_timeout = default_timeout
         self._initialized = False
-        
-        # Initialize cache asynchronously when first used
         self._init_lock = asyncio.Lock()
-        
         self.semaphore = asyncio.Semaphore(16)  # Limit concurrent searches
     
     async def _ensure_initialized(self):
@@ -525,14 +469,14 @@ class GoogleSearchTool(BaseTool):
             r"<search>(.*?)</search>",
             r"```\s*search\s*\n(.*?)\n```",
             r"search:\s*(.*?)(?:\n|$)",
-            r"google:\s*(.*?)(?:\n|$)",  # Additional pattern
+            r"google:\s*(.*?)(?:\n|$)",
         ]
         
         for pattern in patterns:
             matches = re.findall(pattern, action, re.DOTALL | re.IGNORECASE)
             if matches:
                 query = matches[0].strip()
-                if query and len(query) <= 500:  # Validate length
+                if query and len(query) <= 500:
                     return query, True
         
         return "", False
@@ -562,12 +506,8 @@ class GoogleSearchTool(BaseTool):
             for trajectory_id, action, extra_field in zip(trajectory_ids, actions, extra_fields)
         ]
         
-        # Wait for all tasks with progress tracking if many actions
-        if len(tasks) > 5:
-            from tqdm.asyncio import tqdm
-            results = await tqdm.gather(*tasks, desc="Processing searches")
-        else:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Wait for all tasks
+        results = await asyncio.gather(*tasks, return_exceptions=True)
                 
         # Unpack results and handle exceptions
         observations, dones, valids = [], [], []
@@ -593,7 +533,7 @@ class GoogleSearchTool(BaseTool):
         """
         parsed_query, is_valid = self.parse_action(action)
         
-        # Load environment (run in executor if needed for file I/O)
+        # Load environment
         env = self.load_env(trajectory_id)
         
         if not is_valid:
@@ -601,7 +541,7 @@ class GoogleSearchTool(BaseTool):
             done, valid = False, False
         else:
             # Get timeout from extra field
-            timeout = self.default_timeout
+            timeout = extra_field.get('timeout', self.default_timeout)
             
             # Extract previous actions for snippet processing
             prev_actions = None
@@ -621,74 +561,56 @@ class GoogleSearchTool(BaseTool):
         # Wrap in result tags
         observation = f"<result>{observation}</result>"
         
-        self._update_and_save_env(trajectory_id, env, parsed_query, is_valid, extra_field, observation)
+        # Update and save environment
+        self.update_env(trajectory_id, env, parsed_query, is_valid, extra_field, observation)
+        self.save_env(trajectory_id, env)
         
         return observation, done, valid
     
-    def _update_and_save_env(self, trajectory_id: str, env: Dict, parsed_query: str, is_valid: bool, extra_field: Dict, observation: str):
-        """Update and save environment synchronously (for thread pool)."""
-        self.update_env(trajectory_id, env, parsed_query, is_valid, extra_field, observation)
-        self.save_env(trajectory_id, env)
-    
     def conduct_action(self, trajectory_id: str, action: str, extra_field: Dict[str, Any]) -> Tuple[str, bool, bool]:
-        """Synchronous wrapper with proper event loop handling."""
+        """
+        Synchronous wrapper that properly handles async code.
+        Creates a new event loop if needed to avoid conflicts.
+        """
         try:
-            # Try to use existing event loop
+            # Try to get the current event loop
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # If loop is running, create a task
-                task = loop.create_task(self._conduct_action_async(trajectory_id, action, extra_field))
-                # This is tricky - we need to wait without blocking
-                # In practice, this should rarely be called in async context
-                return asyncio.run_coroutine_threadsafe(
-                    self._conduct_action_async(trajectory_id, action, extra_field), 
-                    loop
-                ).result(timeout=self.default_timeout)
+                # If loop is already running, create a new thread to run async code
+                import concurrent.futures
+                import threading
+                
+                result = [None]
+                exception = [None]
+                
+                def run_in_new_loop():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        result[0] = new_loop.run_until_complete(
+                            self._conduct_action_async(trajectory_id, action, extra_field)
+                        )
+                    except Exception as e:
+                        exception[0] = e
+                    finally:
+                        new_loop.close()
+                
+                thread = threading.Thread(target=run_in_new_loop)
+                thread.start()
+                thread.join(timeout=60)  # 60 second timeout
+                
+                if exception[0]:
+                    raise exception[0]
+                if result[0] is None:
+                    return "Search timed out", False, False
+                return result[0]
             else:
-                return asyncio.run(self._conduct_action_async(trajectory_id, action, extra_field))
+                # Use existing loop if not running
+                return loop.run_until_complete(
+                    self._conduct_action_async(trajectory_id, action, extra_field)
+                )
+        except RuntimeError:
+            # No event loop exists, create one
+            return asyncio.run(self._conduct_action_async(trajectory_id, action, extra_field))
         except Exception as e:
             return f"Search failed: {str(e)}", False, False
-    
-    async def cleanup(self):
-        """Cleanup resources properly."""
-        if hasattr(self, 'search_engine'):
-            await self.search_engine.close()
-    
-    def __del__(self):
-        """Improved destructor with better cleanup."""
-        try:
-            if hasattr(self, 'search_engine'):
-                # Don't try async operations in __del__
-                # Let the server handle cleanup via explicit cleanup() calls
-                pass
-        except:
-            pass  # Best effort cleanup
-
-
-# === USAGE HELPERS ===
-async def test_search_performance():
-    """Test search tool performance under load."""
-    tool = GoogleSearchTool()
-    
-    # Test single search
-    start = time.time()
-    result = await tool._conduct_action_async("test_1", "<search>python async</search>", {})
-    single_time = time.time() - start
-    
-    # Test concurrent searches
-    start = time.time()
-    tasks = [
-        tool._conduct_action_async(f"test_{i}", f"<search>python {i}</search>", {})
-        for i in range(10)
-    ]
-    results = await asyncio.gather(*tasks)
-    concurrent_time = time.time() - start
-    
-    print(f"Single search: {single_time:.2f}s")
-    print(f"10 concurrent searches: {concurrent_time:.2f}s ({concurrent_time/10:.2f}s avg)")
-    
-    await tool.cleanup()
-
-
-if __name__ == "__main__":
-    asyncio.run(test_search_performance())
