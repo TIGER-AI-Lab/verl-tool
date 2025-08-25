@@ -137,8 +137,6 @@ class RayToolManager:
         """Initialize tools with proper error handling and dependency management"""
         # Ensure finish tool is processed last for dependencies
         ordered_tools = [t for t in self.tool_types if t != "finish"]
-        if "finish" in self.tool_types:
-            ordered_tools.append("finish")
         
         initialized_tools = []
         failed_tools = []
@@ -149,15 +147,7 @@ class RayToolManager:
             try:
                 tool_cls = get_tool_cls(tool_type)
                 
-                if tool_type == "finish":
-                    # Finish tool needs references to other tools
-                    other_tools = [self.tools[t] for t in initialized_tools if t in self.tools]
-                    tool_instance = tool_cls(
-                        num_workers=self.config.workers_per_tool,
-                        other_tools=other_tools
-                    )
-                else:
-                    tool_instance = tool_cls(num_workers=self.config.workers_per_tool)
+                tool_instance = tool_cls(num_workers=self.config.workers_per_tool)
                 
                 self.tools[tool_type] = tool_instance
                 initialized_tools.append(tool_type)
@@ -166,6 +156,13 @@ class RayToolManager:
             except Exception as e:
                 failed_tools.append((tool_type, str(e)))
                 logger.error(f"✗ Failed to initialize Ray tool {tool_type}: {e}")
+                
+        if "finish" not in self.tools:
+            tool_instance = get_tool_cls("finish")(
+                num_workers=self.config.workers_per_tool,
+                other_tools=[self.tools[t] for t in initialized_tools if t in self.tools]
+            )
+            self.tools["finish"] = tool_instance
         
         self._log_tool_status()
         

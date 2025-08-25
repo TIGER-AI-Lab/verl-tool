@@ -13,6 +13,7 @@ dependencies = [
     "transformers<4.53.0",
     "tensorboard",
     "func_timeout",
+    "aiofiles",
 ]
 
 [tool.setuptools]
