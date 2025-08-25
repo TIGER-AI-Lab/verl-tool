@@ -33,6 +33,8 @@ class ActionRequest(BaseModel):
     trajectory_ids: List[str] = Field(..., min_items=1)
     actions: List[str] = Field(..., min_items=1)
     extra_fields: Optional[List[Dict[str, Any]]] = None
+    finish: List[bool] = Field(..., min_items=1)
+    is_last_step: List[bool] = Field(..., min_items=1)
 
     @validator('actions')
     def validate_actions_length(cls, v, values):
