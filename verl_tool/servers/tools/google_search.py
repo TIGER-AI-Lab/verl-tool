@@ -260,7 +260,7 @@ class GoogleSearchEngine:
                 else:
                     raise
     
-    async def execute(self, query: str, timeout: int = 30, prev_steps: Union[List[str], str] = None) -> str:
+    async def execute(self, query: str, timeout: int = None, prev_steps: Union[List[str], str] = None) -> str:
         """
         Execute search with comprehensive error handling and caching.
         """
@@ -463,7 +463,7 @@ class GoogleSearchTool(BaseTool):
         location: str = "us",
         language: str = "en",
         cache_file: Optional[str] = None,
-        default_timeout: int = 30,
+        default_timeout: int = None,
         process_snippets: bool = False,
         summ_model_url: str = None,
         summ_model_path: str = None,
@@ -566,7 +566,6 @@ class GoogleSearchTool(BaseTool):
         else:
             results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        
         # Unpack results and handle exceptions
         observations, dones, valids = [], [], []
         for i, result in enumerate(results):
@@ -600,8 +599,6 @@ class GoogleSearchTool(BaseTool):
         else:
             # Get timeout from extra field
             timeout = self.default_timeout
-            if extra_field and 'timeout' in extra_field:
-                timeout = min(int(extra_field['timeout']), 60)
             
             # Extract previous actions for snippet processing
             prev_actions = None
@@ -643,7 +640,7 @@ class GoogleSearchTool(BaseTool):
                 return asyncio.run_coroutine_threadsafe(
                     self._conduct_action_async(trajectory_id, action, extra_field), 
                     loop
-                ).result(timeout=60)
+                ).result(timeout=300)
             else:
                 return asyncio.run(self._conduct_action_async(trajectory_id, action, extra_field))
         except Exception as e:

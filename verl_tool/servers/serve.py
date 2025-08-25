@@ -33,6 +33,8 @@ class ActionRequest(BaseModel):
     trajectory_ids: List[str] = Field(..., min_items=1)
     actions: List[str] = Field(..., min_items=1)
     extra_fields: Optional[List[Dict[str, Any]]] = None
+    finish: List[bool] = Field(..., min_items=1)
+    is_last_step: List[bool] = Field(..., min_items=1)
 
     @validator('actions')
     def validate_actions_length(cls, v, values):
@@ -75,7 +77,7 @@ class ServerConfig:
         port: int = 5000,
         workers_per_tool: int = 32,
         max_concurrent_requests: int = 64,
-        request_timeout: float = 180.0,
+        request_timeout: float = None,
         thread_pool_size: Optional[int] = None,
         enable_hashing: bool = True,
         log_level: str = "info"
@@ -360,7 +362,10 @@ class AsyncToolManager:
         """Execute tool tasks and collect results with proper error handling"""
         for tool_type, indices, task in tasks:
             try:
-                tool_observations, tool_dones, tool_valids = await task
+                if isinstance(task, asyncio.Task):
+                    tool_observations, tool_dones, tool_valids = await task
+                else:
+                    tool_observations, tool_dones, tool_valids = task
                 
                 # Assign results to correct positions
                 for idx_pos, result_idx in enumerate(indices):
@@ -548,10 +553,17 @@ class AsyncToolServer:
     def _prepare_extra_fields(self, request_data: ActionRequest) -> List[Dict[str, Any]]:
         """Prepare and validate extra fields from request"""
         if request_data.extra_fields:
-            return request_data.extra_fields
+            extra_fields = request_data.extra_fields
         else:
-            # Create empty extra fields
-            return [{} for _ in request_data.trajectory_ids]
+            extra_fields = [{} for _ in request_data.trajectory_ids]
+        
+        # Create empty extra fields, take all other fields except trajectory_ids and actions as extra_fields
+        keys = set(request_data.dict().keys()) - {"trajectory_ids", "actions", "extra_fields"}
+        for key in keys:
+            if key not in extra_fields[0]:
+                for ef, value in zip(extra_fields, getattr(request_data, key)):
+                    ef[key] = value
+        return extra_fields
     
     def start(self):
         """Start the server with optimal configuration"""
@@ -590,7 +602,7 @@ def main(
     port: int = 5000,
     workers_per_tool: int = 32,
     max_concurrent_requests: int = 128,
-    request_timeout: float = 60.0,
+    request_timeout: float = None,
     thread_pool_size: Optional[int] = None,
     use_tqdm: bool = False,
     log_level: str = "info",
