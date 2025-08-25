@@ -8,7 +8,7 @@ val_data=[$(pwd)/data/${dataset_name}/hle_test.parquet]
 # $(pwd)/data/${dataset_name}/hle_test.parquet,\
 # $(pwd)/data/${dataset_name}/webwalker_test.parquet,\
 # $(pwd)/data/${dataset_name}/xbench_test.parquet]
-model_name=models/ds8b
+model_name=VerlTool/deepsearch-qwen_qwen3-8b-grpo-n16-b128-t1.0-lr1e-6-new_global_step_70
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=4
 n_nodes=1
