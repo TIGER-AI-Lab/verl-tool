@@ -467,6 +467,9 @@ class GoogleSearchTool(BaseTool):
         process_snippets: bool = False,
         summ_model_url: str = None,
         summ_model_path: str = None,
+        # process_snippets: bool = True,
+        # summ_model_url: str = "http://0.0.0.0:8000/v1",
+        # summ_model_path: str = "Qwen/QwQ-32B",
         cache_size: int = 10000,
         cache_ttl: int = 3600
     ):
@@ -640,7 +643,7 @@ class GoogleSearchTool(BaseTool):
                 return asyncio.run_coroutine_threadsafe(
                     self._conduct_action_async(trajectory_id, action, extra_field), 
                     loop
-                ).result(timeout=300)
+                ).result(timeout=self.default_timeout)
             else:
                 return asyncio.run(self._conduct_action_async(trajectory_id, action, extra_field))
         except Exception as e:
