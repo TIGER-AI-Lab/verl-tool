@@ -26,6 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+DEBUG=False
 
 # === MODELS ===
 class ActionRequest(BaseModel):
@@ -376,6 +377,8 @@ class AsyncToolManager:
             except Exception as e:
                 logger.error(f"Tool {tool_type} processing failed: {e}", exc_info=True)
                 
+                if DEBUG:
+                    raise e
                 # Handle failed tool processing gracefully
                 error_response = {
                     "obs": "", 

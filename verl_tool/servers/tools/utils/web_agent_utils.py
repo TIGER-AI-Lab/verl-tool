@@ -127,8 +127,7 @@ def get_prev_reasoning_chain(all_reasoning_steps: Union[str, List[str]], begin_s
                 if truncated_prev_reasoning[-len('\n\n...\n\n'):] != '\n\n...\n\n':
                     truncated_prev_reasoning += '...\n\n'
     truncated_prev_reasoning = truncated_prev_reasoning.strip('\n')
-
-
+    return truncated_prev_reasoning
 
 def generate_webpage_to_reasonchain_batch(
     prev_reasonings: List[str],

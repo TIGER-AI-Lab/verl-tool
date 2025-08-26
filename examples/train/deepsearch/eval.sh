@@ -1,7 +1,7 @@
 set -x
 dataset_name=deepsearch # or math_torl_offical to use torl training data
 train_data=$(pwd)/data/${dataset_name}/hard_search_1k.parquet
-val_data=[$(pwd)/data/${dataset_name}/hle_test.parquet]
+val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet]
 # val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
 # $(pwd)/data/${dataset_name}/hle_test.parquet]
 # val_data=[$(pwd)/data/${dataset_name}/gaia_test.parquet,\
@@ -10,7 +10,7 @@ val_data=[$(pwd)/data/${dataset_name}/hle_test.parquet]
 # $(pwd)/data/${dataset_name}/xbench_test.parquet]
 model_name=VerlTool/deepsearch-qwen_qwen3-8b-grpo-n16-b128-t1.0-lr1e-6-new_global_step_70
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=8
+n_gpus_per_node=4
 n_nodes=1
 n=16
 batch_size=128
@@ -45,8 +45,8 @@ additional_eos_token_ids=[151645] # <|im_end|> token id
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-# run_name_postfix="-qwen3-8b-summ"
-run_name_postfix="-snippet-only"
+run_name_postfix="-qwen3-8b-summ"
+# run_name_postfix="-snippet-only"
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -76,7 +76,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     data.train_files=$train_data \
     data.val_files=$val_data \
     data.train_batch_size=$batch_size \
-    data.val_batch_size=128 \
+    data.val_batch_size=1024 \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.truncation='right' \

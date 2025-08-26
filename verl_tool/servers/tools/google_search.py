@@ -16,7 +16,7 @@ from .utils.deepsearch_utils import extract_relevant_info_serper, extract_text_f
 from .utils.web_agent_utils import generate_webpage_to_reasonchain, get_prev_reasoning_chain
 
 faulthandler.enable()
-
+DEBUG=False
 
 class AsyncLRUCache:
     """Thread-safe LRU cache for async operations"""
@@ -251,8 +251,9 @@ class GoogleSearchEngine:
             return result
             
         except Exception as e:
+            if DEBUG:
+                raise e
             error_msg = f"Search failed for '{query}': {str(e)}"
-            print(error_msg)
             return error_msg
     
     async def _process_cached_data(self, query: str, data: Dict, prev_steps: Union[List[str], str] = None) -> str:
@@ -392,6 +393,8 @@ class GoogleSearchEngine:
                 summ_model_path=self.summ_model_path
             )
         except Exception as e:
+            if DEBUG:
+                raise e
             print(f"Summarization failed: {e}")
             return formatted_document
 
@@ -414,9 +417,12 @@ class GoogleSearchTool(BaseTool):
         language: str = "en",
         cache_file: Optional[str] = None,
         default_timeout: int = None,
-        process_snippets: bool = False,
-        summ_model_url: str = None,
-        summ_model_path: str = None,
+        # process_snippets: bool = False,
+        # summ_model_url: str = None,
+        # summ_model_path: str = None,
+        process_snippets: bool = True,
+        summ_model_url: str = "http://0.0.0.0:8000/v1",
+        summ_model_path: str = "Qwen/QwQ-32B",
         cache_size: int = 10000,
         cache_ttl: int = 3600
     ):
@@ -497,7 +503,6 @@ class GoogleSearchTool(BaseTool):
                 try:
                     return await self._conduct_action_async(trajectory_id, action, extra_field)
                 except Exception as e:
-                    print(f"Action processing failed: {e}")
                     return f"Search error: {str(e)}", False, False
         
         # Create tasks for all actions
@@ -513,6 +518,8 @@ class GoogleSearchTool(BaseTool):
         observations, dones, valids = [], [], []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
+                if DEBUG:
+                    raise result
                 obs = f"Search error: {str(result)}"
                 done, valid = False, False
             else:
@@ -544,9 +551,10 @@ class GoogleSearchTool(BaseTool):
             timeout = extra_field.get('timeout', self.default_timeout)
             
             # Extract previous actions for snippet processing
-            prev_actions = None
+            prev_actions = []
             if self.search_engine.process_snippets and env.get('previous_obs'):
                 prev_actions = [x.get('action') for x in env['previous_obs']]
+            prev_actions += [action]
             
             try:
                 # Execute search
@@ -555,6 +563,8 @@ class GoogleSearchTool(BaseTool):
                 done, valid = False, True
                 
             except Exception as e:
+                if DEBUG:
+                    raise e
                 observation = f"Search execution failed: {str(e)}"
                 done, valid = False, False
         
@@ -562,7 +572,7 @@ class GoogleSearchTool(BaseTool):
         observation = f"<result>{observation}</result>"
         
         # Update and save environment
-        self.update_env(trajectory_id, env, parsed_query, is_valid, extra_field, observation)
+        self.update_env(trajectory_id, env, action, is_valid, extra_field, observation)
         self.save_env(trajectory_id, env)
         
         return observation, done, valid
@@ -591,6 +601,8 @@ class GoogleSearchTool(BaseTool):
                             self._conduct_action_async(trajectory_id, action, extra_field)
                         )
                     except Exception as e:
+                        if DEBUG:
+                            raise e
                         exception[0] = e
                     finally:
                         new_loop.close()
@@ -613,4 +625,6 @@ class GoogleSearchTool(BaseTool):
             # No event loop exists, create one
             return asyncio.run(self._conduct_action_async(trajectory_id, action, extra_field))
         except Exception as e:
+            if DEBUG:
+                raise e
             return f"Search failed: {str(e)}", False, False
