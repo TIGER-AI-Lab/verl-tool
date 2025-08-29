@@ -278,7 +278,7 @@ class PythonCodeTool(BaseTool):
     enable_history_code_execution = False
     done_without_error = False
     python_path = None
-    pre_import_lib = False
+    pre_import_lib = True
     use_firejail = True
     
     def get_usage_inst(self):

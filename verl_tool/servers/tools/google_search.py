@@ -417,12 +417,12 @@ class GoogleSearchTool(BaseTool):
         language: str = "en",
         cache_file: Optional[str] = None,
         default_timeout: int = None,
-        # process_snippets: bool = False,
-        # summ_model_url: str = None,
-        # summ_model_path: str = None,
-        process_snippets: bool = True,
-        summ_model_url: str = "http://0.0.0.0:8000/v1",
-        summ_model_path: str = "Qwen/QwQ-32B",
+        process_snippets: bool = False,
+        summ_model_url: str = None,
+        summ_model_path: str = None,
+        # process_snippets: bool = True,
+        # summ_model_url: str = "http://0.0.0.0:8000/v1",
+        # summ_model_path: str = "Qwen/QwQ-32B",
         cache_size: int = 10000,
         cache_ttl: int = 3600
     ):
