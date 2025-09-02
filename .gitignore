@@ -1,3 +1,7 @@
+# AceCoder V2
+raw_inferences
+problems_merged.jsonl
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
