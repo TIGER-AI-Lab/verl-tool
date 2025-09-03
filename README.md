@@ -27,12 +27,12 @@ VerlTool: A unified and easy-to-extend tool-agent training framework based on ve
 
 
 ## News
-+ [2025/09/02] VerlTool's tech report is out! See on [Hugging Face Daily Paper](https://github.com/TIGER-AI-Lab/verl-tool)!
++ [2025/09/02] VerlTool's tech report is out! See on [Hugging Face Daily Paper](https://huggingface.co/papers/2509.01055)!
 + [2025/06/30] We reproduce Search-R1 with even higher performance on the same benchmarks! See [PR](https://github.com/TIGER-AI-Lab/verl-tool/pull/71) and training [README](examples/train/search_r1/README.md) for more details.
 + [2025/06/28] We support NL2SQL tool RL training. See NL2SQL [README](examples/train/nl2sql/README.md) for more details.
 + [2025/06/26] We support DAPO recipe training. See [DAPO.md](./assets/docs/DAPO.md) for more details.
 + [2025/06/18] VerlTool now officially supports Trajectory-Level asynchronous, speeding up the rollout generation with tool calling by at least 2x! see [asyncRL.md](./assets/docs/asyncRL.md) for more details.
-+ [2024/06/16] We have updated the verl submodule to the latest version (06/16) and modified some code to adapt to the new version.
++ [2025/06/16] We have updated the verl submodule to the latest version (06/16) and modified some code to adapt to the new version.
 + [2025/06/13] We integrated [DeepWiki](https://deepwiki.com/TIGER-AI-Lab/verl-tool) for Verl-Tool. Feel free to browse the AI-generated docs and chat with Verl-tool codes.
 + [2025/06/06] We have updated a detailed design overview in the README, including how to add new tools, how to use the tool server, and how to train your own models with verl-tool.
 + [2025/05/31] We released the Verl-tool training/evaluation code with ToRL training as an initial example (see [X post](https://x.com/DongfuJiang/status/1929198238017720379)). We are working on the paper and will release it very soon.
