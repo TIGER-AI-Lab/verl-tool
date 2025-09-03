@@ -27,7 +27,7 @@ VerlTool: A unified and easy-to-extend tool-agent training framework based on ve
 
 
 ## News
-+ [2025/09/02] VerlTool's [tech report](https://arxiv.org/abs/2509.01055) is out!
++ [2025/09/02] VerlTool's tech report is out! See on [Hugging Face Daily Paper](https://github.com/TIGER-AI-Lab/verl-tool)!
 + [2025/06/30] We reproduce Search-R1 with even higher performance on the same benchmarks! See [PR](https://github.com/TIGER-AI-Lab/verl-tool/pull/71) and training [README](examples/train/search_r1/README.md) for more details.
 + [2025/06/28] We support NL2SQL tool RL training. See NL2SQL [README](examples/train/nl2sql/README.md) for more details.
 + [2025/06/26] We support DAPO recipe training. See [DAPO.md](./assets/docs/DAPO.md) for more details.
