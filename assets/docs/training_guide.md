@@ -2,7 +2,7 @@
 
 ### Data Preprocessing
 
-Prepare the data for training using the provided scripts. More examples can be found in [examples/data_preprocess](examples/data_preprocess).
+Prepare the data for training using the provided scripts. More examples can be found in [examples/data_preprocess](/examples/data_preprocess/).
 
 ```bash
 python examples/data_preprocess/deepmath.py --data_source zwhe99/DeepMath-103K --local_dir data/deepmath_torl --sys_prompt_style torl
@@ -17,7 +17,7 @@ We provide an integrated training script for each example. To train ToRL, run th
 bash examples/train/math_tir/train_1.5b_grpo.sh
 ```
 
-See more examples in [examples/train](examples/train), where each folder is a separate project with its own training script. You can also submit a PR to add your own training script to the project.
+See more examples in [examples/train](/examples/train), where each folder is a separate project with its own training script. You can also submit a PR to add your own training script to the project.
 
 **Training Tips:**
 
