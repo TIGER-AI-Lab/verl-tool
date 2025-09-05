@@ -179,10 +179,10 @@ def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Opt
     file_name = "main.py"
     file_path = os.path.join(cwd, file_name)
     code = wrap_code_blocks(code)
-    with open(file_path, "w") as f:
-        f.write(code)
     if pre_import_lib:
         code = PRE_IMPORT_LIBS + code
+    with open(file_path, "w") as f:
+        f.write(code)
     # command.extend(["python3", "-c", code])
     # command.extend(["python3", file_path])
     if not python_path:
