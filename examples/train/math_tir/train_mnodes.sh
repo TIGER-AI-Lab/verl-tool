@@ -6,8 +6,13 @@ $(pwd)/data/math_torl/aime24_test.parquet,\
 $(pwd)/data/math_torl/aime25_test.parquet]
 model_name=Qwen/Qwen2.5-Math-7B
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
+<<<<<<< HEAD:examples/train/acecoder/train.sh
+n_gpus_per_node=4
+n_nodes=1
+=======
 n_gpus_per_node=8
 n_nodes=2
+>>>>>>> main:examples/train/math_tir/train_mnodes.sh
 n=16
 batch_size=64
 ppo_mini_batch_size=$batch_size
