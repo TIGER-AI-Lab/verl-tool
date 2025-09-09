@@ -144,3 +144,13 @@ We thank [Netmind.AI](https://www.netmind.ai/), [SeaAI Lab](https://sail.sea.com
 ## Badge
 
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/tiger-ai-lab-verl-tool-badge.png)](https://mseep.ai/app/tiger-ai-lab-verl-tool)
+
+## Citation
+```bibtex
+@article{jiang2025verltool,
+  title={VerlTool: Towards Holistic Agentic Reinforcement Learning with Tool Use},
+  author={Jiang, Dongfu and Lu, Yi and Li, Zhuofeng and Lyu, Zhiheng and Nie, Ping and Wang, Haozhe and Su, Alex and Chen, Hui and Zou, Kai and Du, Chao and others},
+  journal={arXiv preprint arXiv:2509.01055},
+  year={2025}
+}
+```
