@@ -1,7 +1,7 @@
 set -x
-dataset_name=pixel_reasoner/PixelReasoner_RL_Data/max_8192
+dataset_name=pixel_reasoner/PixelReasoner_RL_Data
 train_data=[$(pwd)/data/${dataset_name}/train.parquet]
-# val_data=[$(pwd)/data/pixel_reasoner/vstar/test.parquet]
+val_data=[$(pwd)/data/pixel_reasoner/info_vqa_debug/test.parquet]
 # val_data=[$(pwd)/data/pixel_reasoner/info_vqa/test.parquet,\
 # $(pwd)/data/pixel_reasoner/tallyqa/test.parquet,\
 # $(pwd)/data/pixel_reasoner/vstar/test.parquet]
@@ -10,17 +10,17 @@ train_data=[$(pwd)/data/${dataset_name}/train.parquet]
 # model_name=VerlTool/pixel_reasoner-7b-grpo-n8-b128-t1.0-lr1e-6_global_step_80
 # model_name=VerlTool/pixel_reasoner-7b-grpo-n8-b128-t1.0-lr1e-6-complex-reward_global_step_90
 # model_name=VerlTool/pixel-reaoner-3b-grpo-n8-b128-t1.0-lr1e-6-complex-reward_global_step_100
-model_name=VerlTool/pixel_reasoner-7b-grpo-n8-b128-t1.0-lr1e-6-complex-reward-new_global_step_50
-# model_name=TIGER-Lab/PixelReasoner-WarmStart
+# model_name=VerlTool/pixel_reasoner-7b-grpo-n8-b128-t1.0-lr1e-6-complex-reward-new_global_step_50
+model_name=TIGER-Lab/PixelReasoner-WarmStart
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
-n_gpus_per_node=4
+n_gpus_per_node=8
 n_nodes=1
 n=8
 batch_size=128
 ppo_mini_batch_size=64
 max_prompt_length=32768
  #should be big to avoid any truncation of image tokens which will cause error
-max_response_length=16384
+max_response_length=32768
 max_obs_length=8192 # should be big to avoid any truncation of image tokens which will cause error
 ppo_max_token_len_per_gpu=$(expr $max_prompt_length + $max_response_length)
 temperature=1.0
@@ -49,7 +49,7 @@ enable_mtrl=True # enable multi-turn training
 max_action_length=4096
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 max_num_batched_tokens=5000
-run_name_postfix="vstar"
+run_name_postfix="infovqadebug"
 if [ "$enable_agent" = "True" ]; then
     run_name="eval_${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -145,7 +145,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     critic.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
     critic.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
     algorithm.kl_ctrl.kl_coef=$kl_coef \
-    trainer.logger=['console','wandb'] \
+    trainer.logger=['console'] \
     trainer.project_name=$reward_manager \
     trainer.experiment_name=$run_name \
     trainer.val_before_train=True \

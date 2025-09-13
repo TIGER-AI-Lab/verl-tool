@@ -170,13 +170,15 @@ def main(
 
         return process_fn
     dataset = dataset.map(function=make_map_fn(split), with_indices=True, remove_columns=dataset.column_names, num_proc=32)
+    dataset = dataset.filter(lambda x: "infographics-6cc6f490-7956-40b2-bb0c-b5f70a984230-InfoVQA-91276-0" in x['images'][0]['image'])
+    print(dataset[0])
     print(dataset[0])
     dataset.to_parquet(os.path.join(local_dir, 'test.parquet'))
-    print(f"Saved to {len(dataset)} testing samples to {local_dir}/train.parquet")
+    print(f"Saved to {len(dataset)} testing samples to {local_dir}/test.parquet")
 
 if __name__ == '__main__':
     fire.Fire(main)
     
 """
-python examples/data_preprocess/pixel_reasoner/infovqa.py --dataset_path=JasperHaozhe/InfoVQA-EvalData-PixelReasoner --split=test --local_dir=data/pixel_reasoner/info_vqa
+python examples/data_preprocess/pixel_reasoner/infovqa.py --dataset_path=JasperHaozhe/InfoVQA-EvalData-PixelReasoner --split=test --local_dir=data/pixel_reasoner/info_vqa_debug
 """
