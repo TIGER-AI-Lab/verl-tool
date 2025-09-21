@@ -173,7 +173,7 @@ def main(
     dataset = dataset.map(function=make_map_fn(split), with_indices=True, remove_columns=dataset.column_names, num_proc=32)
     print(dataset[0])
     dataset.to_parquet(os.path.join(local_dir, 'test.parquet'))
-    print(f"Saved to {len(dataset)} testing samples to {local_dir}/train.parquet")
+    print(f"Saved to {len(dataset)} testing samples to {local_dir}/test.parquet")
 
 if __name__ == '__main__':
     fire.Fire(main)

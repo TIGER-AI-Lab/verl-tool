@@ -50,6 +50,8 @@ def pixel_reasoner_score(solution_str, ground_truth):
     else:
         ground_truth = f"\\boxed{{{ground_truth}}}"
     verify_result = verify(parse(solution_str), parse(ground_truth))
+    if not verify_result:
+        verify_result = verify(parse(solution_str.lower()), parse(ground_truth.lower()))
     if verify_result:
         return 1.0
     else:
@@ -276,6 +278,10 @@ class PixelReasonerRewardManager:
             else:
                 temp_file = self.record_dir / f"{self.name}-step-{self.step}.json"
             self.step += 1
+            if temp_file.exists():
+                with open(temp_file, "r") as f:
+                    existing_records = json.load(f)
+                to_save_records = existing_records + to_save_records
             with open(temp_file, "w") as f:
                 json.dump(to_save_records, f, indent=4)
             print(f"Saved records to {temp_file}")

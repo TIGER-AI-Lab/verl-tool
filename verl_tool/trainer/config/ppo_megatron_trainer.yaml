@@ -19,6 +19,8 @@ defaults:
   # Reward model config.
   - reward_model@reward_model: megatron_reward_model
   - _self_
+  # VerlTool Agent
+  - verltool@actor_rollout_ref.agent: agent.yaml
 
 actor_rollout_ref:
   hybrid_engine: True

@@ -71,3 +71,27 @@ To test the tool server, we provide corresponding test scripts in the `verl_tool
 python -m verl_tool.servers.tests.test_python_code_tool python --url=http://localhost:$port/get_observation
 # python -m verl_tool.servers.tests.test_bash_terminal_tool bash --url=http://localhost:$port/get_observation
 ```
+
+- request
+```json
+payload = {
+    "trajectory_ids": ["traj_1"],
+    "actions": ["""```<python>\nprint('Hello from Python!')</python> ... <python>print('Hello again!')</python>``` ..."""],
+    "extra_fields": [{}]
+}
+```
+- response
+```json
+{
+    "observations": [
+        "\n<result>\nHello from Python!\nHello again!\n</result>\n"
+    ],
+    "dones": [
+        false
+    ],
+    "valids": [
+        true
+    ],
+    "processing_time_ms": 65.95945358276367
+}
+```

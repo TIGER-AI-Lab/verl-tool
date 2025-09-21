@@ -22,3 +22,10 @@ pip install -e verl
 pip install -e ".[vllm,acecoder,torl,search_tool]"
 pip install "flash-attn<2.8.0" --no-build-isolation
 ```
+
+### installation of megatron
+```bash
+uv pip install megatron-core
+uv pip install --no-build-isolation transformer-engine[pytorch]
+```
+Then you can use `megatron` instead of fsdp as the distributed training backend, see example script here: [train_1.5b_grpo_megatron.sh](/examples/train/math_tir/train_7b_grpo_megatron.sh)

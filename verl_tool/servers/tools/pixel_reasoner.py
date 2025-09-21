@@ -74,7 +74,7 @@ def rm_tree(pth: Path):
     pth.rmdir()
 
 @register_tool
-class PixelReaonerTool(BaseTool):
+class PixelReasonerTool(BaseTool):
     tool_type = "pixel_reasoner"
 
     stop_tokens = ["</tool_call>"]
@@ -197,6 +197,10 @@ class PixelReaonerTool(BaseTool):
             missing_parameters.append('bbox_2d')
         if 'target_image' not in parameters:
             missing_parameters.append('target_image')
+        try:
+            parameters['target_image'] = int(parameters['target_image'])
+        except:
+            pass
         if missing_parameters:
             observation = f"Missing parameters: {', '.join(missing_parameters)}"
         elif not isinstance(parameters['bbox_2d'], list) or len(parameters['bbox_2d']) != 4:
