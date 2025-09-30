@@ -13,3 +13,6 @@
 [submodule "benchmarks/evalplus"]
 	path = benchmarks/evalplus
 	url = https://github.com/jdf-prog/evalplus.git
+[submodule "benchmarks/MCP-Universe"]
+	path = benchmarks/MCP-Universe
+	url = https://github.com/ShenzheZhu/MCP-Universe

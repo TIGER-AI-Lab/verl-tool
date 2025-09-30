@@ -315,3 +315,4 @@ verl_step_records/
 /*.sh
 /*.jpg
 /*.jsonl
+**/env.local.sh

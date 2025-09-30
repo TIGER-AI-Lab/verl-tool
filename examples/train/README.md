@@ -9,3 +9,4 @@
 | [SQL](./skysql/README.md) | Training a model that can interact with a SQL database to retrieve relevant information | `sql.py` | TBD |
 | [Pixel-Reasoner](./pixel_reasoner/README.md) | Training a model that can solve visual reasoning tasks with image/video processing tools (e.g., resizing, selecting, and cropping images) | `pixel_reasoner.py` | TBD |
 | [SWE](./swe/README.md) | Training a model that can solve software engineering tasks with tool-calling capabilities | [`sandbox_r2e.py`](https://github.com/cogito233/verl-tool/blob/r2e_zhiheng/verl_tool/servers/tools/sandbox_r2e.py) | TBD |
+| [MCP—Universe](./mcp_universe/README.md) | Evaluate the agent on MCP-Universe bench with verltool | [`mcp_interface.py`]| [instruction](./mcp_universe/README.md) |
