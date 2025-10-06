@@ -633,7 +633,7 @@ class AgentActorManager:
         turns_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
         valid_action_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
         active_mask = torch.ones(gen_batch.batch['input_ids'].shape[0], dtype=torch.bool) # [bs*n]
-        void_traj_mask = torch.ones(gen_batch.batch['input_ids'].shape[0], dtype=torch.bool) # [bs*n], to mark those trajs that have never been valid actions
+        void_traj_mask = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.bool) # [bs*n], ones indicate traj that has void aciton
         active_num_list = [active_mask.sum().item()]
         rollings = gen_batch
         traj_ids = gen_batch.non_tensor_batch['traj_ids']
@@ -825,8 +825,8 @@ class AgentActorManager:
             perf_timer.end(f'step_{step}_tool_interaction')
             
             # update void_traj_mask
-            is_void_action = (~torch.tensor(finishs, dtype=torch.bool)) & ~torch.tensor(valid_action, dtype=torch.bool)
-            void_traj_mask &= ~is_void_action
+            is_void_action = (~torch.tensor(valid_action, dtype=torch.bool))
+            void_traj_mask |= is_void_action
 
             perf_timer.start(f'step_{step}_state_updates')
             curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
@@ -1031,7 +1031,7 @@ class AgentActorManager:
             if num_masked > 0:
                 logger.warning(f"Masked {num_masked}/{final_output['loss_mask'].shape[0]} overlong trajectories.")
         # if mask void trajectory is enabled, we need to mask the void trajectory
-        if self.config.mask_void_traj_loss and 'void_traj_mask' in non_tensors:
+        if self.config.mask_void_trajectory and 'void_traj_mask' in non_tensors:
             void_traj_mask = torch.tensor(non_tensors['void_traj_mask'], dtype=torch.bool, device=final_output['loss_mask'].device)
             final_output['loss_mask'][void_traj_mask] = 0
             num_masked = void_traj_mask.sum().item()

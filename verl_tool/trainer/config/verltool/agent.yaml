@@ -73,5 +73,7 @@ rollout_mode: async
 # Whether to mask the overlong trajectory to not train on it
 mask_overlong_loss: False
 
+mask_void_trajectory: False
+
 # Maximum concurrent trajectories
 max_concurrent_trajectories: null

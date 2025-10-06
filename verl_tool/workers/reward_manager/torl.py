@@ -221,9 +221,10 @@ class ToRLRewardManager:
                 'response_with_loss_mask': self.tokenizer.decode(valid_response_ids_with_loss_mask, skip_special_tokens=False) if 'responses_with_loss_mask' in data_item.batch else None,
                 'ground_truth': ground_truth,
                 'score': score,
-                'reward': reward,
-                'tool_interact_info': data[i].non_tensor_batch.get('tool_interact_info', None),
                 'extra_info': data_item.non_tensor_batch.get('extra_info', None),
+                'reward': reward,
+                'void_traj_mask': data[i].non_tensor_batch.get('void_traj_mask', None),
+                'tool_interact_info': data[i].non_tensor_batch.get('tool_interact_info', None),
             })
             if "turns_stats" in data_item.non_tensor_batch:
                 to_save_records[i]['num_turn'] = data[i].non_tensor_batch["turns_stats"]

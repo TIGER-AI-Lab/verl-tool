@@ -483,7 +483,7 @@ class AsyncToolServer:
                 
                 # Check for duplicate processing
                 if self.config.enable_hashing:
-                    cache_key = hash_requests(request_data.dict())
+                    cache_key = hash_requests(request_data.model_dump())
                     cached_result = self.processing_cache.get(cache_key)
                     if cached_result:
                         logger.debug(f"Returning cached result for request")
@@ -561,7 +561,7 @@ class AsyncToolServer:
             extra_fields = [{} for _ in request_data.trajectory_ids]
         
         # Create empty extra fields, take all other fields except trajectory_ids and actions as extra_fields
-        keys = set(request_data.dict().keys()) - {"trajectory_ids", "actions", "extra_fields"}
+        keys = set(request_data.model_dump().keys()) - {"trajectory_ids", "actions", "extra_fields"}
         for key in keys:
             if key not in extra_fields[0] and getattr(request_data, key) is not None:
                 for ef, value in zip(extra_fields, getattr(request_data, key)):

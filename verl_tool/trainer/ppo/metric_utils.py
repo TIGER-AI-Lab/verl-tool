@@ -43,6 +43,8 @@ def agent_compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dic
     if 'valid_action_stats' in batch.non_tensor_batch:
         metrics['env/number_of_valid_action'] = float(np.array(batch.non_tensor_batch['valid_action_stats'], dtype=np.int16).mean())
         metrics['env/ratio_of_valid_action'] = float((np.array(batch.non_tensor_batch['valid_action_stats'], dtype=np.int16) / np.array(batch.non_tensor_batch['turns_stats'], dtype=np.int16)).mean())
+    if 'void_traj_mask' in batch.non_tensor_batch:
+        metrics['env/ratio_of_void_traj'] = float(np.array(batch.non_tensor_batch['void_traj_mask'], dtype=np.int16).mean())
     
     metrics.update({
         # response length
