@@ -63,7 +63,7 @@ async def list_tools_and_resources(server: Optional[str] = None) -> Tuple[Any, A
     """
     if not server:
         raise MCPClientError(
-            "'server' is required in <mcp_call> when using MCP gateway. "
+            "'server' is required in <tool_call> when using MCP gateway. "
             "Set MCP_GATEWAY_ADDRESS and include a server field (e.g. 'yfinance')."
         )
     context = mcp_sse_session(server)
@@ -86,7 +86,7 @@ async def call_mcp_tool(tool_name: str, arguments: Optional[Dict[str, Any]] = No
     """
     if not server:
         raise MCPClientError(
-            "'server' is required in <mcp_call> when using MCP gateway. "
+            "'server' is required in <tool_call> when using MCP gateway. "
             "Set MCP_GATEWAY_ADDRESS and include a server field (e.g. 'yfinance')."
         )
     context = mcp_sse_session(server)

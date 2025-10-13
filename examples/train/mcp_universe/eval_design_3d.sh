@@ -86,7 +86,7 @@ cleanup() {
 trap cleanup EXIT
 
 TMP_STOP=$(mktemp)
-echo -n "</mcp_call>" > "$TMP_STOP"
+echo -n "</tool_call>" > "$TMP_STOP"
 
 PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
   data.train_files="[$VAL_FILE]" \

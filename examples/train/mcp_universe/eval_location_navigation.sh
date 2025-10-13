@@ -97,9 +97,9 @@ trap cleanup EXIT
 
 
 # Action stop tokens file
-# Note: Only </mcp_call> should signal an action boundary to tool server.
+# Note: Only </tool_call> should signal an action boundary to tool server.
 #       </answer> is the final answer tag and must NOT trigger a tool call.
-action_stop_tokens='</mcp_call>'
+action_stop_tokens='</tool_call>'
 action_stop_tokens_file=$(mktemp)
 echo -n "$action_stop_tokens" > "$action_stop_tokens_file"
 

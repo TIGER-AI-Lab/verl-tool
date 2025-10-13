@@ -89,7 +89,7 @@ Run one of the eval scripts. It will:
 - run eval in val-only mode.
 
 ```bash
-CUDA_VISIBLE_DEVICES=6 bash examples/train/mcp_universe/eval_web_search.sh
+CUDA_VISIBLE_DEVICES=7 bash examples/train/mcp_universe/eval_web_search.sh
 ```
 
 Optional environment overrides:
