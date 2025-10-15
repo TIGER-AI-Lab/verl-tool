@@ -11,7 +11,7 @@ VAL_FILE=${VAL_FILE:-"$(pwd)/data/mcp_universe/financial_analysis/test.parquet"}
 RUN_NAME=${RUN_NAME:-"mcp_universe-financial_analysis"}
 
 # Model and runtime settings (override via env if needed)
-MODEL_NAME=${MODEL_NAME:-Qwen/Qwen2.5-3B-Instruct}
+MODEL_NAME=${MODEL_NAME:-Qwen/Qwen3-4B-Instruct-2507}
 HOST=${HOST:-$(hostname -i | awk '{print $1}')}
 PORT=${PORT:-5050}
 max_prompt_length=${max_prompt_length:-30720}
@@ -21,10 +21,13 @@ max_obs_length=${max_obs_length:-12288}
 MAX_TURNS=${MAX_TURNS:-20}
 TEMP=${TEMP:-0.6}
 TOP_P=${TOP_P:-0.95}
-N=${N:-4}
+N=${N:-1}
 N_GPUS=${N_GPUS:-1}
 N_NODES=${N_NODES:-1}
-GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.9}
+
+echo "Using $N_GPUS GPUs, $N_NODES nodes"
+echo "Train batch: $N_GPUS, Val batch: $N_GPUS"
+GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.95}
 tensor_model_parallel_size=${tensor_model_parallel_size:-1}
 # Gateway (auto-launch)
 GW_CFG=${GW_CFG:-"benchmarks/MCP-Universe/mcpuniverse/mcp/configs/server_list.json"}
@@ -90,9 +93,9 @@ cleanup() {
 trap cleanup EXIT
 
 # Action stop tokens file
-# Note: Only </mcp_call> should signal an action boundary to tool server.
+# Note: Only </tool_call> should signal an action boundary to tool server.
 #       </answer> is the final answer tag and must NOT trigger a tool call.
-action_stop_tokens='</mcp_call>'
+action_stop_tokens='</tool_call>'
 action_stop_tokens_file=$(mktemp)
 echo -n "$action_stop_tokens" > "$action_stop_tokens_file"
 
@@ -100,8 +103,8 @@ echo -n "$action_stop_tokens" > "$action_stop_tokens_file"
 PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
   data.train_files="[$VAL_FILE]" \
   data.val_files="[$VAL_FILE]" \
-  data.train_batch_size=1 \
-  data.val_batch_size=1 \
+  data.train_batch_size=$N_GPUS \
+  data.val_batch_size=$N_GPUS \
   data.max_prompt_length=$max_prompt_length  \
   data.max_response_length=$max_response_length \
   data.truncation='right' \
@@ -112,7 +115,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
   actor_rollout_ref.model.use_remove_padding=True \
   actor_rollout_ref.model.trust_remote_code=True \
   actor_rollout_ref.actor.strategy=fsdp \
-  actor_rollout_ref.actor.ppo_mini_batch_size=1 \
+  actor_rollout_ref.actor.ppo_mini_batch_size=$N_GPUS \
   actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
   actor_rollout_ref.actor.fsdp_config.param_offload=True \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
@@ -140,7 +143,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
   actor_rollout_ref.rollout.mode='async' \
   critic.strategy=fsdp \
   critic.model.path="$MODEL_NAME" \
-  critic.ppo_mini_batch_size=1 \
+  critic.ppo_mini_batch_size=$N_GPUS \
   critic.ppo_micro_batch_size_per_gpu=1 \
   trainer.logger=['console'] \
   trainer.project_name=mcp_universe \

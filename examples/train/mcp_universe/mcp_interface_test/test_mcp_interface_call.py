@@ -2,12 +2,13 @@
 import os
 import sys
 import json
+import argparse
 from pathlib import Path
 
 
 def ensure_project_on_path() -> None:
     # Add repo root to sys.path so `verl_tool` can be imported when running directly
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = Path(__file__).resolve().parents[4]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
@@ -23,21 +24,33 @@ def main() -> None:
         sys.exit(2)
 
     # Action payload: read from argv or use a default example
-    if len(sys.argv) > 1:
-        raw_action = sys.argv[1]
-    else:
-        raw_action = (
-            '<mcp_call>{"server":"google-search","name":"search","arguments":'
-            '{"query":"paper accepted by CVPR 2025 last author works at Salesforce '
-            'second to last author works at NUS second author studied at NTU '
-            'paper uses ELO rating system full title"}}</mcp_call>'
-        )
+    parser = argparse.ArgumentParser(description="Minimal MCP interface connectivity test.")
+    parser.add_argument(
+        "action",
+        nargs="?",
+        default='<tool_call>{"name":"add","arguments":{"a":1,"b":1}}</tool_call>',
+        help="Raw tool_call payload (default: add 1+1 on calculator).",
+    )
+    parser.add_argument(
+        "--server",
+        default="calculator",
+        help="Preferred MCP server name (default: calculator).",
+    )
+    args = parser.parse_args()
+
+    raw_action = args.action
+    server_name = args.server
 
     from verl_tool.servers.tools.mcp_interface import MCPInterfaceTool
 
     tool = MCPInterfaceTool(num_workers=1)
     trajectory_id = "t1"
-    extra_field = {}
+    # Provide per-task metadata equivalent to dataset extra_info so the interface
+    # can infer the MCP server when the action omits it.
+    extra_field = {
+        "use_specified_server": True,
+        "mcp_servers": [{"name": server_name}],
+    }
 
     observation, done, valid = tool.conduct_action(
         trajectory_id=trajectory_id,
@@ -56,5 +69,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

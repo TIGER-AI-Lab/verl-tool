@@ -13,7 +13,7 @@ Row schema:
 
 Notes:
 - We embed the agent instruction from the YAML agent spec into the system prompt,
-  and append a standard ReAct guidance on <mcp_call> and <answer>.
+  and append a standard ReAct guidance on <tool_call> and <answer>.
 - For web_search tasks using LLM-as-a-judge with a "correct_answer", we store it to ground_truth.
   Other tasks keep original evaluators so the reward manager can evaluate structure-based checks.
 """
@@ -40,25 +40,16 @@ def load_yaml_multi(path: str) -> List[Dict[str, Any]]:
 
 
 def build_tools_prompt(mcp_servers: List[Dict[str, Any]], tools_description: Optional[str] = None) -> str:
-    if not mcp_servers:
+    if not tools_description:
         return ""
-    lines = ["Available MCP Servers:"]
-    for s in mcp_servers:
-        name = s.get("name") if isinstance(s, dict) else None
-        if name:
-            lines.append(f"- {name}")
-    lines.append("")
-    if tools_description:
-        lines.append("You are able to access these tools:\n")
-        lines.append("### Tools Description ###")
-        lines.append(tools_description.strip())
-        lines.append("### End of Tools Description ###")
-    else:
-        lines.append("How to discover tools and call them:")
-        lines.append("1) List tools on a server (see tool names + descriptions):")
-        lines.append('<mcp_call>{"server":"server-name","name":"mcp.list_tools","arguments":{}}</mcp_call>')
-        lines.append("2) Call a specific tool by name with arguments:")
-        lines.append('<mcp_call>{"server":"server-name","name":"tool-name","arguments":{}}</mcp_call>')
+    lines = [
+        "You may call one or more functions to assist with the user query.",
+        "",
+        "You are provided with function signatures within <tools></tools> XML tags:",
+        "<tools>",
+        tools_description.strip(),
+        "</tools>",
+    ]
     return "\n".join(lines).strip()
 
 
@@ -145,10 +136,10 @@ def build_system_prompt(agent_instruction: str,
     "4. Respond in the following format:\n\n"
     "If you need to use a tool:\n"
     '<think>Your detailed reasoning about what to do next</think>'
-    '<mcp_call>{"server":"server-name","name":"tool-name","arguments":{"argument-name":"argument-value"}}</mcp_call>\n\n'
+    '<tool_call>{"name":"tool-name","arguments":{"argument-name":"argument-value"}}</tool_call>\n\n'
     "For example:\n"
     "<think>I need to find the weather in Tokyo</think>"
-    '<mcp_call>{"server":"weather","name":"get_weather","arguments":{"city":"Tokyo"}}</mcp_call>\n\n'
+    '<tool_call>{"name":"get_weather","arguments":{"city":"Tokyo"}}</tool_call>\n\n'
     "If you have enough information to answer the query:\n"
     "<think>Your final reasoning process to derive the answer</think>"
     "__FINAL_ANSWER_EXAMPLE__"
@@ -189,33 +180,57 @@ def build_system_prompt(agent_instruction: str,
 
 
 def _format_tools_description(tool_map: Dict[str, List[Dict[str, Any]]]) -> str:
-    import yaml
-    blocks: List[str] = []
-    for server, tools in tool_map.items():
-        for t in tools or []:
-            name = t.get("name", "")
-            desc = t.get("description", "") or ""
-            schema = t.get("inputSchema", {}) or {}
-            props = (schema.get("properties") or {})
-            required = set(schema.get("required") or [])
-            args_lines = []
-            for p, info in props.items():
-                dumped = yaml.safe_dump(info, sort_keys=False, indent=2).strip()
-                dumped = "\n".join("    "+ln for ln in dumped.splitlines())
-                line = f"- {p}:\n{dumped}"
-                if p in required:
-                    line += "\n    required: true"
-                args_lines.append(line)
-            arg_text = ("\n"+"\n".join(args_lines)) if args_lines else " No arguments"
-            desc_lines = "\n".join([ln for ln in str(desc).splitlines() if ln.strip()])
-            block = (
-                f"Server: {server}\n"
-                f"Tool: {name}\n"
-                f"Description:\n{desc_lines}\n"
-                f"Arguments:{arg_text}"
-            )
-            blocks.append(block)
-    return "\n\n".join(blocks)
+    import copy
+    import json
+
+    entries: List[str] = []
+    for tools in tool_map.values():
+        for tool in tools or []:
+            name = tool.get("name", "")
+            if not name:
+                continue
+            description = tool.get("description") or ""
+            schema = tool.get("inputSchema") or tool.get("parameters") or {}
+            parameters = copy.deepcopy(schema) if isinstance(schema, dict) else {}
+            if not isinstance(parameters, dict):
+                parameters = {}
+            parameters.setdefault("type", "object")
+            parameters.setdefault("properties", {})
+            if not isinstance(parameters.get("properties"), dict):
+                parameters["properties"] = {}
+            normalized_props: Dict[str, Any] = {}
+            for arg_name, meta in parameters["properties"].items():
+                if not isinstance(meta, dict):
+                    normalized_props[arg_name] = meta
+                    continue
+                desc = meta.get("description")
+                title = meta.get("title")
+                if not desc:
+                    desc = title or arg_name
+                ordered_meta: Dict[str, Any] = {}
+                if desc:
+                    ordered_meta["description"] = desc
+                if title:
+                    ordered_meta["title"] = title
+                for k, v in meta.items():
+                    if k in ("description", "title"):
+                        continue
+                    ordered_meta[k] = v
+                normalized_props[arg_name] = ordered_meta
+            parameters["properties"] = normalized_props
+            parameters.setdefault("required", [])
+            if not isinstance(parameters.get("required"), list):
+                parameters["required"] = []
+            entry = {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": parameters,
+                },
+            }
+            entries.append(json.dumps(entry, ensure_ascii=False))
+    return "\n".join(entries)
 
 
 def _query_tools_for_servers(server_names: List[str]) -> Optional[str]:
@@ -229,10 +244,10 @@ def _query_tools_for_servers(server_names: List[str]) -> Optional[str]:
 
         async def _collect():
             tool_map: Dict[str, List[Dict[str, Any]]] = {}
-            if not server_names:
+            for s in server_names:
                 try:
-                    tools, _ = await list_tools_and_resources(None)
-                    tool_map["<single>"] = [
+                    tools, _ = await list_tools_and_resources(s)
+                    tool_map[s] = [
                         {
                             "name": getattr(t, "name", ""),
                             "description": getattr(t, "description", None),
@@ -241,21 +256,7 @@ def _query_tools_for_servers(server_names: List[str]) -> Optional[str]:
                         for t in getattr(tools, "tools", []) or []
                     ]
                 except Exception:
-                    pass
-            else:
-                for s in server_names:
-                    try:
-                        tools, _ = await list_tools_and_resources(s)
-                        tool_map[s] = [
-                            {
-                                "name": getattr(t, "name", ""),
-                                "description": getattr(t, "description", None),
-                                "inputSchema": getattr(t, "inputSchema", None),
-                            }
-                            for t in getattr(tools, "tools", []) or []
-                        ]
-                    except Exception:
-                        continue
+                    continue
             return tool_map
 
         try:
