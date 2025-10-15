@@ -31,7 +31,7 @@ See more examples in [examples/train](/examples/train), where each folder is a s
 
 1. On slurm
 ```bash
-sbatch examples/train/math_tir/train_7b_grpo_2nodes.sh
+sbatch --account ${your_account} --nodes 2 examples/train/math_tir/train_7b_grpo_multi_node_slurm.sh ${your_container_path} ${your_mount_path} ${your_workdir_inside_container}
 ```
 
 Other cluster's examples are to be added.

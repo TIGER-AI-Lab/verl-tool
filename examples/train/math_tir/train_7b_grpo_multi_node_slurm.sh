@@ -4,7 +4,6 @@
 #SBATCH --error=logs/verltool_mathtir_7b_grpo_2nodes_%j/%a.err
 #SBATCH --time=60
 #SBATCH --gpus-per-node=4
-#SBATCH --account=llmservice_fm_post
 #SBATCH --partition=interactive
 #SBATCH --cpus-per-gpu=8
 #SBATCH --ntasks-per-node=2
@@ -16,9 +15,10 @@ set -eoux pipefail
 ########################################################
 # Container and mount configuration
 ########################################################
-CONTAINER=${CONTAINER:-/lustre/fsw/portfolios/llmservice/users/dongfuj/images/acetoolreason.sqsh} # the global container path
-MOUNTS=${MOUNTS:-/lustre}
-CONTAINER_WORKDIR=${CONTAINER_WORKDIR:-/lustre/fsw/portfolios/llmservice/users/dongfuj/Workspace/verl-tool/} # the workdir inside the container
+CONTAINER=${1} # the global container path
+MOUNTS=${2}
+CONTAINER_WORKDIR=${3} # the workdir inside the container
+
 echo "Using container: $CONTAINER"
 echo "Container workdir: $CONTAINER_WORKDIR"
 echo "Mounts: $MOUNTS"
