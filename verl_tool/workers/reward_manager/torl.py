@@ -30,7 +30,7 @@ class ToRLRewardManager:
     """
     name="torl"
 
-    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source') -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source', **kwargs) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         # self.compute_score = compute_score if compute_score else _default_compute_score
@@ -43,6 +43,9 @@ class ToRLRewardManager:
         self.add_unfinished_traj_penalty = False # -0.25 if the traj is not finished
         self.add_no_tool_interact_penalty = False # -0.25 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
+        if "record_dir" in kwargs:
+            self.record_dir = Path(kwargs['record_dir'])
+            self.record_dir.mkdir(parents=True, exist_ok=True)
 
     def add_additional_penalties(self, response: str, data_i, scores_i: dict):
         # 1.4 format penalty

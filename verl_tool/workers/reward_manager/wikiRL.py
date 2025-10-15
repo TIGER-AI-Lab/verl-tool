@@ -33,7 +33,7 @@ class WikiRLRewardManager:
     the ground truth answers. The final reward is a weighted combination of a fuzzy matching
     score and a structure score.
     # """
-    def __init__(self, tokenizer=None, num_examine=1, compute_score=None) -> None:
+    def __init__(self, tokenizer=None, num_examine=1, compute_score=None, **kwargs) -> None:
         """
         Initialize the WikiRLRewardManager.
 
@@ -50,6 +50,9 @@ class WikiRLRewardManager:
         self.compute_score = compute_score or _default_compute_score
         self.fuzzy_weight = 0.7
         self.structure_weight = 0.3
+        if "record_dir" in kwargs:
+            self.record_dir = Path(kwargs['record_dir'])
+            self.record_dir.mkdir(parents=True, exist_ok=True)
 
     def answer_score(self, pred, ground_truths):
         def extract_last_stop_content(input_str: str) -> str:

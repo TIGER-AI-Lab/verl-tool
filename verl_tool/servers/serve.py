@@ -483,7 +483,7 @@ class AsyncToolServer:
                 
                 # Check for duplicate processing
                 if self.config.enable_hashing:
-                    cache_key = hash_requests(request_data.dict())
+                    cache_key = hash_requests(request_data.model_dump())
                     cached_result = self.processing_cache.get(cache_key)
                     if cached_result:
                         logger.debug(f"Returning cached result for request")

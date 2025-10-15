@@ -115,7 +115,7 @@ class AceCoderRewardManager:
     The Reward Manager used in https://github.com/TIGER-AI-Lab/AceCoder
     """
     name = "acecoder"
-    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source'):
+    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source', **kwargs) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
@@ -130,6 +130,9 @@ class AceCoderRewardManager:
         self.add_no_tool_interact_penalty = True # -1.0 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
         self.reward_fn_key = reward_fn_key
+        if "record_dir" in kwargs:
+            self.record_dir = Path(kwargs['record_dir'])
+            self.record_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             from acecoder import evaluate_test_cases

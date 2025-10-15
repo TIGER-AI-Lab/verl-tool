@@ -40,7 +40,7 @@ from .acecoder import AceCoderRewardManager
 @register("mathcoder")
 class MathCoderRewardManager:
     def __init__(
-        self, tokenizer, num_examine, compute_score=None, reward_fn_key="data_source") -> None:
+        self, tokenizer, num_examine, compute_score=None, reward_fn_key="data_source", **kwargs) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score if compute_score else _default_compute_score
@@ -53,6 +53,9 @@ class MathCoderRewardManager:
         self.AceCoderRewardManager = AceCoderRewardManager(
             tokenizer, num_examine, compute_score
         )
+        if "record_dir" in kwargs:
+            self.record_dir = Path(kwargs['record_dir'])
+            self.record_dir.mkdir(parents=True, exist_ok=True)
 
     def __call__(self, data: DataProto, return_dict=False):
         save_record = data.meta_info.get('save_record', True)

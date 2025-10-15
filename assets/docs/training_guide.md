@@ -29,18 +29,15 @@ See more examples in [examples/train](/examples/train), where each folder is a s
 
 ### Multi Node Training (Experimental)
 
-1. **Head Node**
+1. On slurm
 ```bash
-ray start --head --dashboard-host=0.0.0.0 # start ray head node
-bash examples/train/acecoder/train.sh # train the model
+sbatch --account ${your_account} --nodes 2 examples/train/math_tir/train_7b_grpo_multi_node_slurm.sh ${your_container_path} ${your_mount_path} ${your_workdir_inside_container}
 ```
 
-2. **Worker Node**
-```bash
-ray start --address='head_node_ip:6379' --block # start ray worker node
-# no need to run the training script on worker node
-```
+Other cluster's examples are to be added.
 
 ### Training Logs
 
 During training, the generated responses, rewards, etc., of each step are recorded in the `verl_step_records` directory. The corresponding code logic is written in the `verl_tool/worker/reward_manager/{reward_manager_name}.py` file. This helps you debug the training process and understand how the model interacts with the tool server.
+
+If it's multi-node training, the step records may be saved in the checkpoint directory instead, e.g., `{checkpoint_dir}/step_records`.
