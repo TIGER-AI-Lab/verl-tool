@@ -33,7 +33,7 @@ class PixelReasonerRewardManager(ToRLRewardManager):
     """
     name = "deepsearch"
     
-    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source') -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source', **kwargs) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = deepsearch_compute_score
@@ -41,6 +41,9 @@ class PixelReasonerRewardManager(ToRLRewardManager):
         self.step = None
         self.add_tool_call_reward = True # +0.1 if the response contains a tool call
         self.add_format_penalty = True # -0.5 if the response does not start with <think> and end with </think>
+        if "record_dir" in kwargs:
+            self.record_dir = Path(kwargs['record_dir'])
+            self.record_dir.mkdir(parents=True, exist_ok=True)
 
     def add_additional_penalties(self, response: str, data_i, scores_i: dict):
         # 1.4 format penalty

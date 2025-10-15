@@ -135,6 +135,9 @@ class SearchR1QAEMRewardManager:
         self.format_score = format_score
         self.score = score
         self.step = None
+        if "record_dir" in kwargs:
+            self.record_dir = Path(kwargs['record_dir'])
+            self.record_dir.mkdir(parents=True, exist_ok=True)
 
     def __call__(self, data: DataProto, return_dict=False):
         """Compute rewards for Search-R1 style responses."""

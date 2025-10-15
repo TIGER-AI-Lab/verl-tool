@@ -64,7 +64,7 @@ class PixelReasonerRewardManager:
     It uses the TORL framework to compute rewards based on the outputs of the model.
     """
     name = "pixel_reasoner"
-    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source') -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source', **kwargs) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = pixel_reasoner_score
@@ -76,6 +76,9 @@ class PixelReasonerRewardManager:
         self.action_redundancy_limit = 1 # n_{vo} in the paper, add penalty if the number of redundant actions is larger than this limit
         self.alpha = 0.5
         self.beta = 0.05
+        if "record_dir" in kwargs:
+            self.record_dir = Path(kwargs['record_dir'])
+            self.record_dir.mkdir(parents=True, exist_ok=True)
         
     def get_group_info(self, data: DataProto):
         group_info = {}
