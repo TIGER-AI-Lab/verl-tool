@@ -23,6 +23,38 @@ def print_messages(messages):
                 content['video_url']['url'] = content['video_url']['url'][:100] + "..." if len(content['video_url']['url']) > 100 else content['video_url']['url']
     print(messages)
 
+def nested_copy(obj):
+    """
+    Recursively copy nested objects (lists, dicts, etc.) to avoid reference issues.
+    """
+    if isinstance(obj, dict):
+        return {k: nested_copy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [nested_copy(item) for item in obj]
+    elif hasattr(obj, 'copy'):
+        return obj.copy()
+    else:
+        return obj
+    
+def repeat_inputs_by_n(inputs: DataProto, n: int) -> DataProto:
+    """
+    this version verl do not repeat the input by n times, so we manually repeat the input by n times
+    """
+    ori_len = len(inputs.batch['input_ids'])
+    inputs = inputs.repeat(n, interleave=True)
+    # add "_{i}" for each trajectory to the traj_ids
+    for i in range(ori_len):
+        for j in range(n):
+            inputs.non_tensor_batch['traj_ids'][i*n+j] += f"_{j}"
+            # deepcopy to avoid reference bug
+            for key in inputs.non_tensor_batch.keys():
+                if key == 'traj_ids':
+                    continue
+                # # check if it's the same reference as the inputs.non_tensor_batch[key][i]
+                inputs.non_tensor_batch[key][i*n+j] = nested_copy(inputs.non_tensor_batch[key][i*n])
+    inputs.meta_info['is_repeated_by_n'] = True
+    return inputs
+
 class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
     """A chat completion scheduler for verl-tool, which is a wrapper around the ChatCompletionScheduler."""
 
@@ -273,6 +305,74 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
                 self._submit_completions(prompt=prompt, request_id=request_id, info=info)
             )
     
+    async def submit_oversampling(self, single_prompt_batch, target_n, **kwargs) -> DataProto:
+        """
+            single_prompt_batch is a DataProto with batch size over_sampling_n
+            this function will submit all the tasks for the single prompt batch, and return the earliest n results
+        Args:
+            single_prompt_batch (DataProto): a DataProto with batch size over_sampling_n
+            target_n (int): number of results to return
+            **kwargs: other arguments for the agent actor manager
+        """
+        # print(f"Submitting oversampling with batch size {len(single_prompt_batch)} to get {target_n} results.")
+        assert len(single_prompt_batch) >= target_n, f"single_prompt_batch size {len(single_prompt_batch)} must be greater than or equal to target_n {target_n}."
+        over_sampling_n = len(single_prompt_batch)
+        n = target_n  # Number of results we actually want
+        
+        tasks = []
+        async def run_with_semaphore(batch_index):
+            semaphore = asyncio.Semaphore(target_n)
+            async with semaphore:
+                return await self.agent_actor_manager.run_llm_loop_async(
+                    single_prompt_batch[batch_index],
+                    **kwargs
+                )
+        for batch_index in range(over_sampling_n):
+            task = asyncio.create_task(
+                run_with_semaphore(batch_index)
+            )
+            tasks.append(task)
+        
+        # Collect the first n completed results
+        completed_outputs = []
+        pending = set(tasks)
+        
+        with tqdm(total=n, desc="Collecting first n results from oversampling", 
+                disable=not self.agent_config.enable_tqdm or True) as pbar:
+            while len(completed_outputs) < n and pending:
+                # Wait for the next task(s) to complete
+                done, pending = await asyncio.wait(
+                    pending, 
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                for task in done:
+                    try:
+                        result = await task
+                        completed_outputs.append(result)
+                        pbar.update(1)
+                        
+                        # Stop collecting once we have n results
+                        if len(completed_outputs) >= n:
+                            break
+                    except Exception as e:
+                        # Handle any errors from completed tasks
+                        print(f"Task failed with error: {e}")
+        
+        # Cancel all remaining pending tasks
+        print(f"Cancelling {len(pending)} pending tasks.")
+        for task in pending:
+            task.cancel()
+        
+        # Optionally wait for cancellations to complete and suppress CancelledError
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        
+        # Concatenate the first n results
+        output_batch = DataProto.concat(completed_outputs[:n])
+        
+        return output_batch
+    
     async def simple_generate_sequences(
         self, batch: DataProto, **kwargs
     ) -> DataProto:
@@ -330,50 +430,102 @@ class VerlToolChatCompletionScheduler(ChatCompletionScheduler):
             kwargs["top_p"] = self.config.val_kwargs.top_p
             kwargs["temperature"] = self.config.val_kwargs.temperature
             n = self.config.val_kwargs.n
+            over_sampling = False
         else:
             n = self.config.n
-        if not batch.meta_info.get("is_repeated_by_n", False):
-            repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
-        else:
-            repeated_batch = batch
-        repeated_chunk_batch = repeated_batch.chunk(len(repeated_batch))
-        # repeated_batch = [repeated_batch] # for debug
-        logger.warning(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")
-        tasks = []
-        if self.agent_config.enable_agent:
-            if self.max_concurrent_trajectories is not None and self.max_concurrent_trajectories > 0:
-                semaphore = asyncio.Semaphore(self.max_concurrent_trajectories)
-                async def run_with_semaphore(batch_index):
-                    async with semaphore:
-                        return await self.agent_actor_manager.run_llm_loop_async(
-                            repeated_chunk_batch[batch_index],
-                            **kwargs
-                        )
-                for batch_index in range(len(repeated_chunk_batch)):
-                    tasks.append(
-                        asyncio.create_task(
-                            run_with_semaphore(batch_index)
-                        )
-                    )
+            over_sampling = self.over_sampling
+            
+        if not over_sampling:
+            if not batch.meta_info.get("is_repeated_by_n", False):
+                repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
             else:
-                for batch_index in range(len(repeated_chunk_batch)):
-                    tasks.append(
-                        asyncio.create_task(
-                            self.agent_actor_manager.run_llm_loop_async(
+                repeated_batch = batch
+            repeated_chunk_batch = repeated_batch.chunk(len(repeated_batch))
+            # repeated_batch = [repeated_batch] # for debug
+            logger.warning(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")
+            tasks = []
+            if self.agent_config.enable_agent:
+                if self.max_concurrent_trajectories is not None and self.max_concurrent_trajectories > 0:
+                    semaphore = asyncio.Semaphore(self.max_concurrent_trajectories)
+                    async def run_with_semaphore(batch_index):
+                        async with semaphore:
+                            return await self.agent_actor_manager.run_llm_loop_async(
                                 repeated_chunk_batch[batch_index],
                                 **kwargs
                             )
+                    for batch_index in range(len(repeated_chunk_batch)):
+                        tasks.append(
+                            asyncio.create_task(
+                                run_with_semaphore(batch_index)
+                            )
                         )
-                    )
-            # gen_outputs = await asyncio.gather(*tasks)
-            gen_outputs = await tqdm.gather(*tasks, total=len(tasks), desc="Async Generating sequences", disable=not self.agent_config.enable_tqdm)
-            output_batch = DataProto.concat(gen_outputs)
+                else:
+                    for batch_index in range(len(repeated_chunk_batch)):
+                        tasks.append(
+                            asyncio.create_task(
+                                self.agent_actor_manager.run_llm_loop_async(
+                                    repeated_chunk_batch[batch_index],
+                                    **kwargs
+                                )
+                            )
+                        )
+                # gen_outputs = await asyncio.gather(*tasks)
+                gen_outputs = await tqdm.gather(*tasks, total=len(tasks), desc="Async Generating sequences", disable=not self.agent_config.enable_tqdm)
+                output_batch = DataProto.concat(gen_outputs)
+            else:
+                kwargs["max_tokens"] = self.max_response_length
+                output_batch = await self.simple_generate_sequences(
+                    repeated_batch,
+                    **kwargs
+                )
         else:
-            kwargs["max_tokens"] = self.max_response_length
-            output_batch = await self.simple_generate_sequences(
-                repeated_batch,
-                **kwargs
-            )
+            raise NotImplementedError("Over-sampling is not fully implemented yet.")
+            over_sampling_n = n * 2  # oversampling by 2 times
+            if not batch.meta_info.get("is_repeated_by_n", False):
+                repeated_batch = self.agent_actor_manager.repeat_inputs_by_n(batch)
+            else:
+                repeated_batch = batch
+            _repeated_chunk_batch = self.agent_actor_manager.repeat_inputs_by_n(repeated_batch, 2, force=True)
+            _repeated_chunk_batch = _repeated_chunk_batch.chunk(len(_repeated_chunk_batch))
+            repeated_chunk_batch = [[_repeated_chunk_batch[j] for j in range(i, i+over_sampling_n)] for i in range(0, len(_repeated_chunk_batch), over_sampling_n)]
+            logger.warning(f"[VerlToolChatCompletionScheduler] generate_sequences number of chunks: {len(repeated_chunk_batch)}")
+            tasks = []
+            if self.agent_config.enable_agent:
+                if self.max_concurrent_trajectories is not None and self.max_concurrent_trajectories > 0:
+                    semaphore = asyncio.Semaphore(self.max_concurrent_trajectories // over_sampling_n)
+                    async def run_with_semaphore(batch_index):
+                        async with semaphore:
+                            return await self.submit_oversampling(
+                                repeated_chunk_batch[batch_index],
+                                target_n=n,
+                                **kwargs
+                            )
+                    for batch_index in range(len(repeated_chunk_batch)):
+                        tasks.append(
+                            asyncio.create_task(
+                                run_with_semaphore(batch_index)
+                            )
+                        )
+                else:
+                    for batch_index in range(len(repeated_chunk_batch)):
+                        tasks.append(
+                            asyncio.create_task(
+                                self.submit_oversampling(
+                                    repeated_chunk_batch[batch_index],
+                                    target_n=n,
+                                    **kwargs
+                                )
+                            )
+                        )
+                # gen_outputs = await asyncio.gather(*tasks)
+                gen_outputs = await tqdm.gather(*tasks, total=len(tasks), desc="Async Generating sequences", disable=not self.agent_config.enable_tqdm)
+                output_batch = DataProto.concat(gen_outputs)
+            else:
+                kwargs["max_tokens"] = self.max_response_length
+                output_batch = await self.simple_generate_sequences(
+                    repeated_batch,
+                    **kwargs
+                )
         output_batch.meta_info["timing"] = {"generate_sequences": time.time() - t_start}
         logger.info("[VerlToolChatCompletionScheduler] generate_sequences for {} number of trajectories done, took {:.2f} seconds".format(
             len(repeated_batch), output_batch.meta_info["timing"]["generate_sequences"]

@@ -71,6 +71,8 @@ def repeat_inputs_by_n(inputs: DataProto, n: int) -> DataProto:
             inputs.non_tensor_batch['traj_ids'][i*n+j] += f"_{j}"
             # deepcopy to avoid reference bug
             for key in inputs.non_tensor_batch.keys():
+                if key == 'traj_ids':
+                    continue
                 # # check if it's the same reference as the inputs.non_tensor_batch[key][i]
                 inputs.non_tensor_batch[key][i*n+j] = nested_copy(inputs.non_tensor_batch[key][i*n])
     inputs.meta_info['is_repeated_by_n'] = True

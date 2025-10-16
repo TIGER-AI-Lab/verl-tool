@@ -142,11 +142,11 @@ class AgentActorManager:
             padding="longest"
         )['input_ids']
     
-    def repeat_inputs_by_n(self, inputs: DataProto):
+    def repeat_inputs_by_n(self, inputs: DataProto, n=None, force=False):
         """
         this version verl do not repeat the input by n times, so we manually repeat the input by n times
         """
-        if inputs.meta_info.get("is_repeated_by_n", False):
+        if inputs.meta_info.get("is_repeated_by_n", False) and not force:
             # if the inputs are already repeated by n times, we do not need to repeat again
             return inputs
 
@@ -157,11 +157,12 @@ class AgentActorManager:
         if not do_sample:
             n = 1
         else:
-            if inputs.meta_info.get("validate", False):
-                n = self.config.val_kwargs.n
-            else:
-                n = self.config.n
-
+            if n is None:
+                if inputs.meta_info.get("validate", False):
+                    n = self.config.val_kwargs.n
+                else:
+                    n = self.config.n
+                    
             inputs = inputs.repeat(n, interleave=True)
         # add "_{i}" for each trajectory to the traj_ids
         for i in range(ori_len):
@@ -169,6 +170,8 @@ class AgentActorManager:
                 inputs.non_tensor_batch['traj_ids'][i*n+j] += f"_{j}"
                 # deepcopy to avoid reference bug
                 for key in inputs.non_tensor_batch.keys():
+                    if key == 'traj_ids':
+                        continue
                     # # check if it's the same reference as the inputs.non_tensor_batch[key][i]
                     inputs.non_tensor_batch[key][i*n+j] = nested_copy(inputs.non_tensor_batch[key][i*n])
         inputs.meta_info['is_repeated_by_n'] = True
