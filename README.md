@@ -54,7 +54,7 @@ VerlTool: A unified and easy-to-extend tool-agent training framework based on ve
 - 🎯 [Training Guide](./assets/docs/training_guide.md)
 - 📊 [Evaluation Guide](./assets/docs/evaluation.md)
 - 🔧 [Update Verl Submodule Version](./assets/docs/update_verl.md)
-- 📈 [Existing Training Results](./assets/docs/math_results.md)
+- 📈 [Existing Training Results](./assets/docs/training_results.md)
 - 🤝 [Contributing Guide](./assets/docs/contributing.md)
 
 ## Core Contributors
