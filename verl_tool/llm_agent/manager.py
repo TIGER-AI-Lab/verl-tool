@@ -1013,7 +1013,10 @@ class AgentActorManager:
                 self.tensor_fn.create_attention_mask(final_output['responses_with_loss_mask'])
             ], dim=1) # [bs*n, prompt_length + max_response_length]
         else:
-            final_output['loss_mask'] = final_output['attention_mask']
+            final_output['loss_mask'] = torch.cat([
+                torch.zeros_like(left_side['input_ids']), # do not train on prompt
+                self.tensor_fn.create_attention_mask(final_output['responses'])
+            ], dim=1) # [bs*n, prompt_length + max_response_length]
         # recent (from July 2025) verl uses response_mask for loss_mask
         response_length = final_output['responses'].shape[1]
         final_output['response_mask'] = final_output['loss_mask'][:, -response_length:]  # [bs*n, max_response_length]
