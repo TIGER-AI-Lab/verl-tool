@@ -40,7 +40,7 @@ mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
 max_action_length=2048
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="acc-only"
+run_name_postfix="acc-only-ipython"
 if [ "$enable_agent" = "True" ]; then
     run_name="${reward_manager}-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -60,7 +60,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "python_code" --workers_per_tool 8 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "ipython_code" --workers_per_tool 8 &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"

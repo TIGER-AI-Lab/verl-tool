@@ -121,8 +121,14 @@ class IPythonTool(BaseTool):
             try:
                 remove_kernel(trajectory_id)
             except Exception as e:
-                print(f"Warning: Failed to remove kernel for {trajectory_id}: {e}")
-            del self.env_cache[trajectory_id]
+                pass
+                # print(f"Warning: Failed to remove kernel for {trajectory_id}: {e}")
+            try:
+                del self.env_cache[trajectory_id]
+            except Exception as e:
+                pass
+                # print(f"Warning: Failed to delete env for {trajectory_id}: {e}")
+                
     
     def parse_action(self, action: str) -> Tuple[str, bool]:
         """
@@ -285,7 +291,7 @@ finally:
             observation = execution_result
             
             # Apply postprocessing
-            print(f"Execution result for trajectory {trajectory_id}:\n{execution_result}")
+            # print(f"Execution result for trajectory {trajectory_id}:\n{execution_result}")
             observation = self.postprocess_observation(action, observation)
             
             # Determine if done based on error status

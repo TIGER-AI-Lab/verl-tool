@@ -21,6 +21,7 @@ import queue
 import platform
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
 _IS_POSIX = (os.name == "posix" and platform.system() != "Darwin") or (os.name == "posix")
 
 class IPythonWorker:
@@ -466,7 +467,7 @@ _process_manager = IPythonProcessManager()
 
 def call_python_script_with_ipython(request_id: str, script: str, timeout: int = 120,
                                     stdin_content: str = None) -> Tuple[str, bool]:
-    print(f"Executing script for request_id: {request_id} with timeout {timeout}s")
+    logger.info(f"Executing script for request_id: {request_id} with timeout {timeout}s")
     if not isinstance(request_id, str) or not request_id.strip():
         return "Error: request_id must be a non-empty string", False
     if not isinstance(script, str) or not script.strip():
