@@ -32,6 +32,9 @@ acecoder = [
 torl = [
     "math-verify",
 ]
+python_tool = [
+    "ipython",
+]
 search_tool = [
     "google-api-python-client",
     "chardet",

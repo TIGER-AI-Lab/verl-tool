@@ -37,7 +37,7 @@ We provide a tool server starting command to start any tool server supported by 
 # Start the tool server
 host=localhost
 port=5000
-tool_type=google_search,python_code # separate by comma if you want to start multiple tool servers
+tool_type=ipython_code # separate by comma if you want to start multiple tool servers
 workers_per_tool=4 # number of workers for the tool server, meaning how many threads will be used to handle a single tool request with multiple trajectories
 python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool & # run in background
 ```
@@ -69,6 +69,7 @@ To test the tool server, we provide corresponding test scripts in the `verl_tool
 ```bash
 # Test the python_code tool server
 python -m verl_tool.servers.tests.test_python_code_tool python --url=http://localhost:$port/get_observation
+python -m verl_tool.servers.tests.test_ipython_code_tool python --url=http://localhost:5000/get_observation
 # python -m verl_tool.servers.tests.test_bash_terminal_tool bash --url=http://localhost:$port/get_observation
 ```
 
