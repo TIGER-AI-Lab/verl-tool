@@ -136,6 +136,9 @@ We thank the following open-source projects for making verl-tool possible:
 
 We thank [Netmind.AI](https://www.netmind.ai/), [SeaAI Lab](https://sail.sea.com/), and [Map](https://huggingface.co/m-a-p) for GPU support!
 
+## Community Projects Inspired by Verl-Tool
+- [AgentFlow](https://github.com/lupantech/AgentFlow): In-the-Flow Agentic System Optimization
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=TIGER-AI-Lab/verl-tool&type=Date)](https://www.star-history.com/#TIGER-AI-Lab/verl-tool&Date)
