@@ -26,6 +26,7 @@ See more examples in [examples/train](/examples/train), where each folder is a s
 3. **If VLLM generation gets stuck**: Try lowering `workers_per_tool` and reducing `gpu_memory_utilization` in the script.
 4. **If you encounter CPU OOM issues during VLLM rollout generation**: Try setting `do_offload=False` and lowering `gpu_memory_utilization`.
 5. See [verl performance tuning](https://verl.readthedocs.io/en/latest/perf/perf_tuning.html) for more details.
+6. **If your model is too large and cause GPU OOM on the rank-0 device during loading**: Try change `strategy="fsdp2"` to `strategy="fsdp"` in the training script.
 
 ### Multi Node Training (Experimental)
 
