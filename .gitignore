@@ -317,3 +317,4 @@ verl_step_records/
 /*.jsonl
 **/env.local.sh
 /ray-logs
+/models

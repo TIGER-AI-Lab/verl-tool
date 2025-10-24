@@ -12,3 +12,11 @@ defaults:
   - verltool@actor_rollout_ref.agent: agent.yaml
 ```
 Note there might be some small parameters needed to remove the '+' prefix in the training script because default values may be added to the new config files.
+
+
+## Updating to verl 0.6.0
+```bash
+cd verl && git pull origin main && git checkout -b v0.6.0 && cd ..
+cp -r verl/verl/trainer/config/* ./verl_tool/trainer/config/
+uv pip install -e verl
+```
