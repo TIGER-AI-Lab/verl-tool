@@ -21,6 +21,8 @@ def print_messages(messages):
                 content['image_url']['url'] = content['image_url']['url'][:100] + "..." if len(content['image_url']['url']) > 100 else content['image_url']['url']
             if content['type'] == 'video_url':
                 content['video_url']['url'] = content['video_url']['url'][:100] + "..." if len(content['video_url']['url']) > 100 else content['video_url']['url']
+            if content['type'] == 'audio_url':
+                content['audio_url']['url'] = content['audio_url']['url'][:100] + "..." if len(content['audio_url']['url']) > 100 else content['audio_url']['url']
     print(messages)
 
 def nested_copy(obj):

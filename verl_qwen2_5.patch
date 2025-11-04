@@ -1,0 +1,155 @@
+diff --git a/verl/models/transformers/monkey_patch.py b/verl/models/transformers/monkey_patch.py
+index d6be65a7..e8aa81cf 100644
+--- a/verl/models/transformers/monkey_patch.py
++++ b/verl/models/transformers/monkey_patch.py
+@@ -210,12 +210,21 @@ def apply_monkey_patch(
+     module = sys.modules[model.__module__]
+ 
+     try:
++        # for text-only models
+         num_attention_heads, num_key_value_heads = model.config.num_attention_heads, model.config.num_key_value_heads
+     except AttributeError:
+-        num_attention_heads, num_key_value_heads = (
+-            model.config.text_config.num_attention_heads,
+-            model.config.text_config.num_key_value_heads,
+-        )
++        try:
++            # for vision-text models
++            num_attention_heads, num_key_value_heads = (
++                model.config.text_config.num_attention_heads,
++                model.config.text_config.num_key_value_heads,
++            )
++        except AttributeError:
++            # for qwen2.5-omni
++            num_attention_heads, num_key_value_heads = (
++                model.config.thinker_config.text_config.num_attention_heads,
++                model.config.thinker_config.text_config.num_key_value_heads,
++            )
+ 
+     assert num_attention_heads % ulysses_sp_size == 0, (
+         f"num_attention_heads {num_attention_heads} must be divisible by ulysses_sp_size {ulysses_sp_size}"
+diff --git a/verl/utils/checkpoint/fsdp_checkpoint_manager.py b/verl/utils/checkpoint/fsdp_checkpoint_manager.py
+index e042ae8b..9ae18cef 100644
+--- a/verl/utils/checkpoint/fsdp_checkpoint_manager.py
++++ b/verl/utils/checkpoint/fsdp_checkpoint_manager.py
+@@ -300,20 +300,28 @@ class FSDPCheckpointManager(BaseCheckpointManager):
+                 hf_local_path = os.path.join(local_path, "huggingface")
+                 os.makedirs(hf_local_path, exist_ok=True)
+ 
+-                if "ForTokenClassification" in model_config.architectures[0]:
++                architectures = getattr(model_config, "architectures", None)
++                if isinstance(architectures, str):
++                    arch_name = architectures
++                elif isinstance(architectures, (list, tuple)) and architectures:
++                    arch_name = architectures[0]
++                else:
++                    arch_name = None
++
++                if arch_name and "ForTokenClassification" in arch_name:
+                     from transformers import AutoModelForTokenClassification
+ 
+                     auto_model_cls = AutoModelForTokenClassification
+-                elif "ForCausalLM" in model_config.architectures[0]:
++                elif arch_name and "ForCausalLM" in arch_name:
+                     from transformers import AutoModelForCausalLM
+ 
+                     auto_model_cls = AutoModelForCausalLM
+-                elif "ForConditionalGeneration" in model_config.architectures[0]:
++                elif arch_name and "ForConditionalGeneration" in arch_name:
+                     from transformers import AutoModelForVision2Seq
+ 
+                     auto_model_cls = AutoModelForVision2Seq
+                 else:
+-                    raise NotImplementedError(f"Unknown architecture {model_config['architectures']}")
++                    raise NotImplementedError(f"Unknown architecture {arch_name or architectures or model_config.__class__.__name__}")
+ 
+                 with init_empty_weights():
+                     save_model = auto_model_cls.from_config(model_config, torch_dtype=torch.bfloat16)
+diff --git a/verl/utils/dataset/rl_dataset.py b/verl/utils/dataset/rl_dataset.py
+index e053a675..8752e03b 100644
+--- a/verl/utils/dataset/rl_dataset.py
++++ b/verl/utils/dataset/rl_dataset.py
+@@ -102,6 +102,7 @@ class RLHFDataset(Dataset):
+         self.prompt_key = config.get("prompt_key", "prompt")
+         self.image_key = config.get("image_key", "images")
+         self.video_key = config.get("video_key", "videos")
++        self.audio_key = config.get("audio_key", "audios")
+         self.max_prompt_length = config.get("max_prompt_length", 1024)
+         self.return_raw_chat = config.get("return_raw_chat", False)
+         self.return_full_prompt = config.get("return_full_prompt", False)
+@@ -194,17 +195,19 @@ class RLHFDataset(Dataset):
+     def _build_messages(self, example: dict):
+         messages: list = example.pop(self.prompt_key)
+ 
+-        if self.image_key in example or self.video_key in example:
++        if self.image_key in example or self.video_key in example or self.audio_key in example:
+             for message in messages:
+                 content = message["content"]
+                 content_list = []
+-                segments = re.split("(<image>|<video>)", content)
++                segments = re.split("(<image>|<video>|<audio>)", content)
+                 segments = [item for item in segments if item != ""]
+                 for segment in segments:
+                     if segment == "<image>":
+                         content_list.append({"type": "image"})
+                     elif segment == "<video>":
+                         content_list.append({"type": "video"})
++                    elif segment == "<audio>":
++                        content_list.append({"type": "audio"})
+                     else:
+                         content_list.append({"type": "text", "text": segment})
+ 
+@@ -222,8 +225,12 @@ class RLHFDataset(Dataset):
+ 
+         if self.processor is not None:
+             from verl.utils.dataset.vision_utils import process_image, process_video
++            from verl_tool.utils.dataset.audio_utils import process_audio
+ 
+             raw_prompt = self.processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
++            if not isinstance(raw_prompt, str) and isinstance(raw_prompt, list):
++                raw_prompt = raw_prompt[0]
++            
+             multi_modal_data = {}
+ 
+             images = None
+@@ -234,6 +241,15 @@ class RLHFDataset(Dataset):
+                 # link: https://github.com/vllm-project/vllm/blob/3c545c0c3b98ee642373a308197d750d0e449403/vllm/multimodal/parse.py#L205
+                 multi_modal_data["image"] = images
+ 
++            audios = None
++            if self.audio_key in row_dict and row_dict.get(self.audio_key, None) is not None:
++                audios = [process_audio(audio) for audio in row_dict.pop(self.audio_key)]
++
++                # due to the audio key is "audio" instead of "audios" in vllm, we need to use "audio" here
++                # link: https://github.com/vllm-project/vllm/blob/3c545c0c3b98ee642373a308197d750d0e449403/vllm/multimodal/parse.py#L184
++                multi_modal_data["audio"] = audios
++
++
+             videos = None
+             if self.video_key in row_dict and row_dict.get(self.video_key, None) is not None:
+                 videos = [process_video(video) for video in row_dict.pop(self.video_key)]
+@@ -242,7 +258,7 @@ class RLHFDataset(Dataset):
+                 # link: https://github.com/vllm-project/vllm/blob/3c545c0c3b98ee642373a308197d750d0e449403/vllm/multimodal/parse.py#L205
+                 multi_modal_data["video"] = [video.numpy() for video in videos]
+ 
+-            model_inputs = self.processor(text=[raw_prompt], images=images, videos=videos, return_tensors="pt")
++            model_inputs = self.processor(text=[raw_prompt], audio=audios, images=images, videos=videos, return_tensors="pt")
+ 
+             input_ids = model_inputs.pop("input_ids")
+             attention_mask = model_inputs.pop("attention_mask")
+diff --git a/verl/workers/fsdp_workers.py b/verl/workers/fsdp_workers.py
+index f9bb4759..25a6c193 100644
+--- a/verl/workers/fsdp_workers.py
++++ b/verl/workers/fsdp_workers.py
+@@ -279,6 +279,11 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
+             warnings.simplefilter("ignore")
+             if type(actor_model_config) in AutoModelForVision2Seq._model_mapping.keys():
+                 actor_module_class = AutoModelForVision2Seq
++            elif getattr(actor_model_config, "architectures", None) == ["Qwen2_5OmniModel"]:
++                # it seems that qwen2.5-omni is not 
++                # supported by any AutoModel...
++                from transformers import Qwen2_5OmniForConditionalGeneration
++                actor_module_class = Qwen2_5OmniForConditionalGeneration
+             else:
+                 actor_module_class = AutoModelForCausalLM
+ 

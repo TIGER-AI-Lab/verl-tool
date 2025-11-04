@@ -25,6 +25,7 @@ from .tensor_helper import TensorHelper, TensorConfig
 from PIL import Image
 from .utils import PerformanceTimer, nested_copy
 from .vision_utils import encode_image, encode_image_url, encode_video_url, decode_image_url, decode_video_url
+from verl_tool.utils.dataset.audio_utils import decode_audio_url, encode_audio_data
 
 logger = logging.getLogger(__file__)
 
@@ -108,9 +109,14 @@ class AgentActorManager:
         self.tokenizer_lock = asyncio.Lock()
         # for multimodal processing
         if self.processor:
-            self.mm_prefix, self.mm_postfix = self.processor.apply_chat_template(
+            template_text = self.processor.apply_chat_template(
                 [{"role": "system", "content": [{"type": "text", "text": "|||"}]}],
-                tokenize=False, add_generation_prompt=False).split("|||") # this is used to create the correct multi-modal prompt
+                tokenize=False, 
+                add_generation_prompt=False
+            )
+            if isinstance(template_text, list):
+                template_text = template_text[0]
+            self.mm_prefix, self.mm_postfix = template_text.split("|||") # this is used to create the correct multi-modal prompt
         else:
             self.mm_prefix = ""
             self.mm_postfix = ""
@@ -344,7 +350,13 @@ class AgentActorManager:
                     next_obs_video = [decode_video_url(video) for video in next_obs_video]
                     multi_modal_data["video"] = [video.numpy() for video in next_obs_video]
 
-                    # add additional <image> and <video> placeholder to next_obs[k]
+                    next_obs_audio = tool_interact_info_k.get('audio', [])
+                    if not isinstance(next_obs_audio, list):
+                        next_obs_audio = [next_obs_audio]
+                    next_obs_audio = [decode_audio_url(audio) for audio in next_obs_audio]
+                    multi_modal_data["audio"] = next_obs_audio
+
+                    # add additional <image>, <video> and <audio> placeholder to next_obs[k]
                     next_obs_k = next_obs[k]
                     if not valid_action[k] and not (dones[k] or finishs[k]):
                         next_obs_k = "Your action is not valid, please check the format and try again." + next_obs_k
@@ -360,9 +372,16 @@ class AgentActorManager:
                             next_obs_k = "<video>" * (len(next_obs_video) - video_placeholder_count) + next_obs_k
                         elif video_placeholder_count > len(next_obs_video):
                             next_obs_k = next_obs_k.replace("<video>", "", video_placeholder_count - len(next_obs_video))
+                    if next_obs_audio:
+                        audio_placeholder_count = next_obs_k.count("<audio>")
+                        if audio_placeholder_count < len(next_obs_audio):
+                            next_obs_k = "<audio>" * (len(next_obs_audio) - audio_placeholder_count) + next_obs_k
+                        elif audio_placeholder_count > len(next_obs_audio):
+                            next_obs_k = next_obs_k.replace("<audio>", "", audio_placeholder_count - len(next_obs_audio))
+                    
                     
                     content_list = []
-                    segments = re.split("(<image>|<video>)", next_obs_k)
+                    segments = re.split("(<image>|<video>|<audio>)", next_obs_k)
                     segments = [item for item in segments]
                     segment_idx = defaultdict(int)
                     for segment in segments:
@@ -372,6 +391,9 @@ class AgentActorManager:
                         elif segment == "<video>":
                             content_list.append({"type": "video"})
                             segment_idx[segment] += 1
+                        elif segment == "<audio>":
+                            content_list.append({"type": "audio"})
+                            segment_idx[segment] += 1
                         else:
                             content_list.append({"type": "text", "text": segment})
                     if content_list and not dones[k] and not finishs[k]:
@@ -380,12 +402,16 @@ class AgentActorManager:
                             raw_prompt = self.processor.apply_chat_template(
                                 next_obs_message, add_generation_prompt=False, tokenize=False, continue_final_message=True
                             )
+                            if isinstance(raw_prompt, list):
+                                raw_prompt = raw_prompt[0]
                             # remove mm_prefix, only keep the part after <im_start>, the system will not appear
                             raw_prompt = raw_prompt.replace(self.mm_prefix, "")
                         else:
                             raw_prompt = self.processor.apply_chat_template(
                                 next_obs_message, add_generation_prompt=True, tokenize=False, continue_final_message=False
                             )
+                            if isinstance(raw_prompt, list):
+                                raw_prompt = raw_prompt[0]
                             # change system role to mtrl_role
                             raw_prompt = "\n" + raw_prompt.replace("system", self.config.mtrl_role, 1)
                     else:
@@ -402,6 +428,9 @@ class AgentActorManager:
                             elif segment == "<video>":
                                 content_list.append({"type": "video_url", "video_url": {"url": encode_video_url(next_obs_video[segment_idx[segment]])}})
                                 segment_idx[segment] += 1
+                            elif segment == "<audio>":
+                                content_list.append({"type": "audio_url", "audio_url": {"url": encode_audio_data(next_obs_audio[segment_idx[segment]])}})
+                                segment_idx[segment] += 1
                             else:
                                 content_list.append({"type": "text", "text": segment})
                         rollings.non_tensor_batch['rollout_messages'][k].update_rollout_messages(
@@ -413,14 +442,34 @@ class AgentActorManager:
                     mm_data_list.append(multi_modal_data)
                     raw_prompts.append(raw_prompt)
                     
-                next_obs_ids = self.processor(
-                    text=raw_prompts, 
-                    images=[mm_data_list[i]['image'] for i in range(len(mm_data_list)) if 'image' in mm_data_list[i] and mm_data_list[i]['image']] or None,
-                    videos=[mm_data_list[i]['video'] for i in range(len(mm_data_list)) if 'video' in mm_data_list[i] and mm_data_list[i]['video']] or None,
+                image_inputs = []
+                video_inputs = []
+                audio_inputs = []
+                for multi_modal in mm_data_list:
+                    images = multi_modal.get("image")
+                    if images:
+                        image_inputs.extend(images)
+                    videos = multi_modal.get("video")
+                    if videos:
+                        video_inputs.extend(videos)
+                    audios = multi_modal.get("audio")
+                    if audios:
+                        audio_inputs.extend(audios)
+
+                processor_kwargs = dict(
+                    text=raw_prompts,
                     padding='longest',
                     return_tensors='pt',
                     add_special_tokens=False,  # Prevents adding special tokens
-                )['input_ids'].to(torch.int64)
+                )
+                if image_inputs:
+                    processor_kwargs["images"] = image_inputs
+                if video_inputs:
+                    processor_kwargs["videos"] = video_inputs
+                if audio_inputs:
+                    processor_kwargs["audio"] = audio_inputs
+
+                next_obs_ids = self.processor(**processor_kwargs)['input_ids'].to(torch.int64)
         
         if mm_data_list is not None and "multi_modal_data" in rollings.non_tensor_batch:
             for i in range(len(rollings.non_tensor_batch['multi_modal_data'])):
@@ -429,6 +478,8 @@ class AgentActorManager:
                     rollings.non_tensor_batch['multi_modal_data'][i]['image'].extend(next_mm_data_i['image'])
                 if 'video' in next_mm_data_i and next_mm_data_i['video']:
                     rollings.non_tensor_batch['multi_modal_data'][i]['video'].extend(next_mm_data_i['video'])
+                if 'audio' in next_mm_data_i and next_mm_data_i['audio']:
+                    rollings.non_tensor_batch['multi_modal_data'][i]['audio'].extend(next_mm_data_i['audio'])
 
         return next_obs_ids, rollings
 
@@ -754,7 +805,11 @@ class AgentActorManager:
             gen_output = await self.generate_sequences(rollings_active, **agent_sampling_params) # [active_size, response_length]
             perf_timer.end(f'step_{step}_generation')
 
-            # Time the postprocessing
+            # ------------------------------------
+            # 2.3. PARSE ACTION & INTERACT WITH TOOL SERVER
+            # - Check if the response contains an action (tool call).
+            # - Send the action to the tool server for execution.
+            # ------------------------------------
             perf_timer.start(f'step_{step}_postprocess')
             responses_ids, responses_str, do_actions, active_rollout_messages = await self._postprocess_responses(gen_output.batch['responses'], step, active_rollout_messages) # [active_size, ...]
             responses_ids, _ = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask) # [bs*n, response_length]
@@ -907,11 +962,18 @@ class AgentActorManager:
         mm_inputs = []
         async with self.tokenizer_lock:
             for i in range(rollings.batch['input_ids'].shape[0]):
-                raw_prompt = self.processor.apply_chat_template(rollings.non_tensor_batch['rollout_messages'][i].messages, add_generation_prompt=False, tokenize=False)
+                raw_prompt = self.processor.apply_chat_template(
+                    rollings.non_tensor_batch['rollout_messages'][i].messages,
+                    add_generation_prompt=False,
+                    tokenize=False,
+                )
+                if isinstance(raw_prompt, list):
+                    raw_prompt = raw_prompt[0]
                 
                 images = rollings.non_tensor_batch['multi_modal_data'][i].get('image', None)
                 videos = rollings.non_tensor_batch['multi_modal_data'][i].get('video', None)
-                model_inputs = self.processor(text=[raw_prompt], images=images, videos=videos, return_tensors="pt")
+                audios = rollings.non_tensor_batch['multi_modal_data'][i].get('audio', None)
+                model_inputs = self.processor(text=[raw_prompt], audio=audios, images=images, videos=videos, return_tensors="pt")
                 
                 # # for debugging, make sure the input_ids from rollout messages match the input_ids maintained in the processor
                 rolling_raw_prompt = self.processor.decode(rollings.batch['input_ids'][i].tolist(), skip_special_tokens=False)

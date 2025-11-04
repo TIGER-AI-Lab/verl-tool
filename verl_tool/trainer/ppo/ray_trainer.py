@@ -555,11 +555,13 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                             print(f"cur_num_traj={len(batch)} >= expected_num_traj={len(cur_batch)}. Keep {len(cur_batch)} trajectories for this step")
                             num_gen_batches = 0
                             dapo_substep = 0
+                            num_prompt_in_batch = 0
                             batch = cur_batch
                             metrics["train/num_gen_batches"] = num_gen_batches
 
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw):
+                        assert len(batch) > 0, f"filtered batch is empty!"
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]

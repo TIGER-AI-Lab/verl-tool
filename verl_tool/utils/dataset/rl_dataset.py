@@ -66,6 +66,11 @@ class RolloutMessagesMixin:
     def __copy__(self):
         """Create a shallow copy of the RolloutMessagesMixin instance."""
         return RolloutMessagesMixin(nested_copy(self.messages))
+
+    def __repr__(self):
+        return str(self.messages)
+
+
 class VerlToolRLHFDataset(RLHFDataset):
     """A dataset class for reinforcement learning tasks in verl-tool.
 
@@ -130,12 +135,12 @@ class VerlToolRLHFDataset(RLHFDataset):
     def _build_rollout_messages(self, example: dict):
         messages = deepcopy(example[self.prompt_key])
 
-        if self.image_key in example or self.video_key in example:
+        if self.image_key in example or self.video_key in example or self.audio_key in example:
             for message in messages:
                 content = message["content"]
                 content_list = []
                 try:
-                    segments = re.split("(<image>|<video>)", content)
+                    segments = re.split("(<image>|<video>|<audio>)", content)
                 except Exception as e:
                     raise ValueError(f"Error splitting content: {content}") from e
                 segments = [item for item in segments if item != ""]
@@ -147,6 +152,9 @@ class VerlToolRLHFDataset(RLHFDataset):
                     elif segment == "<video>":
                         content_list.append({"type": "video", "video": example[self.video_key][segment_idx[segment]]["video"]})
                         segment_idx[segment] += 1
+                    elif segment == "<audio>":
+                        content_list.append({"type": "audio", "audio": example[self.audio_key][segment_idx[segment]]["audio"]})
+                        segment_idx[segment] += 1
                     else:
                         content_list.append({"type": "text", "text": segment})
 
@@ -155,6 +163,8 @@ class VerlToolRLHFDataset(RLHFDataset):
         if self.processor is not None:
             # multi-modal inputs
             from verl_tool.llm_agent.vision_utils import encode_image_url, encode_video_url
+            from verl_tool.utils.dataset.audio_utils import encode_audio_file
+
             for i, message in enumerate(messages):
                 if isinstance(message['content'], list):
                     for j in range(len(message['content'])):
@@ -175,6 +185,14 @@ class VerlToolRLHFDataset(RLHFDataset):
                                 }
                             }
                             assert Path(content['video']).exists(), f"Video file {content['video']} does not exist."
+                        elif content['type'] == 'audio':
+                            message['content'][j] = {
+                                "type": "audio_url",
+                                "audio_url": {
+                                    "url": encode_audio_file(content["audio"]),
+                                }
+                            }
+                            assert Path(content['audio']).exists(), f"Audio file {content['audio']} does not exist."
                         elif content['type'] == 'text':
                             message['content'][j] = {
                                 "type": "text",
