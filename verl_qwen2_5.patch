@@ -138,33 +138,22 @@ index e053a675..8752e03b 100644
              input_ids = model_inputs.pop("input_ids")
              attention_mask = model_inputs.pop("attention_mask")
 diff --git a/verl/workers/fsdp_workers.py b/verl/workers/fsdp_workers.py
-index f9bb4759..b3275e8b 100644
+index f9bb4759..5d277325 100644
 --- a/verl/workers/fsdp_workers.py
 +++ b/verl/workers/fsdp_workers.py
-@@ -279,6 +279,11 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
+@@ -279,6 +279,15 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
              warnings.simplefilter("ignore")
              if type(actor_model_config) in AutoModelForVision2Seq._model_mapping.keys():
                  actor_module_class = AutoModelForVision2Seq
 +            elif getattr(actor_model_config, "architectures", None) == ["Qwen2_5OmniModel"]:
-+                # it seems that qwen2.5-omni is not 
-+                # supported by any AutoModel...
++                # qwen2.5-omni is not supported by any AutoModel...
 +                from transformers import Qwen2_5OmniForConditionalGeneration
-+                actor_module_class = Qwen2_5OmniForConditionalGeneration
++                # patch the Qwen2_5OmniForConditionalGeneration 
++                # to use thinker as the forward function
++                class Qwen2_5Omni(Qwen2_5OmniForConditionalGeneration):
++                    def forward(self, *args, **kwargs):
++                        return self.thinker(*args, **kwargs)
++                actor_module_class = Qwen2_5Omni
              else:
                  actor_module_class = AutoModelForCausalLM
  
-@@ -289,6 +294,14 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
-                 trust_remote_code=trust_remote_code,
-             )
- 
-+            # ensure actor_module has a valid forward method
-+            if not hasattr(actor_module, "forward"):
-+                if hasattr(actor_module, "thinker"):
-+                    # for qwen2.5-omni, use the thinker method as the forward method
-+                    setattr(actor_module, "forward", getattr(actor_module, "thinker"))
-+                else:
-+                    raise ValueError(f"Actor module {actor_module} does not have the required forward method")
-+
-             # Apply Liger kernel to the model if use_liger is set to True
-             if use_liger:
-                 from liger_kernel.transformers.monkey_patch import _apply_liger_kernel_to_instance
