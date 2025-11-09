@@ -120,6 +120,7 @@ def main(
                     "ground_truth": answer
                 },
                 "extra_info": {
+                    "id": f"{split}_{idx}",
                     'split': split,
                     'index': idx,
                     'category': category,

@@ -275,7 +275,7 @@ class AudioRewardManager:
                 to_save_response_with_loss_mask = self.tokenizer.decode(valid_response_ids_with_loss_mask, skip_special_tokens=False)
                 to_save_response_with_loss_mask = replace_tokens(to_save_response_with_loss_mask, tokens=[self.tokenizer.pad_token])
             to_save_records.append({
-                'id': data_item.non_tensor_batch['extra_info']['id'] if 'id' in data_item.non_tensor_batch['extra_info'] else None,
+                'id': data_item.non_tensor_batch.get('extra_info', {}).get('id'),
                 'data_source': data_source,
                 "prompt": to_save_prompt,
                 "response": to_save_response,
