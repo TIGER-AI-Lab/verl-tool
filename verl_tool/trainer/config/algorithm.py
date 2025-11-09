@@ -13,12 +13,14 @@
 # limitations under the License.
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 from verl.base_config import BaseConfig
 
+__all__ = ["AlgoConfig", "FilterGroupsConfig", "KLControlConfig"]
 
-@dataclass(frozen=True)
+
+@dataclass
 class KLControlConfig(BaseConfig):
     """Configuration for KL control.
 
@@ -37,22 +39,7 @@ class KLControlConfig(BaseConfig):
     target_kl: float = 0.1
 
 
-@dataclass(frozen=True)
-class PFPPOConfig(BaseConfig):
-    """Configuration for preference feedback PPO.
-
-    The inheritance from BaseConfig provides omegaconf.DictConfig-like interface for a dataclass config.
-
-    Args:
-        reweight_method (str): Method for reweighting samples. Can be "pow", "max_min", or "max_random".
-        weight_pow (float): Power used for weight scaling in "pow" method.
-    """
-
-    reweight_method: str = "pow"
-    weight_pow: float = 2.0
-
-
-@dataclass(frozen=True)
+@dataclass
 class FilterGroupsConfig(BaseConfig):
     """Configuration for filter groups (used in DAPO and Entropy).
 
@@ -69,7 +56,7 @@ class FilterGroupsConfig(BaseConfig):
     max_num_gen_batches: int = 0
 
 
-@dataclass(frozen=True)
+@dataclass
 class AlgoConfig(BaseConfig):
     """Configuration for the algorithm.
 
@@ -84,8 +71,16 @@ class AlgoConfig(BaseConfig):
         kl_penalty (str): How to estimate KL divergence: "kl", "abs", "mse", "low_var_kl", or "full".
         kl_ctrl (KLControlConfig): KL control configuration.
         use_pf_ppo (bool): Whether to enable preference feedback PPO.
-        pf_ppo (Optional[PFPPOConfig]): Preference feedback PPO settings.
+        pf_ppo (dict[str, Any]): Preference feedback PPO settings.
         filter_groups (Optional[FilterGroupsConfig]): Filter groups configuration, used in DAPO and Entropy
+        rollout_is_threshold (Optional[float]): Upper threshold for IS weights. null = disabled,
+            float value = enabled (compute weights and metrics). This is the main on/off switch.
+        rollout_is_threshold_lower (Optional[float]): Lower threshold for IS weights. If None, defaults to 1/upper.
+        rollout_is_level (str): Aggregation level: "token", "sequence", or "geometric".
+        rollout_is_mode (str): Bounding mode: "truncate" (cap upper only) or "mask" (zero outside bounds).
+        rollout_is_veto_threshold (float or None): Per-token veto threshold for catastrophic outliers. None to disable.
+        rollout_is (bool): Whether to apply IS weights to policy loss. True = apply weights,
+            False = compute metrics only (useful for monitoring before enabling correction). Default: False.
     """
 
     gamma: float = 1.0
@@ -96,5 +91,15 @@ class AlgoConfig(BaseConfig):
     kl_penalty: str = "kl"
     kl_ctrl: KLControlConfig = field(default_factory=KLControlConfig)
     use_pf_ppo: bool = False
-    pf_ppo: Optional[PFPPOConfig] = None
+    pf_ppo: dict[str, Any] = field(default_factory=dict)
     filter_groups: Optional[FilterGroupsConfig] = None
+    # Rollout Importance Sampling
+    # Controls computation of IS weights and mismatch metrics
+    rollout_is_threshold: Optional[float] = None  # null = disabled, float = enabled
+    rollout_is_threshold_lower: Optional[float] = None
+    rollout_is_level: str = "token"
+    rollout_is_mode: str = "truncate"
+    rollout_is_veto_threshold: Optional[float] = None
+    # Controls whether to apply IS weights to policy loss (only if rollout_is_threshold is set)
+    # True = apply weights to loss, False = compute metrics only (no weight application)
+    rollout_is: bool = False

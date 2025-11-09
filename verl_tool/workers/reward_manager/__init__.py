@@ -30,3 +30,6 @@ for file in current_dir.glob("*.py"):
     except ImportError as e:
         error_loaded_reward_manager[file.stem] = e
         pass
+
+import verl.workers.reward_manager.registry
+verl.workers.reward_manager.registry.get_reward_manager_cls = get_reward_manager_cls

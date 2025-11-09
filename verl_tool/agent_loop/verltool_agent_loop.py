@@ -1,0 +1,404 @@
+
+# Copyright 2024 Bytedance Ltd. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import logging
+import os
+import aiohttp
+import asyncio
+import numpy as np
+import json
+import uuid
+from PIL import Image
+from typing import Union, Optional, Dict
+import regex as re
+from typing import Any
+from uuid import uuid4
+import threading
+from .agent_loop import AgentLoopBase, AgentLoopOutput, register
+from verl.utils.profiler import simple_timer
+from .vision_utils import encode_image
+
+logger = logging.getLogger(__file__)
+logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+
+from dataclasses import dataclass
+
+# 1) A sanitizer that strips all embedded NULs (and, optionally, any
+#    other C0 control characters except common whitespace).
+CONTROL_CHAR_RE = re.compile(
+    # this matches U+0000 through U+001F, excluding tab(09), LF(0A), CR(0D)
+    r'[\x00-\x08\x0B\x0C\x0E-\x1F]'
+)
+
+@dataclass
+class AgentActorConfig:
+    enable_agent: bool=True
+    max_turns: int=0
+    min_turns: int=0
+    max_start_length: int=None
+    max_prompt_length: int=None
+    max_response_length: int=None
+    max_model_len: int=None  # Maximum model length, used for async rollout to limit the input length.
+    max_obs_length: int=None
+    max_action_length: int=None
+    tool_server_url: str = None
+    n: int=1
+    truncate_obs_side: str='left'
+    truncate_response_side: str='left'
+    rolling_with_prompt: bool=False
+    call_tool_first: bool=False
+    action_stop_tokens: list=None
+    additional_eos_token_ids: list=None
+    mask_observations: bool=True
+    force_finish_for_last_turn: bool=False
+    enable_mtrl: bool=False
+    mtrl_role: str="user"
+    mtrl_sep: str=None # "\n<|im_start|>system\n{obs}<|im_end|>\n<|im_start|>assistant\n"
+    assistant_role: str="assistant"
+    turn_end_token: str="<|im_end|>"
+    rollout_mode: str="async" # "sync" or "async"
+    mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
+    max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
+    enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
+    over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
+    tool_call_time_out: int=None # Timeout for tool calls in async rollout.
+    tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.
+    
+def sanitize_request(obj: Any) -> Any:
+    """
+    Recursively walk through obj and:
+      - For dicts: sanitize each value
+      - For lists/tuples: sanitize each element
+      - For strings: remove embedded nulls (and other control chars)
+      - Leave other types untouched
+    """
+    if isinstance(obj, np.ndarray):
+        obj = obj.tolist()
+    if isinstance(obj, dict):
+        return {sanitize_request(key): sanitize_request(val) for key, val in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(sanitize_request(item) for item in obj)
+    elif isinstance(obj, str):
+        # strip NUL (\x00) and other C0 control chars
+        return CONTROL_CHAR_RE.sub('', obj)
+    elif isinstance(obj,Image.Image):
+        return encode_image(obj)
+    else:
+        return obj
+    
+@register("verltool_agent")
+class VerlToolAgentLoop(AgentLoopBase):
+    """Naive agent loop that only do single turn chat completion."""
+    _init_lock = threading.Lock()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.prompt_length = self.config.actor_rollout_ref.rollout.prompt_length
+        self.response_length = self.config.actor_rollout_ref.rollout.response_length
+        self.apply_chat_template_kwargs = self.config.data.get("apply_chat_template_kwargs", {})
+    
+        
+    @classmethod
+    def init_class(cls, config, tokenizer, processor, **kwargs):
+        with cls._init_lock:
+            cls.tokenizer = tokenizer
+            cls.processor = processor
+            
+            agent_config = AgentActorConfig()
+            rollout_config = config.actor_rollout_ref
+            for key in getattr(rollout_config, 'agent', {}).keys():
+                if key in agent_config.__dict__.keys():
+                    setattr(agent_config, key, rollout_config.agent[key])
+            setattr(agent_config, 'n', rollout_config.rollout.n)
+            setattr(agent_config, 'max_model_len', rollout_config.rollout.max_model_len)
+            setattr(agent_config, 'rollout_mode', "async")
+            cls.agent_config = agent_config
+
+            if cls.agent_config.action_stop_tokens is not None:
+                if os.path.exists(cls.agent_config.action_stop_tokens):
+                    with open(cls.agent_config.action_stop_tokens, 'r') as f:
+                        cls.action_stop_tokens = [x for x in f.read().split(',') if x]
+                    logger.info(f"Using action stop tokens: {cls.action_stop_tokens}")
+                else:
+                    raise ValueError(f"action_stop_tokens file not found: {cls.agent_config.action_stop_tokens}")
+            else:
+                cls.action_stop_tokens = []
+
+            if cls.agent_config.mtrl_sep is None:
+                messages = [{"role": "system", "content": "{obs}"}]
+                cls.agent_config.mtrl_sep = "\n" + cls.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                cls.agent_config.mtrl_sep = cls.agent_config.mtrl_sep.replace("system", cls.agent_config.mtrl_role)
+            cls.mtrl_sep = cls.agent_config.mtrl_sep
+            cls.max_action_length = cls.agent_config.max_action_length if cls.agent_config.max_action_length is not None else 0
+            cls.max_obs_length = cls.agent_config.max_obs_length if cls.agent_config.max_obs_length is not None else 0
+            cls.max_response_length = cls.agent_config.max_response_length if cls.agent_config.max_response_length is not None else 0
+            
+            
+            cls.max_model_len = int(cls.agent_config.max_model_len or cls.agent_config.max_prompt_length + cls.agent_config.max_response_length)
+            # for multimodal processing
+            cls.qwen_image_placeholder = "<|vision_start|><|image_pad|><|vision_end|>"
+            cls.qwen_video_placeholder = "<|vision_start|><|video_pad|><|vision_end|>"
+            
+            if cls._class_initialized:
+                return
+            cls._class_initialized = True
+        
+    async def _aiohttp_request(self, data):
+        timeout_seconds = self.agent_config.tool_call_time_out
+        max_retries = self.agent_config.tool_call_max_retries
+        for attempt in range(max_retries):
+            session = None
+            try:
+                timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+                session = aiohttp.ClientSession(timeout=timeout)
+                async with session.post(
+                    url=self.agent_config.tool_server_url,
+                    json=data,
+                ) as resp:
+                    data = await resp.json()
+                    return data
+            except asyncio.TimeoutError as e:
+                if attempt == max_retries - 1:
+                    raise e
+                logging.warning(f"Attempt {attempt + 1} failed: {e}. traj_id: {data['trajectory_ids']}. Retrying...")
+                await asyncio.sleep(1)  # Brief delay before retry
+            finally:
+                if session:
+                    await session.close()
+                        
+    async def send_batch_requests_async(self, batch_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Robust version with retry logic"""
+        safe_payload = sanitize_request(batch_data)
+        
+        try:
+            return await self._aiohttp_request(safe_payload)
+        except Exception as e:
+            # Log error with context
+            logging.error(f"Failed to send batch request after all retries: {e}")
+            logging.error(f"Payload size: {len(str(safe_payload))} chars")
+            
+            # Save error data for debugging
+            if not os.path.exists('tmp'):
+                os.mkdir('tmp')  # Ensure tmp directory exists
+            error_file = f"tmp/error_data_{uuid.uuid4().hex[:8]}.json"
+            with open(error_file, 'w') as f:
+                json.dump(safe_payload, f, indent=2)
+            logging.error(f"Error data saved to {error_file} for debugging.")
+            
+            raise ValueError(f"Tool server communication failed: {e}")
+    
+    async def interact_with_tool_server(
+        self,
+        traj_id: str,
+        action: str,
+        do_action: bool,
+        extra_fields: Any = None,
+        is_last_step: bool = False,
+    ) -> list[str]:
+        batch_data = {
+            "trajectory_ids": [traj_id],
+            "actions": [action],
+            "finish": [not do_action],
+            "is_last_step": [is_last_step],
+        }
+        if extra_fields is not None:
+            batch_data['extra_fields'] = [extra_fields]
+        
+        response = await self.send_batch_requests_async(batch_data)
+        obs = response['observations'][0]
+        done = int(response['dones'][0])
+        is_valid_action = int(response['valids'][0])
+        
+        # postprocess next_obs. For now we support two types of observations:
+        # 1. string observations, which will be the most common case
+        # 2. dict observations, e.g. {"obs": "some observation", "reward": 1.0}
+        #     for now we only support "obs" and "reward" keys, but can be extended later
+        tool_interact_info = {}
+        if isinstance(obs, str):
+            # can be invalid
+            obs_text = obs
+            reward = None
+            tool_interact_info['obs'] = obs
+            tool_interact_info['reward'] = None
+        elif isinstance(obs, dict):
+            assert "obs" in obs, f"Observation dict must contain 'obs' key, but got {obs.keys()}"
+            obs_text = obs.get('obs', '')
+            reward = obs.get('reward', None)
+            assert isinstance(obs_text, str), f"Expected 'obs' to be a string, but got {type(obs)}"
+            assert reward is None or isinstance(reward, (int, float)), f"Expected 'reward' to be None, int, or float, but got {type(reward)}"
+            # store tool interaction info if exists
+            tool_interact_info = {k: v for k, v in obs.items()}
+        else:
+            raise ValueError(f"Invalid observation type: {type(obs)}. Expected str or dict.")
+        
+        tool_interact_info['obs'] = obs_text
+        tool_interact_info['reward'] = reward
+        tool_interact_info['trajectory_id'] = traj_id
+        tool_interact_info['action'] = action
+        tool_interact_info['is_last_step'] = is_last_step
+        tool_interact_info['done'] = done
+        tool_interact_info['valid_action'] = is_valid_action
+        tool_interact_info['finish'] = not do_action
+        tool_interact_info['invalid_reason'] = tool_interact_info.get('invalid_reason', None)
+        
+        return tool_interact_info
+        
+
+    async def close_traj_tool_threads(
+        self,
+        request_id: str,
+    ):
+        """
+            This function is used to close the trajectories that are overlong and clean up the tool server for corresponding tool threads.
+        """
+        finishs = [True] # all trajectories are finished
+        actions = [''] # no actions, just finish the trajectories
+        is_last_step = True # this is the last step
+        batch_data = {
+            "trajectory_ids": request_id,
+            "actions": actions,
+            "finish": finishs, # if do_action is False, then it is a finish action, finishing the trajectory,
+            "is_last_step": [is_last_step] * len(finishs)
+        }
+        response = await self.send_batch_requests_async(batch_data)
+        return 
+        
+        
+    async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
+        prompt_ids = list(kwargs["raw_prompt_ids"])
+        image_data = (kwargs.get("multi_modal_data") or {}).get("image", None)
+        
+        metrics = {}
+        request_id = kwargs.get("traj_ids", uuid4().hex)
+        
+        stats_dict = {
+            "num_turns": 0,
+            "valid_action": 0,
+            "action_lengths": [],
+            "action_logps": [],
+            "obs_lengths": [],
+            "rewards": [],
+            "tool_interact_info": [],
+        }
+        
+        max_response_length = self.agent_config.max_response_length
+        max_action_length = self.agent_config.max_action_length
+        max_obs_length = self.agent_config.max_obs_length
+        available_length = min(max_response_length, self.max_model_len - len(prompt_ids))
+        
+        agent_sampling_params = sampling_params.copy()
+        agent_sampling_params.update({
+            "n": 1,  # already repeated by n times in repeat_inputs_by_n
+            "stop": self.action_stop_tokens,  # stop when generated an end of action
+            "include_stop_str_in_output": True,
+        })
+        
+        running_prompt_ids = prompt_ids.copy()
+        running_image_data = image_data.copy() if image_data is not None else None
+        response_mask = []
+        response_logprobs = []
+        
+        
+        for step in range(self.agent_config.max_turns + 1):
+            
+            if step == self.agent_config.max_turns and self.agent_config.force_finish_for_last_turn:
+                break
+            max_tokens_for_this_turn = min(max_action_length, available_length)
+            agent_sampling_params["max_tokens"] = max_tokens_for_this_turn # for vllm
+            # agent_sampling_params["max_new_tokens"] = max_tokens_for_this_turn # for sglang
+            output = await self.server_manager.generate(
+                request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
+            )
+            gen_ids = output.token_ids
+            gen_logprobs = output.log_probs or [0.0] * len(gen_ids)
+            gen_text = output.text
+            running_prompt_ids.extend(gen_ids)
+            response_mask.extend([1] * len(gen_ids))
+            response_logprobs.extend(gen_logprobs)
+            
+            stats_dict["num_turns"] += 1
+            stats_dict["action_lengths"].append(len(gen_ids))
+            stats_dict["action_logps"].append(sum(gen_logprobs))
+            
+            # judge whether to interact with tool or finish
+            finish_reason = output.finish_reason
+            stop_reason = output.stop_reason
+            do_action = False
+            action_text = ""
+            if finish_reason == "stop" and stop_reason:
+                for action_stop_token in self.action_stop_tokens:
+                    if action_stop_token in stop_reason:
+                        # do action
+                        do_action = True
+                        action_text = gen_text.split(action_stop_token)[0]
+                        break
+            logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}")
+            # send generated action to tool server
+            is_last_step = (step == self.agent_config.max_turns - 1)
+            if do_action:
+                print("Doing tool action!")
+                tool_results = await self.interact_with_tool_server(
+                    traj_id=request_id,
+                    action=action_text,
+                    do_action=do_action,
+                    is_last_step=is_last_step,
+                )
+                # process observations and prepare for next turn
+                obs_text = tool_results['obs']
+                obs_token_ids = self.tokenizer.encode(obs_text)
+                obs_token_ids = obs_token_ids[:max_obs_length]
+                # update stats
+                stats_dict["obs_lengths"].append(len(obs_token_ids))
+                if 'reward' in tool_results and tool_results['reward'] is not None:
+                    stats_dict["rewards"].append(tool_results['reward'] if 'reward' in tool_results else 0.0)
+                stats_dict["valid_action"] += tool_results['valid_action'] if 'valid_action' in tool_results else 0
+                stats_dict["tool_interact_info"].append(tool_results)
+                # update running prompt
+                running_prompt_ids.extend(obs_token_ids)
+                if self.agent_config.mask_observations:
+                    response_mask.extend([0] * len(obs_token_ids))
+                else:
+                    response_mask.extend([1] * len(obs_token_ids))
+                response_logprobs.extend([0.0] * len(obs_token_ids)) # pad with 0.0 logprobs for observations
+            else:
+                # finish the trajectory
+                break
+        
+        response_ids = running_prompt_ids[len(prompt_ids):]
+        assert len(response_ids) == len(response_mask), f"Response ids and mask length mismatch: {len(response_ids)} vs {len(response_mask)}"
+        await self.close_traj_tool_threads(request_id=request_id)
+            
+        metrics.update({
+            "num_turns": stats_dict["num_turns"],
+            "valid_action": stats_dict["valid_action"],
+            "avg_action_length": np.mean(stats_dict["action_lengths"]) if len(stats_dict["action_lengths"]) > 0 else 0,
+            "avg_obs_length": np.mean(stats_dict["obs_lengths"]) if len(stats_dict["obs_lengths"]) > 0 else 0,
+            "avg_action_logp": np.mean(stats_dict["action_logps"]) if len(stats_dict["action_logps"]) > 0 else 0,
+            "avg_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else None,
+            "total_action_length": sum(stats_dict["action_lengths"]),
+            "total_obs_length": sum(stats_dict["obs_lengths"]),
+            "generated_length": len(output.token_ids),
+        })
+        
+        output = AgentLoopOutput(
+            prompt_ids=prompt_ids,
+            response_ids=response_ids[: self.response_length],
+            response_mask=response_mask[: self.response_length],
+            response_logprobs=response_logprobs[: self.response_length],
+            multi_modal_data={"image": image_data} if image_data is not None else {},
+            num_turns=stats_dict["num_turns"],
+            metrics=metrics,
+            extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", [])},
+        )
+        return output

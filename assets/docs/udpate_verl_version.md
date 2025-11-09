@@ -20,3 +20,4 @@ cd verl && git pull origin main && git checkout -b v0.6.0 && cd ..
 cp -r verl/verl/trainer/config/* ./verl_tool/trainer/config/
 uv pip install -e verl
 ```
+And search in config to replace `default_agent_loop: single_turn_agent` to `default_agent_loop: verltool_agent` to save additional config for verltool agent loop.

@@ -318,3 +318,4 @@ verl_step_records/
 **/env.local.sh
 /ray-logs
 /models
+/sft_models

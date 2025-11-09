@@ -10,7 +10,7 @@ uv sync
 source .venv/bin/activate
 uv pip install -e verl
 uv pip install -e ".[vllm,acecoder,torl,search_tool]"
-uv pip install "flash-attn<2.8.0" --no-build-isolation
+uv pip install "flash-attn==2.8.3" --no-build-isolation
 ```
 
 ### Option 2: Conda Installation
@@ -20,7 +20,7 @@ conda create --name verl-tool-env python=3.10
 conda activate verl-tool-env
 pip install -e verl
 pip install -e ".[vllm,acecoder,torl,search_tool]"
-pip install "flash-attn<2.8.0" --no-build-isolation
+pip install "flash-attn==2.8.3" --no-build-isolation
 ```
 
 ### installation of megatron
