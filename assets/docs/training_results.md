@@ -39,7 +39,7 @@ VT-SQL-7B|[🤗](https://huggingface.co/VerlTool/sqlcoder-qwen2.5-coder-7b-instr
 ### DeepSearch Models
 |Model|Link| Wandb |
 |-|-|-|
-|VT-DeepSearch-8B|[🤗](VerlTool/deepsearch-qwen_qwen3-8b-grpo-n16-b128-t1.0-lr1e-6-new_global_step_70)|[📈](https://wandb.ai/dongfu/deepsearch/reports/VT-DeepSearch-8B--VmlldzoxNDc1ODA0NA)|
+|VT-DeepSearch-8B|[🤗](https://huggingface.co/VerlTool/deepsearch-qwen_qwen3-8b-grpo-n16-b128-t1.0-lr1e-6-new_global_step_70)|[📈](https://wandb.ai/dongfu/deepsearch/reports/VT-DeepSearch-8B--VmlldzoxNDc1ODA0NA)|
 
 
 ### Math Benchmark Results
