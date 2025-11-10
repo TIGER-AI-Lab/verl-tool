@@ -597,14 +597,20 @@ class AgentLoopWorker:
                 video_grid_thw = multi_modal_inputs.get("video_grid_thw")
                 second_per_grid_ts = multi_modal_inputs.get("second_per_grid_ts")
 
-                vision_position_ids = get_rope_index(
-                    self.processor,
-                    input_ids=input_ids.squeeze(0),
-                    image_grid_thw=image_grid_thw,
-                    video_grid_thw=video_grid_thw,
-                    second_per_grid_ts=second_per_grid_ts,
-                    attention_mask=attention_mask.squeeze(0),
-                ).unsqueeze(0)  # (1, 3, seq_len)
+                try:    
+                    vision_position_ids = get_rope_index(
+                        self.processor,
+                        input_ids=input_ids.squeeze(0),
+                        image_grid_thw=image_grid_thw,
+                        video_grid_thw=video_grid_thw,
+                        second_per_grid_ts=second_per_grid_ts,
+                        attention_mask=attention_mask.squeeze(0),
+                    ).unsqueeze(0)  # (1, 3, seq_len)
+                except Exception as e:
+                    print(self.tokenizer.decode(input_ids.squeeze(0), skip_special_tokens=True))
+                    print(input_ids.shape, attention_mask.shape, image_grid_thw, video_grid_thw, second_per_grid_ts)
+                    raise e
+                    
 
                 valid_mask = attention_mask[0].bool()
                 text_position_ids = torch.ones((1, len(input_ids[0])), dtype=torch.long)

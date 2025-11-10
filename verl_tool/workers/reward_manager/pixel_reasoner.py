@@ -49,9 +49,9 @@ def pixel_reasoner_score(solution_str, ground_truth):
         ground_truth = normalize_answer(ground_truth)
     else:
         ground_truth = f"\\boxed{{{ground_truth}}}"
-    verify_result = verify(parse(solution_str), parse(ground_truth))
+    verify_result = verify(parse(solution_str, parsing_timeout=None), parse(ground_truth, parsing_timeout=None))
     if not verify_result:
-        verify_result = verify(parse(solution_str.lower()), parse(ground_truth.lower()))
+        verify_result = verify(parse(solution_str.lower(), parsing_timeout=None), parse(ground_truth.lower(), parsing_timeout=None))
     if verify_result:
         return 1.0
     else:
@@ -84,9 +84,10 @@ class PixelReasonerRewardManager:
         group_info = {}
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
-            num_turn = data_item.non_tensor_batch["turns_stats"]
-            num_valid_action = data_item.non_tensor_batch["valid_action_stats"]
-            if "turns_stats" in data_item.non_tensor_batch:
+            tool_interact_info = data_item.non_tensor_batch.get('tool_interact_info', None)
+            num_turn = len(tool_interact_info) if tool_interact_info is not None else 0
+            num_valid_action = sum([1 for t in tool_interact_info if t.get('valid_action', False)]) if tool_interact_info is not None else 0
+            if "tool_interact_info" in data_item.non_tensor_batch:
                 uid = data_item.non_tensor_batch.get('uid', i)
                 if uid not in group_info:
                     group_info[uid] = {}
@@ -104,9 +105,10 @@ class PixelReasonerRewardManager:
         return group_info    
     
     def add_additional_penalties(self, response: str, data_i, scores_i: dict, group_info:dict):
-        if "turns_stats" in data_i.non_tensor_batch:
-            num_turn = data_i.non_tensor_batch["turns_stats"]
-            num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
+        if "tool_interact_info" in data_i.non_tensor_batch:
+            tool_interact_info = data_i.non_tensor_batch.get('tool_interact_info', None)
+            num_turn = len(tool_interact_info) if tool_interact_info is not None else 0
+            num_valid_action = sum([1 for t in tool_interact_info if t.get('valid_action', False)]) if tool_interact_info is not None else 0
             if self.add_curiousity_penalty:
                 penalty = (num_valid_action != 0) * max(0, self.group_tool_call_rate_lower_bound - group_info['group_tool_call_rate'])
                 penalty *= self.alpha
@@ -270,10 +272,6 @@ class PixelReasonerRewardManager:
                 'tool_interact_info': tool_interact_info_i,
                 'extra_info': data_item.non_tensor_batch.get('extra_info', None),
             })
-            if "turns_stats" in data_item.non_tensor_batch:
-                to_save_records[i]['num_turn'] = data[i].non_tensor_batch["turns_stats"]
-                to_save_records[i]['num_valid_action'] = data[i].non_tensor_batch["valid_action_stats"]
-                to_save_records[i]['is_done'] = not data[i].non_tensor_batch["active_mask"]
         if save_record:
             # Save the records to a file
             if self.num_examine == 1:

@@ -9,7 +9,7 @@ dependencies = [
     "psutils>=3.3.9",
     "timeout-decorator>=0.5.0",
     "pyext",
-    "qwen_vl_utils",
+    "qwen_vl_utils>=0.0.14",
     "transformers",
     "tensorboard",
     "func_timeout",

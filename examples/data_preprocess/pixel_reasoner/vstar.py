@@ -24,6 +24,8 @@ import regex as re
 from glob import glob
 from pathlib import Path
 from huggingface_hub import hf_hub_download
+from datasets import disable_caching
+disable_caching()
 from collections import defaultdict
 from copy import deepcopy
 

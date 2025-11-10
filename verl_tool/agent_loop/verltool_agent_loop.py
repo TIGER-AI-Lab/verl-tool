@@ -27,7 +27,7 @@ from uuid import uuid4
 import threading
 from .agent_loop import AgentLoopBase, AgentLoopOutput, register
 from verl.utils.profiler import simple_timer
-from .vision_utils import encode_image
+from .vision_utils import decode_image_url, encode_image, encode_image_url
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -139,6 +139,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                 messages = [{"role": "system", "content": "{obs}"}]
                 cls.agent_config.mtrl_sep = "\n" + cls.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 cls.agent_config.mtrl_sep = cls.agent_config.mtrl_sep.replace("system", cls.agent_config.mtrl_role)
+            cls.enable_mtrl = cls.agent_config.enable_mtrl
             cls.mtrl_sep = cls.agent_config.mtrl_sep
             cls.max_action_length = cls.agent_config.max_action_length if cls.agent_config.max_action_length is not None else 0
             cls.max_obs_length = cls.agent_config.max_obs_length if cls.agent_config.max_obs_length is not None else 0
@@ -149,6 +150,9 @@ class VerlToolAgentLoop(AgentLoopBase):
             # for multimodal processing
             cls.qwen_image_placeholder = "<|vision_start|><|image_pad|><|vision_end|>"
             cls.qwen_video_placeholder = "<|vision_start|><|video_pad|><|vision_end|>"
+            cls.non_truncate_tokens = ["<|vision_start|>", "<|image_pad|>", "<|vision_end|>", "<|video_pad|>"]
+            cls.non_truncate_token_ids = [cls.tokenizer.convert_tokens_to_ids(tok) for tok in cls.non_truncate_tokens]
+            
             
             if cls._class_initialized:
                 return
@@ -238,7 +242,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             assert isinstance(obs_text, str), f"Expected 'obs' to be a string, but got {type(obs)}"
             assert reward is None or isinstance(reward, (int, float)), f"Expected 'reward' to be None, int, or float, but got {type(reward)}"
             # store tool interaction info if exists
-            tool_interact_info = {k: v for k, v in obs.items()}
+            tool_interact_info = {k: v for k, v in obs.items()} # image or other info
         else:
             raise ValueError(f"Invalid observation type: {type(obs)}. Expected str or dict.")
         
@@ -278,7 +282,8 @@ class VerlToolAgentLoop(AgentLoopBase):
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
         prompt_ids = list(kwargs["raw_prompt_ids"])
         image_data = (kwargs.get("multi_modal_data") or {}).get("image", None)
-        
+        encoded_image_data = [encode_image_url(img) for img in image_data] if image_data is not None else None
+
         metrics = {}
         request_id = kwargs.get("traj_ids", uuid4().hex)
         
@@ -292,6 +297,11 @@ class VerlToolAgentLoop(AgentLoopBase):
             "tool_interact_info": [],
         }
         
+        if image_data:
+            raw_prompt_text = self.tokenizer.decode(prompt_ids, skip_special_tokens=False)
+            model_inputs = self.processor(text=[raw_prompt_text], images=image_data, return_tensors="pt")
+            prompt_ids = model_inputs["input_ids"].squeeze(0).tolist()
+            
         max_response_length = self.agent_config.max_response_length
         max_action_length = self.agent_config.max_action_length
         max_obs_length = self.agent_config.max_obs_length
@@ -308,8 +318,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         running_image_data = image_data.copy() if image_data is not None else None
         response_mask = []
         response_logprobs = []
-        
-        
+
         for step in range(self.agent_config.max_turns + 1):
             
             if step == self.agent_config.max_turns and self.agent_config.force_finish_for_last_turn:
@@ -343,27 +352,56 @@ class VerlToolAgentLoop(AgentLoopBase):
                         do_action = True
                         action_text = gen_text.split(action_stop_token)[0]
                         break
-            logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}")
+            logger.warning(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}")
             # send generated action to tool server
             is_last_step = (step == self.agent_config.max_turns - 1)
             if do_action:
-                print("Doing tool action!")
                 tool_results = await self.interact_with_tool_server(
                     traj_id=request_id,
                     action=action_text,
                     do_action=do_action,
+                    extra_fields={"images": encoded_image_data} if encoded_image_data is not None else None,
                     is_last_step=is_last_step,
                 )
                 # process observations and prepare for next turn
                 obs_text = tool_results['obs']
-                obs_token_ids = self.tokenizer.encode(obs_text)
-                obs_token_ids = obs_token_ids[:max_obs_length]
+                if tool_results.get('image', None):
+                    images = tool_results['image']
+                    decoded_images = [decode_image_url(img_url) for img_url in images]
+                    running_image_data.extend(decoded_images)
+                    # add image placeholder token ids
+                    # first see whether there are <image> tags in obs_text
+                    num_image_tags = obs_text.count("<image>")
+                    if num_image_tags < len(decoded_images):
+                        # append at the end
+                        obs_text += "<image>" * (len(decoded_images) - num_image_tags)
+                        num_image_tags = len(decoded_images)
+                    # now replace <image> tags with image placeholder tokens
+                    obs_text = obs_text.replace("<image>", self.qwen_image_placeholder, num_image_tags)
+                    # for mtrl
+                    if self.enable_mtrl:
+                        obs_text = self.mtrl_sep.format(obs=obs_text)
+                    obs_token_ids = self.processor(text=[obs_text], images=decoded_images, return_tensors="pt")["input_ids"].squeeze(0).tolist()
+                    # obs_token_ids = obs_token_ids[:max_obs_length]
+                    if max_obs_length < len(obs_token_ids) and obs_token_ids[max_obs_length] in self.non_truncate_token_ids:
+                        # find the nearest non-truncate token id before max_obs_length
+                        truncation_index = max_obs_length - 1
+                        while truncation_index > 0 and obs_token_ids[truncation_index] in self.non_truncate_token_ids:
+                            truncation_index -= 1
+                        obs_token_ids = obs_token_ids[:truncation_index]
+                else:
+                    if self.enable_mtrl:
+                        obs_text = self.mtrl_sep.format(obs=obs_text)
+                    obs_token_ids = self.tokenizer.encode(obs_text)
+                    obs_token_ids = obs_token_ids[:max_obs_length]
+                    
                 # update stats
                 stats_dict["obs_lengths"].append(len(obs_token_ids))
                 if 'reward' in tool_results and tool_results['reward'] is not None:
                     stats_dict["rewards"].append(tool_results['reward'] if 'reward' in tool_results else 0.0)
                 stats_dict["valid_action"] += tool_results['valid_action'] if 'valid_action' in tool_results else 0
                 stats_dict["tool_interact_info"].append(tool_results)
+                
                 # update running prompt
                 running_prompt_ids.extend(obs_token_ids)
                 if self.agent_config.mask_observations:
@@ -371,6 +409,10 @@ class VerlToolAgentLoop(AgentLoopBase):
                 else:
                     response_mask.extend([1] * len(obs_token_ids))
                 response_logprobs.extend([0.0] * len(obs_token_ids)) # pad with 0.0 logprobs for observations
+
+                if tool_results['done']:
+                    # finish the trajectory
+                    break
             else:
                 # finish the trajectory
                 break
@@ -396,7 +438,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             response_ids=response_ids[: self.response_length],
             response_mask=response_mask[: self.response_length],
             response_logprobs=response_logprobs[: self.response_length],
-            multi_modal_data={"image": image_data} if image_data is not None else {},
+            multi_modal_data={"image": running_image_data} if running_image_data is not None else {},
             num_turns=stats_dict["num_turns"],
             metrics=metrics,
             extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", [])},
