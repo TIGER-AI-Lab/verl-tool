@@ -26,7 +26,6 @@ from typing import Any
 from uuid import uuid4
 import threading
 from .agent_loop import AgentLoopBase, AgentLoopOutput, register
-from verl.utils.profiler import simple_timer
 from .vision_utils import decode_image_url, encode_image, encode_image_url
 
 logger = logging.getLogger(__file__)
@@ -56,10 +55,7 @@ class AgentActorConfig:
     n: int=1
     truncate_obs_side: str='left'
     truncate_response_side: str='left'
-    rolling_with_prompt: bool=False
-    call_tool_first: bool=False
     action_stop_tokens: list=None
-    additional_eos_token_ids: list=None
     mask_observations: bool=True
     force_finish_for_last_turn: bool=False
     enable_mtrl: bool=False
@@ -74,6 +70,12 @@ class AgentActorConfig:
     over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
     tool_call_time_out: int=None # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.
+    
+    # The following fields are to be disgarded, only for compatibility
+    rolling_with_prompt: bool=False
+    call_tool_first: bool=False
+    additional_eos_token_ids: list=None
+    
     
 def sanitize_request(obj: Any) -> Any:
     """
@@ -336,6 +338,10 @@ class VerlToolAgentLoop(AgentLoopBase):
             response_mask.extend([1] * len(gen_ids))
             response_logprobs.extend(gen_logprobs)
             
+            if not self.agent_config.enable_agent:
+                # only one turn generation
+                break
+            
             stats_dict["num_turns"] += 1
             stats_dict["action_lengths"].append(len(gen_ids))
             stats_dict["action_logps"].append(sum(gen_logprobs))
@@ -352,7 +358,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                         do_action = True
                         action_text = gen_text.split(action_stop_token)[0]
                         break
-            logger.warning(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}")
+            logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}")
             # send generated action to tool server
             is_last_step = (step == self.agent_config.max_turns - 1)
             if do_action:
@@ -366,7 +372,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                 # process observations and prepare for next turn
                 obs_text = tool_results['obs']
                 if tool_results.get('image', None):
-                    images = tool_results['image']
+                    images = [tool_results['image']] if not isinstance(tool_results['image'], list) else tool_results['image']
                     decoded_images = [decode_image_url(img_url) for img_url in images]
                     running_image_data.extend(decoded_images)
                     # add image placeholder token ids
@@ -383,17 +389,34 @@ class VerlToolAgentLoop(AgentLoopBase):
                         obs_text = self.mtrl_sep.format(obs=obs_text)
                     obs_token_ids = self.processor(text=[obs_text], images=decoded_images, return_tensors="pt")["input_ids"].squeeze(0).tolist()
                     # obs_token_ids = obs_token_ids[:max_obs_length]
-                    if max_obs_length < len(obs_token_ids) and obs_token_ids[max_obs_length] in self.non_truncate_token_ids:
-                        # find the nearest non-truncate token id before max_obs_length
-                        truncation_index = max_obs_length - 1
-                        while truncation_index > 0 and obs_token_ids[truncation_index] in self.non_truncate_token_ids:
-                            truncation_index -= 1
-                        obs_token_ids = obs_token_ids[:truncation_index]
+                    if max_obs_length < len(obs_token_ids):
+                        if self.agent_config.truncate_obs_side == 'left':
+                            truncation_index = max_obs_length
+                            if obs_token_ids[max_obs_length] in self.non_truncate_token_ids:
+                                # find the nearest non-truncate token id before max_obs_length
+                                truncation_index = max_obs_length - 1
+                                while truncation_index > 0 and obs_token_ids[truncation_index] in self.non_truncate_token_ids:
+                                    truncation_index -= 1
+                            obs_token_ids = obs_token_ids[:truncation_index]
+                            obs_token_ids.extend(self.tokenizer.encode("...(truncated)"))
+                        else:
+                            raise NotImplementedError(f"Only left truncation is supported for multimodal observations for now.")
                 else:
                     if self.enable_mtrl:
                         obs_text = self.mtrl_sep.format(obs=obs_text)
                     obs_token_ids = self.tokenizer.encode(obs_text)
-                    obs_token_ids = obs_token_ids[:max_obs_length]
+                    if max_obs_length < len(obs_token_ids):
+                        if self.agent_config.truncate_obs_side == 'left':
+                            obs_token_ids = obs_token_ids[-max_obs_length:]
+                            obs_token_ids.extend(self.tokenizer.encode("...(truncated)"))
+                        elif self.agent_config.truncate_obs_side == 'right':
+                            obs_token_ids = obs_token_ids[:max_obs_length]
+                            obs_token_ids.extend(self.tokenizer.encode("(truncated)..."))
+                        elif self.agent_config.truncate_obs_side == 'middle':
+                            half_len = max_obs_length // 2
+                            obs_token_ids = obs_token_ids[:half_len] + self.tokenizer.encode("...(truncated)...") + obs_token_ids[-half_len:]
+                        else:
+                            raise ValueError(f"Invalid truncate_obs_side: {self.agent_config.truncate_obs_side}")
                     
                 # update stats
                 stats_dict["obs_lengths"].append(len(obs_token_ids))

@@ -49,9 +49,9 @@ def pixel_reasoner_score(solution_str, ground_truth):
         ground_truth = normalize_answer(ground_truth)
     else:
         ground_truth = f"\\boxed{{{ground_truth}}}"
-    verify_result = verify(parse(solution_str, parsing_timeout=None), parse(ground_truth, parsing_timeout=None))
+    verify_result = verify(parse(solution_str, parsing_timeout=None), parse(ground_truth, parsing_timeout=None), timeout_seconds=None)
     if not verify_result:
-        verify_result = verify(parse(solution_str.lower(), parsing_timeout=None), parse(ground_truth.lower(), parsing_timeout=None))
+        verify_result = verify(parse(solution_str.lower(), parsing_timeout=None), parse(ground_truth.lower(), parsing_timeout=None), timeout_seconds=None)
     if verify_result:
         return 1.0
     else:
@@ -135,22 +135,23 @@ class PixelReasonerRewardManager:
                 self.record_dir.mkdir(parents=True, exist_ok=True)
         
         # check the last step index
+        if data.meta_info.get('global_steps', None) is not None:
+            self.step = data.meta_info['global_steps']
         if self.step is None:
             last_step_idx = 0
             for file in os.listdir(self.record_dir):
                 if self.num_examine == 1:
-                    if re.search(r"step-val-\d+\.json", file):
-                        step_idx = int(file[:-len(".json")].split("-")[-1])
+                    if re.search(r"step-val-\d+\.jsonl", file):
+                        step_idx = int(file[:-len(".jsonl")].split("-")[-1])
                         if step_idx > last_step_idx:
                             last_step_idx = step_idx
                 else:
-                    if re.search(r"step-\d+\.json", file):
-                        step_idx = int(file[:-len(".json")].split("-")[-1])
+                    if re.search(r"step-\d+\.jsonl", file):
+                        step_idx = int(file[:-len(".jsonl")].split("-")[-1])
                         if step_idx > last_step_idx:
                             last_step_idx = step_idx
             self.step = last_step_idx + 1
-        if data.meta_info.get('global_step', None) is not None:
-            self.step = data.meta_info['global_step']
+        
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if 'rm_scores' in data.batch.keys():
@@ -269,23 +270,21 @@ class PixelReasonerRewardManager:
                 'ground_truth': ground_truth,
                 'score': score,
                 'reward': reward,
-                'tool_interact_info': tool_interact_info_i,
+                'tool_interact_info': tool_interact_info_i.tolist() if isinstance(tool_interact_info_i, np.ndarray) else tool_interact_info_i,
                 'extra_info': data_item.non_tensor_batch.get('extra_info', None),
             })
-        if save_record:
-            # Save the records to a file
-            if self.num_examine == 1:
-                temp_file = self.record_dir / f"{self.name}-step-val-{self.step}.json"
-            else:
-                temp_file = self.record_dir / f"{self.name}-step-{self.step}.json"
-            self.step += 1
-            if temp_file.exists():
-                with open(temp_file, "r") as f:
-                    existing_records = json.load(f)
-                to_save_records = existing_records + to_save_records
-            with open(temp_file, "w") as f:
-                json.dump(to_save_records, f, indent=4)
-            print(f"Saved records to {temp_file}")
+        
+        # if save_record:
+        #     # Save the records to a file
+        #     if self.num_examine == 1:
+        #         temp_file = self.record_dir / f"{self.name}-step-val-{self.step}.jsonl"
+        #     else:
+        #         temp_file = self.record_dir / f"{self.name}-step-{self.step}.jsonl"
+        #     with open(temp_file, "a+") as f:
+        #         for record in to_save_records:
+        #             f.write(json.dumps(record) + "\n")
+        #     print(f"Saved reward records to {temp_file}")
+        #     self.step += 1
         
         correct_response_length_mean = np.mean(reward_extra_info['correct_response_length']) if reward_extra_info['correct_response_length'] else 0.0
         wrong_response_length_mean = np.mean(reward_extra_info['wrong_response_length']) if reward_extra_info['wrong_response_length'] else 0.0
