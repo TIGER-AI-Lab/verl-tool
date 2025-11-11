@@ -13,9 +13,10 @@
 # limitations under the License.
 
 from .agent_loop import AgentLoopBase, AgentLoopManager, AsyncLLMServerManager
-from .single_turn_agent_loop import SingleTurnAgentLoop
-from .tool_agent_loop import ToolAgentLoop
 from .verltool_agent_loop import VerlToolAgentLoop
+from verl.experimental.agent_loop.single_turn_agent_loop import SingleTurnAgentLoop
+from verl.experimental.agent_loop.tool_agent_loop import ToolAgentLoop
+
 
 _ = [SingleTurnAgentLoop, ToolAgentLoop, VerlToolAgentLoop]  # for registration
 

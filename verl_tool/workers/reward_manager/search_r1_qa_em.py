@@ -134,50 +134,23 @@ class SearchR1QAEMRewardManager:
         self.compute_score = compute_score or _default_compute_score
         self.format_score = format_score
         self.score = score
-        self.step = None
-        if "record_dir" in kwargs:
-            self.record_dir = Path(kwargs['record_dir'])
-            self.record_dir.mkdir(parents=True, exist_ok=True)
 
     def __call__(self, data: DataProto, return_dict=False):
         """Compute rewards for Search-R1 style responses."""
-        save_record = data.meta_info.get('save_record', True)
-
-        if not hasattr(self, 'record_dir'):
-            if hasattr(self, 'run_id'):
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / self.run_id
-                self.record_dir.mkdir(parents=True, exist_ok=True)
+        
+        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+        if "rm_scores" in data.batch.keys():
+            if return_dict:
+                reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
+                reward_extra_info = {key: data.non_tensor_batch[key] for key in reward_extra_keys}
+                return {"reward_tensor": data.batch["rm_scores"], "reward_extra_info": reward_extra_info}
             else:
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / f"torl-{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-                self.record_dir.mkdir(parents=True, exist_ok=True)
-
-        # check the last step index
-        if self.step is None:
-            last_step_idx = 0
-            for file in os.listdir(self.record_dir):
-                if self.num_examine == 1:
-                    if re.search(r"step-val-\d+\.json", file):
-                        step_idx = int(file[:-len(".json")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-                else:
-                    if re.search(r"step-\d+\.json", file):
-                        step_idx = int(file[:-len(".json")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-            self.step = last_step_idx + 1
-        if data.meta_info.get('global_step', None) is not None:
-            self.step = data.meta_info['global_step']
-
-        # If there is rm score, we directly return rm score
-        if 'rm_scores' in data.batch.keys():
-            return data.batch['rm_scores']
+                return data.batch["rm_scores"]
 
         scores = [{} for _ in range(len(data))]
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         already_print_data_sources = {}
         reward_extra_info = defaultdict(list)
-        to_save_records = []
 
         for i in range(len(data)):
             data_item = data[i]
@@ -235,38 +208,6 @@ class SearchR1QAEMRewardManager:
                 print(f"Sequence: {sequences_str}")
                 print("=" * 50)
 
-        # Save the records
-            to_save_records.append({
-                'id': data_item.non_tensor_batch['extra_info']['id'] if 'id' in data_item.non_tensor_batch['extra_info'] else None,
-                'data_source': data_source,
-                "prompt": self.tokenizer.decode(prompt_ids[-valid_prompt_length:], skip_special_tokens=False),
-                "response": self.tokenizer.decode(response_ids[:valid_response_length], skip_special_tokens=False),
-                'ground_truth': ground_truth,
-                'score': score,
-                'tool_interact_info': data[i].non_tensor_batch.get('tool_interact_info', None),
-                'extra_info': data_item.non_tensor_batch.get('extra_info', None),
-            })
-            if "turns_stats" in data_item.non_tensor_batch:
-                to_save_records[i]['num_turn'] = data[i].non_tensor_batch["turns_stats"]
-                to_save_records[i]['num_valid_action'] = data[i].non_tensor_batch["valid_action_stats"]
-                to_save_records[i]['is_done'] = not data[i].non_tensor_batch["active_mask"]
-        if save_record:
-            # Save the records to a file
-            if self.num_examine == 1:
-                temp_file = self.record_dir / f"{self.name}-step-val-{self.step}.json"
-            else:
-                temp_file = self.record_dir / f"{self.name}-step-{self.step}.json"
-            self.step += 1
-            if temp_file.exists():
-                with open(temp_file, "r") as f:
-                    existing_records = json.load(f)
-                existing_records.extend(to_save_records)
-                with open(temp_file, "w") as f:
-                    json.dump(existing_records, f, indent=4)
-            else:
-                with open(temp_file, "w") as f:
-                    json.dump(to_save_records, f, indent=4)
-            print(f"Saved records to {temp_file}")
 
         for i, score in enumerate(scores):
             if isinstance(score, dict):

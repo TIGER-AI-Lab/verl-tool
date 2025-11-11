@@ -19,13 +19,15 @@ import asyncio
 import numpy as np
 import json
 import uuid
+import threading
+import regex as re
 from PIL import Image
 from typing import Union, Optional, Dict
-import regex as re
 from typing import Any
 from uuid import uuid4
-import threading
-from .agent_loop import AgentLoopBase, AgentLoopOutput, register
+from verl.utils.profiler import simple_timer
+from pydantic import BaseModel
+from .agent_loop import AgentLoopBase, register, AgentLoopOutput
 from .vision_utils import decode_image_url, encode_image, encode_image_url
 
 logger = logging.getLogger(__file__)
@@ -297,6 +299,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             "obs_lengths": [],
             "rewards": [],
             "tool_interact_info": [],
+            "is_traj_finished": False,
         }
         
         if image_data:
@@ -322,15 +325,15 @@ class VerlToolAgentLoop(AgentLoopBase):
         response_logprobs = []
 
         for step in range(self.agent_config.max_turns + 1):
-            
             if step == self.agent_config.max_turns and self.agent_config.force_finish_for_last_turn:
                 break
             max_tokens_for_this_turn = min(max_action_length, available_length)
             agent_sampling_params["max_tokens"] = max_tokens_for_this_turn # for vllm
             # agent_sampling_params["max_new_tokens"] = max_tokens_for_this_turn # for sglang
-            output = await self.server_manager.generate(
-                request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
-            )
+            with simple_timer("generate_sequences", metrics):
+                output = await self.server_manager.generate(
+                    request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
+                )
             gen_ids = output.token_ids
             gen_logprobs = output.log_probs or [0.0] * len(gen_ids)
             gen_text = output.text
@@ -340,6 +343,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             
             if not self.agent_config.enable_agent:
                 # only one turn generation
+                stats_dict["is_traj_finished"] = True
                 break
             
             stats_dict["num_turns"] += 1
@@ -347,11 +351,12 @@ class VerlToolAgentLoop(AgentLoopBase):
             stats_dict["action_logps"].append(sum(gen_logprobs))
             
             # judge whether to interact with tool or finish
+            is_last_step = (step == self.agent_config.max_turns)
             finish_reason = output.finish_reason
             stop_reason = output.stop_reason
             do_action = False
             action_text = ""
-            if finish_reason == "stop" and stop_reason:
+            if finish_reason == "stop" and stop_reason and not is_last_step:
                 for action_stop_token in self.action_stop_tokens:
                     if action_stop_token in stop_reason:
                         # do action
@@ -360,15 +365,15 @@ class VerlToolAgentLoop(AgentLoopBase):
                         break
             logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}")
             # send generated action to tool server
-            is_last_step = (step == self.agent_config.max_turns - 1)
             if do_action:
-                tool_results = await self.interact_with_tool_server(
-                    traj_id=request_id,
-                    action=action_text,
-                    do_action=do_action,
-                    extra_fields={"images": encoded_image_data} if encoded_image_data is not None else None,
-                    is_last_step=is_last_step,
-                )
+                with simple_timer("interact_with_tool_server", metrics):
+                    tool_results = await self.interact_with_tool_server(
+                        traj_id=request_id,
+                        action=action_text,
+                        do_action=do_action,
+                        extra_fields={"images": encoded_image_data} if encoded_image_data is not None else None,
+                        is_last_step=is_last_step,
+                    )
                 # process observations and prepare for next turn
                 obs_text = tool_results['obs']
                 if tool_results.get('image', None):
@@ -435,9 +440,11 @@ class VerlToolAgentLoop(AgentLoopBase):
 
                 if tool_results['done']:
                     # finish the trajectory
+                    stats_dict["is_traj_finished"] = True
                     break
             else:
                 # finish the trajectory
+                stats_dict["is_traj_finished"] = True
                 break
         
         response_ids = running_prompt_ids[len(prompt_ids):]
@@ -446,14 +453,16 @@ class VerlToolAgentLoop(AgentLoopBase):
             
         metrics.update({
             "num_turns": stats_dict["num_turns"],
+            "tool_calls": len(stats_dict["tool_interact_info"]),
             "valid_action": stats_dict["valid_action"],
-            "avg_action_length": np.mean(stats_dict["action_lengths"]) if len(stats_dict["action_lengths"]) > 0 else 0,
-            "avg_obs_length": np.mean(stats_dict["obs_lengths"]) if len(stats_dict["obs_lengths"]) > 0 else 0,
-            "avg_action_logp": np.mean(stats_dict["action_logps"]) if len(stats_dict["action_logps"]) > 0 else 0,
-            "avg_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else None,
-            "total_action_length": sum(stats_dict["action_lengths"]),
-            "total_obs_length": sum(stats_dict["obs_lengths"]),
+            "per_action_length": np.mean(stats_dict["action_lengths"]) if len(stats_dict["action_lengths"]) > 0 else 0,
+            "per_obs_length": np.mean(stats_dict["obs_lengths"]) if len(stats_dict["obs_lengths"]) > 0 else 0,
+            "per_action_logp": np.mean(stats_dict["action_logps"]) if len(stats_dict["action_logps"]) > 0 else 0,
+            "per_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else None,
+            "traj_actions_length": sum(stats_dict["action_lengths"]),
+            "traj_obs_length": sum(stats_dict["obs_lengths"]),
             "generated_length": len(output.token_ids),
+            "is_traj_finished": float(stats_dict["is_traj_finished"]),
         })
         
         output = AgentLoopOutput(

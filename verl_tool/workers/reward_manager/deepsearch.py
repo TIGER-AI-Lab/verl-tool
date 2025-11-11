@@ -41,9 +41,6 @@ class PixelReasonerRewardManager(ToRLRewardManager):
         self.step = None
         self.add_tool_call_reward = True # +0.1 if the response contains a tool call
         self.add_format_penalty = True # -0.5 if the response does not start with <think> and end with </think>
-        if "record_dir" in kwargs:
-            self.record_dir = Path(kwargs['record_dir'])
-            self.record_dir.mkdir(parents=True, exist_ok=True)
 
     def add_additional_penalties(self, response: str, data_i, scores_i: dict):
         # 1.4 format penalty
@@ -60,9 +57,11 @@ class PixelReasonerRewardManager(ToRLRewardManager):
         
         scores_i['score'] = scores_i['accuracy']
         
-        if "turns_stats" in data_i.non_tensor_batch:
+        if "tool_interact_info" in data_i.non_tensor_batch:
             if self.add_tool_call_reward:
-                num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
+                tool_interact_info = data_item.non_tensor_batch.get('tool_interact_info', None)
+                num_turn = len(tool_interact_info) if tool_interact_info is not None else 0
+                num_valid_action = sum([1 for t in tool_interact_info if t.get('valid_action', False)]) if tool_interact_info is not None else 0
                 if num_valid_action > 0:
                     scores_i['score'] += 0.1
                     scores_i['tool_call_reward'] = 1

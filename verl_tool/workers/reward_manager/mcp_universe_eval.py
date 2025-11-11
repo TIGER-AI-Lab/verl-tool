@@ -90,6 +90,14 @@ class MCPUniverseEvaluatorRM:
         return os.path.join(self.configs_root, rel_or_abs)
 
     def __call__(self, data: DataProto, return_dict: bool = False):
+        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+        if "rm_scores" in data.batch.keys():
+            if return_dict:
+                reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
+                reward_extra_info = {key: data.non_tensor_batch[key] for key in reward_extra_keys}
+                return {"reward_tensor": data.batch["rm_scores"], "reward_extra_info": reward_extra_info}
+            else:
+                return data.batch["rm_scores"]
         # Lazy import to avoid hard dependency when not used
         from mcpuniverse.benchmark.task import Task
         from mcpuniverse.common.context import Context

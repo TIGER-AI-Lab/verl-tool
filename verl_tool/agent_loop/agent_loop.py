@@ -118,7 +118,17 @@ class AgentLoopMetrics(BaseModel):
 
     generate_sequences: float = 0.0
     tool_calls: float = 0.0
-
+    num_turns: float = 0.0
+    valid_action: float = 0.0
+    per_action_length: float = 0.0
+    per_obs_length: float = 0.0
+    per_action_logp: float = 0.0
+    per_reward_from_tool: Optional[float] = None
+    traj_actions_length: float = 0.0
+    traj_obs_length: float = 0.0
+    generated_length: float = 0.0
+    is_traj_finished: float = 0.0
+    
 
 class AgentLoopOutput(BaseModel):
     """Agent loop output."""
@@ -597,20 +607,14 @@ class AgentLoopWorker:
                 video_grid_thw = multi_modal_inputs.get("video_grid_thw")
                 second_per_grid_ts = multi_modal_inputs.get("second_per_grid_ts")
 
-                try:    
-                    vision_position_ids = get_rope_index(
-                        self.processor,
-                        input_ids=input_ids.squeeze(0),
-                        image_grid_thw=image_grid_thw,
-                        video_grid_thw=video_grid_thw,
-                        second_per_grid_ts=second_per_grid_ts,
-                        attention_mask=attention_mask.squeeze(0),
-                    ).unsqueeze(0)  # (1, 3, seq_len)
-                except Exception as e:
-                    print(self.tokenizer.decode(input_ids.squeeze(0), skip_special_tokens=True))
-                    print(input_ids.shape, attention_mask.shape, image_grid_thw, video_grid_thw, second_per_grid_ts)
-                    raise e
-                    
+                vision_position_ids = get_rope_index(
+                    self.processor,
+                    input_ids=input_ids.squeeze(0),
+                    image_grid_thw=image_grid_thw,
+                    video_grid_thw=video_grid_thw,
+                    second_per_grid_ts=second_per_grid_ts,
+                    attention_mask=attention_mask.squeeze(0),
+                ).unsqueeze(0)  # (1, 3, seq_len)
 
                 valid_mask = attention_mask[0].bool()
                 text_position_ids = torch.ones((1, len(input_ids[0])), dtype=torch.long)
@@ -619,7 +623,6 @@ class AgentLoopWorker:
                 position_ids = torch.cat((text_position_ids, vision_position_ids), dim=1)  # (1, 4, seq_length)
             else:
                 position_ids = compute_position_id_with_mask(attention_mask)  # (1, seq_len)
-            
             enable_async_reward = (
                 self.rm_executor is not None and self.config.reward_model.enable_resource_pool
             ) or not self.config.reward_model.enable
@@ -631,7 +634,6 @@ class AgentLoopWorker:
                         "attention_mask": attention_mask,  # [1, prompt_length + response_length]
                         "input_ids": input_ids,  # [1, prompt_length + response_length]
                         "position_ids": position_ids,
-                        "response_mask": response_mask,  # [1, response_length]
                     },
                     batch_size=1,
                 )

@@ -125,14 +125,11 @@ class AceCoderRewardManager:
         self.parse_code_mode = "last" # "all", "first", "last"
         self.add_format_think_penalty = False # -0.5 if not begines with <think> and end with </think>
         self.add_format_answer_penalty = False # -0.5 if not having <answer> </answer>
-        self.add_valid_action_penalty = True # -1.0 if num turns > 0 not action not valid
-        self.add_unfinished_traj_penalty = True # -0.25 if the traj is not finished
-        self.add_no_tool_interact_penalty = True # -1.0 if the traj's num turn is 0, no interaction at all
+        self.add_valid_action_penalty = False # -1.0 if num turns > 0 not action not valid
+        self.add_unfinished_traj_penalty = False # -0.25 if the traj is not finished
+        self.add_no_tool_interact_penalty = False # -1.0 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
         self.reward_fn_key = reward_fn_key
-        if "record_dir" in kwargs:
-            self.record_dir = Path(kwargs['record_dir'])
-            self.record_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             from acecoder import evaluate_test_cases
@@ -286,37 +283,14 @@ class AceCoderRewardManager:
         
     def __call__(self, data: DataProto, return_dict=False):
         """We will expand this function gradually based on the available datasets"""
-        save_record = data.meta_info.get('save_record', True)
-
-        if not hasattr(self, 'record_dir'):
-            if hasattr(self, 'run_id'):
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / self.run_id
-                self.record_dir.mkdir(parents=True, exist_ok=True)
-            else:
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / f"acecoder-{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-                self.record_dir.mkdir(parents=True, exist_ok=True)
-        
-        # check the last step index
-        if self.step_idx is None:
-            last_step_idx = 0
-            for file in os.listdir(self.record_dir):
-                if self.num_examine == 1:
-                    if re.search(r"step-val-\d+\.json", file):
-                        step_idx = int(file[:-len(".json")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-                else:
-                    if re.search(r"step-\d+\.json", file):
-                        step_idx = int(file[:-len(".json")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-            self.step_idx = last_step_idx + 1
-        if data.meta_info.get('global_step', None) is not None:
-            self.step_idx = data.meta_info['global_step']
-                
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
-        if 'rm_scores' in data.batch.keys():
-            return data.batch['rm_scores']
+        if "rm_scores" in data.batch.keys():
+            if return_dict:
+                reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
+                reward_extra_info = {key: data.non_tensor_batch[key] for key in reward_extra_keys}
+                return {"reward_tensor": data.batch["rm_scores"], "reward_extra_info": reward_extra_info}
+            else:
+                return data.batch["rm_scores"]
 
         # TODO: implement new reward computing & statistic mechanism
         scores = [{} for _ in range(len(data))]
@@ -425,39 +399,6 @@ class AceCoderRewardManager:
                     reward_extra_info[k].append(v)
             else:
                 reward_tensor[i, valid_response_length[i].item() - 1] = score
-        
-        if save_record:
-            # Save the records for each code response sample, which will be reported to wandb
-            to_save_records = [
-                {
-                    "id": data[i].non_tensor_batch['extra_info']['id'] if 'id' in data[i].non_tensor_batch['extra_info'] else None,
-                    "data_source": data[i].non_tensor_batch['data_source'],
-                    "prompt": prompt_str[i],
-                    "response": response_str[i],
-                    "extracted_code": extracted_answers[i],
-                    'tool_interact_info': data[i].non_tensor_batch.get('tool_interact_info', None),
-                    "ground_truth": "",
-                    "score": scores[i],
-                    'extra_info': data[i].non_tensor_batch.get('extra_info', None),
-                }
-                for i in range(len(data))
-            ]
-            for i in range(len(data)):
-                if "turns_stats" in data.non_tensor_batch:
-                    to_save_records[i]['num_turn'] = data[i].non_tensor_batch["turns_stats"]
-                    to_save_records[i]['num_valid_action'] = data[i].non_tensor_batch["valid_action_stats"]
-                    to_save_records[i]['is_done'] = not data[i].non_tensor_batch["active_mask"]
-                if isinstance(to_save_records[i]['extra_info']['inputs_outputs'], str) and len(to_save_records[i]['extra_info']['inputs_outputs']) > 1000:
-                    to_save_records[i]['extra_info']['inputs_outputs'] = to_save_records[i]['extra_info']['inputs_outputs'][:1000]
-            # Save the records to a file
-            if self.num_examine == 1:
-                temp_file = self.record_dir / f"{self.name}-step-val-{self.step_idx}.json"
-            else:
-                temp_file = self.record_dir / f"{self.name}-step-{self.step_idx}.json"
-            self.step_idx += 1
-            with open(temp_file, "w") as f:
-                json.dump(to_save_records, f, indent=4)
-            print(f"Step {self.step_idx}: saved {len(to_save_records)} records to {temp_file}")
         
         if return_dict: 
             return {

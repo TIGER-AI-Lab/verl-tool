@@ -76,10 +76,7 @@ class PixelReasonerRewardManager:
         self.action_redundancy_limit = 1 # n_{vo} in the paper, add penalty if the number of redundant actions is larger than this limit
         self.alpha = 0.5
         self.beta = 0.05
-        if "record_dir" in kwargs:
-            self.record_dir = Path(kwargs['record_dir'])
-            self.record_dir.mkdir(parents=True, exist_ok=True)
-        
+
     def get_group_info(self, data: DataProto):
         group_info = {}
         for i in range(len(data)):
@@ -124,47 +121,19 @@ class PixelReasonerRewardManager:
     
     def __call__(self, data: DataProto, return_dict=False):
         """We will expand this function gradually based on the available datasets"""
-        save_record = data.meta_info.get('save_record', True)
-
-        if not hasattr(self, 'record_dir'):
-            if hasattr(self, 'run_id'):
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / self.run_id
-                self.record_dir.mkdir(parents=True, exist_ok=True)
-            else:
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / f"torl-{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-                self.record_dir.mkdir(parents=True, exist_ok=True)
-        
-        # check the last step index
-        if data.meta_info.get('global_steps', None) is not None:
-            self.step = data.meta_info['global_steps']
-        if self.step is None:
-            last_step_idx = 0
-            for file in os.listdir(self.record_dir):
-                if self.num_examine == 1:
-                    if re.search(r"step-val-\d+\.jsonl", file):
-                        step_idx = int(file[:-len(".jsonl")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-                else:
-                    if re.search(r"step-\d+\.jsonl", file):
-                        step_idx = int(file[:-len(".jsonl")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-            self.step = last_step_idx + 1
-        
-
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
-        if 'rm_scores' in data.batch.keys():
+        if "rm_scores" in data.batch.keys():
             if return_dict:
-                return {"reward_tensor": data.batch['rm_scores']}
+                reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
+                reward_extra_info = {key: data.non_tensor_batch[key] for key in reward_extra_keys}
+                return {"reward_tensor": data.batch["rm_scores"], "reward_extra_info": reward_extra_info}
             else:
-                return data.batch['rm_scores']
+                return data.batch["rm_scores"]
 
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         reward_extra_info = defaultdict(list)
 
         already_print_data_sources = {}
-        to_save_records = []
 
         group_info = self.get_group_info(data)
         for i in range(len(data)):
@@ -254,38 +223,6 @@ class PixelReasonerRewardManager:
                         elif isinstance(tool_interact['image'], str):
                             tool_interact['image'] = tool_interact['image'][:50] # for debug
             
-            to_save_prompt = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=False)
-            to_save_resposne = self.tokenizer.decode(response_ids[:valid_response_length], skip_special_tokens=False)
-            to_save_prompt = replace_consecutive_tokens(to_save_prompt, token="<|image_pad|>")
-            to_save_response = replace_consecutive_tokens(to_save_resposne, token="<|image_pad|>")
-            if 'responses_with_loss_mask' in data_item.batch:
-                to_save_response_with_loss_mask = self.tokenizer.decode(valid_response_ids_with_loss_mask, skip_special_tokens=False)
-                to_save_response_with_loss_mask = replace_consecutive_tokens(to_save_response_with_loss_mask, token=self.tokenizer.pad_token)
-            to_save_records.append({
-                'id': data_item.non_tensor_batch['extra_info']['id'] if 'id' in data_item.non_tensor_batch['extra_info'] else None,
-                'data_source': data_source,
-                "prompt": to_save_prompt,
-                "response": to_save_response,
-                'response_with_loss_mask': to_save_response_with_loss_mask if 'responses_with_loss_mask' in data_item.batch else None,
-                'ground_truth': ground_truth,
-                'score': score,
-                'reward': reward,
-                'tool_interact_info': tool_interact_info_i.tolist() if isinstance(tool_interact_info_i, np.ndarray) else tool_interact_info_i,
-                'extra_info': data_item.non_tensor_batch.get('extra_info', None),
-            })
-        
-        # if save_record:
-        #     # Save the records to a file
-        #     if self.num_examine == 1:
-        #         temp_file = self.record_dir / f"{self.name}-step-val-{self.step}.jsonl"
-        #     else:
-        #         temp_file = self.record_dir / f"{self.name}-step-{self.step}.jsonl"
-        #     with open(temp_file, "a+") as f:
-        #         for record in to_save_records:
-        #             f.write(json.dumps(record) + "\n")
-        #     print(f"Saved reward records to {temp_file}")
-        #     self.step += 1
-        
         correct_response_length_mean = np.mean(reward_extra_info['correct_response_length']) if reward_extra_info['correct_response_length'] else 0.0
         wrong_response_length_mean = np.mean(reward_extra_info['wrong_response_length']) if reward_extra_info['wrong_response_length'] else 0.0
         reward_extra_info['correct_response_length'] = [correct_response_length_mean] * len(reward_tensor)
@@ -294,7 +231,7 @@ class PixelReasonerRewardManager:
         if return_dict:
             return {
                 "reward_tensor": reward_tensor,
-                "reward_extra_info": reward_extra_info,
+                "reward_extra_info": dict(sorted(reward_extra_info.items())),
             }
         else:
             return reward_tensor

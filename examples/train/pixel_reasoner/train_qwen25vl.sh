@@ -144,6 +144,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.val_before_train=True \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
+    trainer.rollout_data_dir=$(pwd)/verl_step_records/$run_name \
     trainer.nnodes=$n_nodes \
     +trainer.remove_previous_ckpt_in_save=True \
     trainer.save_freq=10 \

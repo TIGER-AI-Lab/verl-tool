@@ -119,41 +119,16 @@ class SQLCoderRewardManager:
         self.compute_score = compute_score if compute_score else _default_compute_score
         self.reward_fn_key = reward_fn_key
         self.step = 0
-        if "record_dir" in kwargs:
-            self.record_dir = Path(kwargs['record_dir'])
-            self.record_dir.mkdir(parents=True, exist_ok=True)
-        
 
     def __call__(self, data: DataProto, return_dict=False):
-        save_record = data.meta_info.get('save_record', True)
-        
-        if not hasattr(self, 'record_dir'):
-            if hasattr(self, 'run_id'):
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / self.run_id
-                self.record_dir.mkdir(parents=True, exist_ok=True)
+        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+        if "rm_scores" in data.batch.keys():
+            if return_dict:
+                reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
+                reward_extra_info = {key: data.non_tensor_batch[key] for key in reward_extra_keys}
+                return {"reward_tensor": data.batch["rm_scores"], "reward_extra_info": reward_extra_info}
             else:
-                self.record_dir = Path(__file__).parent.parent.parent.parent / "verl_step_records" / f"sqlcoder-{time.strftime('%Y-%m-%d-%H-%M-%S')}"
-                self.record_dir.mkdir(parents=True, exist_ok=True)
-        
-        # check the last step index - updated for JSONL files
-        if self.step is None:
-            last_step_idx = 0
-            for file in os.listdir(self.record_dir):
-                if self.num_examine == 1:
-                    if re.search(r"step-val-\d+\.jsonl", file):
-                        step_idx = int(file[:-len(".jsonl")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-                else:
-                    if re.search(r"step-\d+\.jsonl", file):
-                        step_idx = int(file[:-len(".jsonl")].split("-")[-1])
-                        if step_idx > last_step_idx:
-                            last_step_idx = step_idx
-            self.step = last_step_idx + 1
-        if data.meta_info.get('global_step', None) is not None:
-            self.step = data.meta_info['global_step']
-
-        to_save_records = []
+                return data.batch["rm_scores"]
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         
         # reward extra info every key of it is a default len(data) list filled with None
@@ -218,44 +193,6 @@ class SQLCoderRewardManager:
             is_done = [not is_active[i] for i in range(len(is_active))]
 
         data_source = data.non_tensor_batch[self.reward_fn_key]
-        
-        if save_record:
-            to_save_records = [
-                {
-                    "id": data[i].non_tensor_batch['extra_info'].get('id') if 'extra_info' in data[i].non_tensor_batch and data[i].non_tensor_batch['extra_info'] else None,
-                    "data_source": data_source[i],
-                    "prompt": self.tokenizer.decode(prompt_ids[i][-valid_prompt_length[i].item():], skip_special_tokens=False),
-                    "prompt_ntokens": valid_prompt_length[i].item(),
-                    "response": self.tokenizer.decode(response_ids[i][:valid_response_length[i].item()], skip_special_tokens=False),
-                    "response_ntokens": valid_response_length[i].item(),
-                    "score": scores[i],
-                    "tool_interact_info": data[i].non_tensor_batch.get('tool_interact_info', None),
-                    'extra_info': data[i].non_tensor_batch.get('extra_info', None),
-                    "step": self.step,  # Add step info for easier tracking
-                    "timestamp": time.time(),  # Add timestamp for debugging
-                }
-                for i in range(len(data))
-            ]
-            if "turns_stats" in data.non_tensor_batch:
-                for i, record in enumerate(to_save_records):
-                    to_save_records[i]['num_turn'] = num_turn[i]
-                    to_save_records[i]['num_valid_action'] = num_valid_action[i]
-                    to_save_records[i]['is_done'] = is_done[i]
-            
-            # Async save to JSONL file
-            if self.num_examine == 1:
-                temp_file = self.record_dir / f"sqlcoder-step-val-{self.step}.jsonl"
-            else:
-                temp_file = self.record_dir / f"sqlcoder-step-{self.step}.jsonl"
-            
-            # Save asynchronously without blocking
-            with open(temp_file, 'a') as f:
-                for record in to_save_records:
-                    json_line = json.dumps(record, ensure_ascii=False)
-                    f.write(json_line + '\n')
-            print(f"===> {len(to_save_records)} records for async save to {temp_file}")
-            
-            self.step += 1
             
         if return_dict:
             return {
