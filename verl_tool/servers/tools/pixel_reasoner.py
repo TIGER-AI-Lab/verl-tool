@@ -10,7 +10,7 @@ import base64
 import io
 from PIL import Image
 from pathlib import Path
-from verl_tool.llm_agent.vision_utils import process_image
+from verl_tool.agent_loop.vision_utils import process_image
 
 def crop(str_image, bbox_2d, padding=(0.1,0.1)):
     """

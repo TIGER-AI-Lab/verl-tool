@@ -141,7 +141,7 @@ class ToRLRewardManager:
                 ground_truth=ground_truth,
                 # extra_info=extra_info,
             ) # 1 or -1
-            score['accuracy'] = 1 if torl_score > 0 else 0
+            score['accuracy'] = 1. if torl_score > 0 else 0.
             score['score'] = torl_score
 
             # add additional penalty

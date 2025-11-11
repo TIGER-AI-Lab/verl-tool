@@ -69,7 +69,6 @@ class PixelReasonerRewardManager:
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = pixel_reasoner_score
         self.reward_fn_key = reward_fn_key
-        self.step = None
         self.add_curiousity_penalty = True
         self.add_action_redundancy_penalty = True
         self.group_tool_call_rate_lower_bound = 0.3 # H in the paper
@@ -172,7 +171,7 @@ class PixelReasonerRewardManager:
                 ground_truth=ground_truth,
                 # extra_info=extra_info,
             ) # 1 or -1
-            score['accuracy'] = 1 if torl_score > 0 else 0
+            score['accuracy'] = 1. if torl_score > 0 else 0.
             score['score'] = torl_score
 
             # add additional penalty

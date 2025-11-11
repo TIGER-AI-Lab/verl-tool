@@ -67,9 +67,7 @@ class AgentActorConfig:
     turn_end_token: str="<|im_end|>"
     rollout_mode: str="async" # "sync" or "async"
     mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
-    max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
-    over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
     tool_call_time_out: int=None # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.
     
@@ -77,6 +75,8 @@ class AgentActorConfig:
     rolling_with_prompt: bool=False
     call_tool_first: bool=False
     additional_eos_token_ids: list=None
+    max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
+    over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
     
     
 def sanitize_request(obj: Any) -> Any:
@@ -361,11 +361,11 @@ class VerlToolAgentLoop(AgentLoopBase):
                     if action_stop_token in stop_reason:
                         # do action
                         do_action = True
-                        action_text = gen_text.split(action_stop_token)[0]
+                        action_text = (gen_text.split(action_stop_token)[0] + action_stop_token)
                         break
-            logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}")
             # send generated action to tool server
             if do_action:
+                logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
                 with simple_timer("interact_with_tool_server", metrics):
                     tool_results = await self.interact_with_tool_server(
                         traj_id=request_id,
