@@ -70,6 +70,7 @@ class AgentActorConfig:
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
     tool_call_time_out: int=None # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.
+    retry_on_empty_response: bool=False # Whether to retry the tool call when getting empty response.
     
     # The following fields are to be disgarded, only for compatibility
     rolling_with_prompt: bool=False
@@ -141,7 +142,7 @@ class VerlToolAgentLoop(AgentLoopBase):
 
             if cls.agent_config.mtrl_sep is None:
                 messages = [{"role": "system", "content": "{obs}"}]
-                cls.agent_config.mtrl_sep = "\n" + cls.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                cls.agent_config.mtrl_sep = "\n" + cls.agent_config.turn_end_token + "\n" + cls.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 cls.agent_config.mtrl_sep = cls.agent_config.mtrl_sep.replace("system", cls.agent_config.mtrl_role)
             cls.enable_mtrl = cls.agent_config.enable_mtrl
             cls.mtrl_sep = cls.agent_config.mtrl_sep
@@ -156,6 +157,8 @@ class VerlToolAgentLoop(AgentLoopBase):
             cls.qwen_video_placeholder = "<|vision_start|><|video_pad|><|vision_end|>"
             cls.non_truncate_tokens = ["<|vision_start|>", "<|image_pad|>", "<|vision_end|>", "<|video_pad|>"]
             cls.non_truncate_token_ids = [cls.tokenizer.convert_tokens_to_ids(tok) for tok in cls.non_truncate_tokens]
+            cls.retry_on_empty_response = cls.agent_config.retry_on_empty_response
+            cls.max_retry_on_empty_response = 3
             
             
             if cls._class_initialized:
@@ -279,7 +282,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             "finish": finishs, # if do_action is False, then it is a finish action, finishing the trajectory,
             "is_last_step": [is_last_step] * len(finishs)
         }
-        response = await self.send_batch_requests_async(batch_data)
+        _ = await self.send_batch_requests_async(batch_data)
         return 
         
         
@@ -287,12 +290,15 @@ class VerlToolAgentLoop(AgentLoopBase):
         prompt_ids = list(kwargs["raw_prompt_ids"])
         image_data = (kwargs.get("multi_modal_data") or {}).get("image", None)
         encoded_image_data = [encode_image_url(img) for img in image_data] if image_data is not None else None
+        assert "use_tool" in kwargs, 'debugging: must specify use_tool in kwargs'
+        use_tool = kwargs.get("use_tool", self.agent_config.enable_agent)
 
         metrics = {}
         request_id = kwargs.get("traj_ids", uuid4().hex)
         
         stats_dict = {
             "num_turns": 0,
+            "empty_responses": 0,
             "valid_action": 0,
             "action_lengths": [],
             "action_logps": [],
@@ -310,7 +316,6 @@ class VerlToolAgentLoop(AgentLoopBase):
         max_response_length = self.agent_config.max_response_length
         max_action_length = self.agent_config.max_action_length
         max_obs_length = self.agent_config.max_obs_length
-        available_length = min(max_response_length, self.max_model_len - len(prompt_ids))
         
         agent_sampling_params = sampling_params.copy()
         agent_sampling_params.update({
@@ -323,17 +328,28 @@ class VerlToolAgentLoop(AgentLoopBase):
         running_image_data = image_data.copy() if image_data is not None else None
         response_mask = []
         response_logprobs = []
+        traj_stop_reason = ""
 
         for step in range(self.agent_config.max_turns + 1):
-            if step == self.agent_config.max_turns and self.agent_config.force_finish_for_last_turn:
-                break
+            available_length = max(min(max_response_length, self.max_model_len) - len(running_prompt_ids), 0)
             max_tokens_for_this_turn = min(max_action_length, available_length)
+            is_last_step = (step == self.agent_config.max_turns)
+            if max_tokens_for_this_turn <= 0:
+                traj_stop_reason = "max_model_len_exceeded"
+                break
             agent_sampling_params["max_tokens"] = max_tokens_for_this_turn # for vllm
+            logger.info(f"Turn {step}: available_length={available_length}, max_tokens_for_this_turn={max_tokens_for_this_turn}")
             # agent_sampling_params["max_new_tokens"] = max_tokens_for_this_turn # for sglang
             with simple_timer("generate_sequences", metrics):
-                output = await self.server_manager.generate(
-                    request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
-                )
+                for _i in range(self.max_retry_on_empty_response if self.retry_on_empty_response else 1):
+                    if _i > 0:
+                        logger.warning(f"Turn {step}: retrying generation due to empty response, attempt {_i + 1}")
+                    output = await self.server_manager.generate(
+                        request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
+                    )
+                    # sometimes the model may generate empty response due to various reasons, e.g., bad generation settings, model issues, etc.
+                    if output.text.strip() != "":
+                        break
             gen_ids = output.token_ids
             gen_logprobs = output.log_probs or [0.0] * len(gen_ids)
             gen_text = output.text
@@ -341,30 +357,33 @@ class VerlToolAgentLoop(AgentLoopBase):
             response_mask.extend([1] * len(gen_ids))
             response_logprobs.extend(gen_logprobs)
             
-            if not self.agent_config.enable_agent:
+            if not use_tool:
                 # only one turn generation
                 stats_dict["is_traj_finished"] = True
+                traj_stop_reason = "no_tool_used"
                 break
             
             stats_dict["num_turns"] += 1
             stats_dict["action_lengths"].append(len(gen_ids))
             stats_dict["action_logps"].append(sum(gen_logprobs))
+            if gen_text.strip() == "":
+                stats_dict["empty_responses"] += 1
             
             # judge whether to interact with tool or finish
-            is_last_step = (step == self.agent_config.max_turns)
             finish_reason = output.finish_reason
             stop_reason = output.stop_reason
             do_action = False
             action_text = ""
-            if finish_reason == "stop" and stop_reason and not is_last_step:
+            if finish_reason == "stop" and stop_reason:
                 for action_stop_token in self.action_stop_tokens:
                     if action_stop_token in stop_reason:
                         # do action
                         do_action = True
                         action_text = (gen_text.split(action_stop_token)[0] + action_stop_token)
                         break
+            logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, generated text: {json.dumps(gen_text[-100:])}, gen_ids length: {len(gen_ids)}, gen_idss: {gen_ids[-10:]}")
             # send generated action to tool server
-            if do_action:
+            if do_action and not is_last_step:
                 logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
                 with simple_timer("interact_with_tool_server", metrics):
                     tool_results = await self.interact_with_tool_server(
@@ -441,10 +460,26 @@ class VerlToolAgentLoop(AgentLoopBase):
                 if tool_results['done']:
                     # finish the trajectory
                     stats_dict["is_traj_finished"] = True
+                    traj_stop_reason = "tool_signaled_done"
                     break
             else:
                 # finish the trajectory
                 stats_dict["is_traj_finished"] = True
+                if finish_reason == "stop":
+                    if not stop_reason:
+                        if gen_text.strip() == "":
+                            traj_stop_reason = "model_chose_to_finish_with_empty_response"
+                        else:
+                            traj_stop_reason = "model_chose_to_finish"
+                    else:
+                        if do_action and is_last_step:
+                            traj_stop_reason = "max_turns_reached"
+                        else:
+                            traj_stop_reason = "no_action_stop_token_found_in_stop_reason=" + stop_reason
+                elif finish_reason == "length":
+                    traj_stop_reason = "max_response_length_reached"
+                else:
+                    traj_stop_reason = f"finish_reason_{finish_reason}"
                 break
         
         response_ids = running_prompt_ids[len(prompt_ids):]
@@ -454,6 +489,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         metrics.update({
             "num_turns": stats_dict["num_turns"],
             "tool_calls": len(stats_dict["tool_interact_info"]),
+            "empty_responses": stats_dict["empty_responses"],
             "valid_action": stats_dict["valid_action"],
             "per_action_length": np.mean(stats_dict["action_lengths"]) if len(stats_dict["action_lengths"]) > 0 else 0,
             "per_obs_length": np.mean(stats_dict["obs_lengths"]) if len(stats_dict["obs_lengths"]) > 0 else 0,
@@ -473,6 +509,6 @@ class VerlToolAgentLoop(AgentLoopBase):
             multi_modal_data={"image": running_image_data} if running_image_data is not None else {},
             num_turns=stats_dict["num_turns"],
             metrics=metrics,
-            extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", [])},
+            extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", []), "traj_stop_reason": traj_stop_reason},
         )
         return output

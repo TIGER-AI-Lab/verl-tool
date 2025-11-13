@@ -59,7 +59,7 @@ class PixelReasonerRewardManager(ToRLRewardManager):
         
         if "tool_interact_info" in data_i.non_tensor_batch:
             if self.add_tool_call_reward:
-                tool_interact_info = data_item.non_tensor_batch.get('tool_interact_info', None)
+                tool_interact_info = data_i.non_tensor_batch.get('tool_interact_info', None)
                 num_turn = len(tool_interact_info) if tool_interact_info is not None else 0
                 num_valid_action = sum([1 for t in tool_interact_info if t.get('valid_action', False)]) if tool_interact_info is not None else 0
                 if num_valid_action > 0:

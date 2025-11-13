@@ -128,6 +128,7 @@ class AgentLoopMetrics(BaseModel):
     traj_obs_length: float = 0.0
     generated_length: float = 0.0
     is_traj_finished: float = 0.0
+    empty_responses: float = 0.0
     
 
 class AgentLoopOutput(BaseModel):

@@ -488,6 +488,7 @@ class AsyncToolServer:
                     if cached_result:
                         logger.debug(f"Returning cached result for request")
                         return cached_result
+                logger.debug(f"received request: trajectory_ids={request_data.trajectory_ids}, actions={[x[-50:] for x in request_data.actions]}, extra_fields={extra_fields}")
                 
                 # Process actions with timeout
                 observations, dones, valids = await asyncio.wait_for(
