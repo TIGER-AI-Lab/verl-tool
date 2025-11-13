@@ -26,7 +26,6 @@ from typing import Union, Optional, Dict
 from typing import Any
 from uuid import uuid4
 from verl.utils.profiler import simple_timer
-from pydantic import BaseModel
 from .agent_loop import AgentLoopBase, register, AgentLoopOutput
 from .vision_utils import decode_image_url, encode_image, encode_image_url
 
@@ -70,7 +69,6 @@ class AgentActorConfig:
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
     tool_call_time_out: int=None # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.
-    retry_on_empty_response: bool=False # Whether to retry the tool call when getting empty response.
     
     # The following fields are to be disgarded, only for compatibility
     rolling_with_prompt: bool=False
@@ -157,8 +155,6 @@ class VerlToolAgentLoop(AgentLoopBase):
             cls.qwen_video_placeholder = "<|vision_start|><|video_pad|><|vision_end|>"
             cls.non_truncate_tokens = ["<|vision_start|>", "<|image_pad|>", "<|vision_end|>", "<|video_pad|>"]
             cls.non_truncate_token_ids = [cls.tokenizer.convert_tokens_to_ids(tok) for tok in cls.non_truncate_tokens]
-            cls.retry_on_empty_response = cls.agent_config.retry_on_empty_response
-            cls.max_retry_on_empty_response = 3
             
             
             if cls._class_initialized:
@@ -341,15 +337,9 @@ class VerlToolAgentLoop(AgentLoopBase):
             logger.info(f"Turn {step}: available_length={available_length}, max_tokens_for_this_turn={max_tokens_for_this_turn}")
             # agent_sampling_params["max_new_tokens"] = max_tokens_for_this_turn # for sglang
             with simple_timer("generate_sequences", metrics):
-                for _i in range(self.max_retry_on_empty_response if self.retry_on_empty_response else 1):
-                    if _i > 0:
-                        logger.warning(f"Turn {step}: retrying generation due to empty response, attempt {_i + 1}")
-                    output = await self.server_manager.generate(
-                        request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
-                    )
-                    # sometimes the model may generate empty response due to various reasons, e.g., bad generation settings, model issues, etc.
-                    if output.text.strip() != "":
-                        break
+                output = await self.server_manager.generate(
+                    request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
+                )
             gen_ids = output.token_ids
             gen_logprobs = output.log_probs or [0.0] * len(gen_ids)
             gen_text = output.text

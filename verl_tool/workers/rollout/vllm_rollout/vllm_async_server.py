@@ -1,4 +1,5 @@
 import ray
+import uuid
 from verl.workers.rollout.vllm_rollout.vllm_async_server import (
     vLLMHttpServerBase,
     SamplingParams, 

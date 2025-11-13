@@ -96,7 +96,7 @@ class IPythonKernelManager:
                 except:
                     pass
             
-            logger.info(f"Created new IPython kernel for request_id: {request_id}")
+            logger.debug(f"Created new IPython kernel for request_id: {request_id}")
             return shell
             
         except Exception as e:
