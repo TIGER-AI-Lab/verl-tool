@@ -90,5 +90,6 @@ class VerlToolvLLMHttpServer(vLLMHttpServerBase):
         finish_reason = final_res.outputs[0].finish_reason
         stop_reason = final_res.outputs[0].stop_reason
         text = final_res.outputs[0].text
+        finished = final_res.finished
 
-        return VerlToolTokenOutput(token_ids=token_ids, log_probs=log_probs, finish_reason=finish_reason, stop_reason=stop_reason, text=text)
+        return VerlToolTokenOutput(token_ids=token_ids, log_probs=log_probs, finish_reason=finish_reason, stop_reason=stop_reason, text=text, finished=finished)

@@ -140,7 +140,7 @@ class VerlToolAgentLoop(AgentLoopBase):
 
             if cls.agent_config.mtrl_sep is None:
                 messages = [{"role": "system", "content": "{obs}"}]
-                cls.agent_config.mtrl_sep = "\n" + cls.agent_config.turn_end_token + "\n" + cls.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                cls.agent_config.mtrl_sep = cls.agent_config.turn_end_token + "\n" + cls.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 cls.agent_config.mtrl_sep = cls.agent_config.mtrl_sep.replace("system", cls.agent_config.mtrl_role)
             cls.enable_mtrl = cls.agent_config.enable_mtrl
             cls.mtrl_sep = cls.agent_config.mtrl_sep
@@ -334,12 +334,14 @@ class VerlToolAgentLoop(AgentLoopBase):
                 traj_stop_reason = "max_model_len_exceeded"
                 break
             agent_sampling_params["max_tokens"] = max_tokens_for_this_turn # for vllm
-            logger.info(f"Turn {step}: available_length={available_length}, max_tokens_for_this_turn={max_tokens_for_this_turn}")
+            logger.debug(f"Turn {step}: available_length={available_length}, max_tokens_for_this_turn={max_tokens_for_this_turn}")
             # agent_sampling_params["max_new_tokens"] = max_tokens_for_this_turn # for sglang
             with simple_timer("generate_sequences", metrics):
                 output = await self.server_manager.generate(
                     request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
                 )
+                if output.text.strip() == "":
+                    logger.info(f"Turn {step}: Generated empty response for traj_id={request_id}. prompt_ids length: {len(running_prompt_ids)}")
             gen_ids = output.token_ids
             gen_logprobs = output.log_probs or [0.0] * len(gen_ids)
             gen_text = output.text
@@ -371,10 +373,9 @@ class VerlToolAgentLoop(AgentLoopBase):
                         do_action = True
                         action_text = (gen_text.split(action_stop_token)[0] + action_stop_token)
                         break
-            logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, generated text: {json.dumps(gen_text[-100:])}, gen_ids length: {len(gen_ids)}, gen_idss: {gen_ids[-10:]}")
             # send generated action to tool server
             if do_action and not is_last_step:
-                logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
+                logger.debug(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
                 with simple_timer("interact_with_tool_server", metrics):
                     tool_results = await self.interact_with_tool_server(
                         traj_id=request_id,
@@ -472,6 +473,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                     traj_stop_reason = f"finish_reason_{finish_reason}"
                 break
         
+        logger.debug(f"Trajectory {request_id} finished after {step} turns. Stop reason: {traj_stop_reason}")
         response_ids = running_prompt_ids[len(prompt_ids):]
         assert len(response_ids) == len(response_mask), f"Response ids and mask length mismatch: {len(response_ids)} vs {len(response_mask)}"
         await self.close_traj_tool_threads(request_id=request_id)

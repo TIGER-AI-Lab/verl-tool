@@ -5,412 +5,382 @@ import gc
 import psutil
 import sys
 import os
+import site
+import asyncio
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
 from collections import OrderedDict
 from typing import Dict, Optional, Tuple
-import weakref
 import logging
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-from io import StringIO
-import multiprocessing as mp
+from IPython.terminal.interactiveshell import TerminalInteractiveShell
+from pathlib import Path
+import ray
+from ray.exceptions import GetTimeoutError
+from traitlets.config import Config
+
+import signal
+import threading
+from contextlib import contextmanager
+
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+site_packages_dir = site.getsitepackages()[0]
+file_abs_path = os.path.abspath(__file__)
+# ==== Ray + Actor-based kernel management =====================================
+
+# How many actors (kernels) we cache
+MAX_ACTORS = 1024
+
+# LRU-ish cache of request_id -> KernelActor
+_actor_cache: "OrderedDict[str, ray.actor.ActorHandle]" = OrderedDict()
+_actor_lock = threading.RLock()
 
 
-class IPythonKernelManager:
-    def __init__(self, max_kernels: int = 1024, kernel_timeout: int = 3600,
-                 max_workers: Optional[int] = None):
-        """
-        Initialize the kernel manager.
-        
-        Args:
-            max_kernels: Maximum number of kernels to keep in cache
-            kernel_timeout: Timeout in seconds after which unused kernels are cleaned up
-            max_workers: Maximum thread pool workers. If None, auto-calculated.
-        """
-        self.max_kernels = max_kernels
-        self.kernel_timeout = kernel_timeout
-        self._kernels: OrderedDict = OrderedDict()
-        self._kernel_last_used: Dict[str, float] = {}
-        self._lock = threading.RLock()
-        
-        # Auto-calculate workers based on system resources
-        if max_workers is None:
-            cpu_count = mp.cpu_count()
-            # For mixed I/O and CPU workloads: 4-8x CPU cores
-            # Cap at 100 to avoid excessive context switching
-            max_workers = min(cpu_count * 8, 100)
-            logger.info(f"Auto-configured max_workers={max_workers} (CPUs={cpu_count})")
-        
-        self.max_workers = max_workers
-        
-        # Start cleanup thread
-        self._cleanup_thread = threading.Thread(target=self._cleanup_worker, daemon=True)
-        self._cleanup_thread.start()
-        
-    def _create_kernel(self, request_id: str) -> IPython.InteractiveShell:
-        """Create a new IPython kernel with memory optimizations."""
-        try:
-            # Create configuration to disable history
-            from IPython.terminal.interactiveshell import TerminalInteractiveShell
-            from traitlets.config import Config
-            
-            c = Config()
-            # Disable history completely
-            c.HistoryManager.enabled = False
-            c.HistoryManager.hist_file = ':memory:'  # Use in-memory SQLite
-            
-            # Create new shell with configuration
-            shell = TerminalInteractiveShell.instance(config=c, colors='NoColor')
-            
-            # Double-check history is disabled
-            if hasattr(shell, 'history_manager'):
-                shell.history_manager.enabled = False
-                # Close any existing history database connection
-                if hasattr(shell.history_manager, 'db'):
-                    try:
-                        shell.history_manager.db.close()
-                    except:
-                        pass
-            
-            # Limit cache sizes
-            shell.cache_size = 100
-            
-            # Configure matplotlib for non-interactive backend if available
-            try:
-                import matplotlib
-                matplotlib.use('Agg')
-            except ImportError:
-                pass
-            
-            # Disable atexit hooks for history manager to prevent cleanup errors
-            if hasattr(shell, 'history_manager'):
-                import atexit
-                # Remove history manager's atexit callback
-                try:
-                    for callback in atexit._exithandlers[:]:
-                        if hasattr(callback[0], '__self__') and callback[0].__self__ is shell.history_manager:
-                            atexit._exithandlers.remove(callback)
-                except:
-                    pass
-            
-            logger.debug(f"Created new IPython kernel for request_id: {request_id}")
-            return shell
-            
-        except Exception as e:
-            logger.error(f"Failed to create kernel for {request_id}: {e}")
-            raise
-    
-    def get_kernel(self, request_id: str) -> IPython.InteractiveShell:
-        """Get or create a kernel for the given request_id (thread-safe)."""
-        with self._lock:
-            current_time = time.time()
-            
-            if request_id in self._kernels:
-                # Move to end (most recently used)
-                kernel = self._kernels.pop(request_id)
-                self._kernels[request_id] = kernel
-                self._kernel_last_used[request_id] = current_time
-                return kernel
-            
-            # Create new kernel
-            kernel = self._create_kernel(request_id)
-            
-            # Add to cache
-            self._kernels[request_id] = kernel
-            self._kernel_last_used[request_id] = current_time
-            
-            # Remove oldest kernel if cache is full
-            if len(self._kernels) > self.max_kernels:
-                oldest_id = next(iter(self._kernels))
-                self._remove_kernel(oldest_id)
-            
-            return kernel
-    
-    def _remove_kernel(self, request_id: str) -> None:
-        """Remove a kernel from cache and clean up memory."""
-        if request_id in self._kernels:
-            kernel = self._kernels.pop(request_id)
-            self._kernel_last_used.pop(request_id, None)
-            
-            try:
-                # Disable atexit operations to prevent history manager errors
-                if hasattr(kernel, 'atexit_operations'):
-                    kernel.atexit_operations = lambda: None
-                
-                # Close history manager database connection
-                if hasattr(kernel, 'history_manager'):
-                    try:
-                        if hasattr(kernel.history_manager, 'db'):
-                            kernel.history_manager.db.close()
-                    except:
-                        pass
-                
-                # Clear kernel namespace
-                if hasattr(kernel, 'user_ns'):
-                    kernel.user_ns.clear()
-                if hasattr(kernel, 'user_global_ns'):
-                    kernel.user_global_ns.clear()
-                
-                # Reset kernel state (skip if it would trigger history operations)
-                try:
-                    if hasattr(kernel, 'reset'):
-                        kernel.reset(new_session=False)
-                except:
-                    pass  # Ignore reset errors
-                    
-            except Exception as e:
-                logger.warning(f"Error cleaning up kernel {request_id}: {e}")
-            
-            # Force garbage collection
-            del kernel
-            gc.collect()
-            logger.info(f"Removed kernel for request_id: {request_id}")
-    
-    def _cleanup_worker(self) -> None:
-        """Background thread to clean up expired kernels."""
-        while True:
-            try:
-                time.sleep(60)  # Check every minute
-                current_time = time.time()
-                
-                with self._lock:
-                    expired_kernels = [
-                        request_id for request_id, last_used in self._kernel_last_used.items()
-                        if current_time - last_used > self.kernel_timeout
-                    ]
-                    
-                    for request_id in expired_kernels:
-                        self._remove_kernel(request_id)
-                        
-                    # Log memory usage periodically
-                    if expired_kernels:
-                        memory_mb = psutil.Process().memory_info().rss / 1024 / 1024
-                        logger.info(f"Cleaned up {len(expired_kernels)} kernels. Memory usage: {memory_mb:.1f}MB")
-                        
-            except Exception as e:
-                logger.error(f"Error in cleanup worker: {e}")
-    
-    def get_stats(self) -> Dict:
-        """Get current statistics about kernel usage."""
-        with self._lock:
-            memory_mb = psutil.Process().memory_info().rss / 1024 / 1024
-            return {
-                'active_kernels': len(self._kernels),
-                'max_kernels': self.max_kernels,
-                'memory_usage_mb': memory_mb,
-                'kernel_ids': list(self._kernels.keys())
-            }
-    
-    def cleanup_all(self) -> None:
-        """Clean up all kernels."""
-        with self._lock:
-            kernel_ids = list(self._kernels.keys())
-            for request_id in kernel_ids:
-                self._remove_kernel(request_id)
+def _ensure_ray_initialized():
+    """Initialize Ray once (in local mode by default)."""
+    if not ray.is_initialized():
+        # You can customize ray.init(...) as needed
+        ray.init(ignore_reinit_error=True, include_dashboard=False)
+        logger.info("Ray initialized")
+_ensure_ray_initialized()
 
 
-# Global kernel manager instance
-_kernel_manager = IPythonKernelManager()
-
-# Thread pool executor for running blocking code
-_executor = ThreadPoolExecutor(max_workers=_kernel_manager.max_workers)
-
-async def _execute_with_timeout_async(kernel: IPython.InteractiveShell, script: str, timeout: int) -> Tuple[any, bool, str]:
-    """Execute script with timeout using asyncio."""
-    
-    def _run_cell_sync():
-        """Synchronous execution wrapper."""
-        try:
-            result = kernel.run_cell(script, silent=False)
-            
-            # Check for execution errors
-            if result.error_before_exec:
-                return result, False, f"Error before execution: {result.error_before_exec}"
-            elif result.error_in_exec:
-                return result, False, f"Error during execution: {result.error_in_exec}"
-            else:
-                return result, True, ""
-        except Exception as e:
-            return None, False, f"Execution error: {str(e)}"
-    
-    try:
-        # Run in executor with timeout
-        loop = asyncio.get_event_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(_executor, _run_cell_sync),
-            timeout=timeout
-        )
-        return result
-    except asyncio.TimeoutError:
-        return None, False, f"Execution timeout after {timeout} seconds"
-    except Exception as e:
-        return None, False, f"Execution error: {str(e)}"
-
-
-def _execute_with_timeout(kernel: IPython.InteractiveShell, script: str, timeout: int) -> Tuple[any, bool, str]:
-    """Synchronous wrapper for async execution with timeout."""
-    try:
-        # Try to get existing event loop
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If loop is already running, we need to run in a new thread
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    lambda: asyncio.run(_execute_with_timeout_async(kernel, script, timeout))
-                )
-                return future.result()
-        else:
-            # Run in the existing loop
-            return loop.run_until_complete(_execute_with_timeout_async(kernel, script, timeout))
-    except RuntimeError:
-        # No event loop exists, create a new one
-        return asyncio.run(_execute_with_timeout_async(kernel, script, timeout))
-
-
-class NoInputAvailable(Exception):
-    """Raised when trying to read from stdin when no input is available"""
+class TimeoutException(Exception):
+    """Raised when execution times out"""
     pass
 
-class MockStdin:
-    """Mock stdin that raises an exception if no input is pre-written"""
-    def __init__(self):
-        self._buffer = StringIO()
-        self._has_content = False
+@contextmanager
+def time_limit(seconds):
+    """Context manager that raises TimeoutException after specified seconds"""
+    def signal_handler(signum, frame):
+        raise TimeoutException(f"Execution timed out after {seconds} seconds")
     
-    def write(self, content):
-        """Allow pre-writing content to stdin"""
-        self._buffer.write(content)
-        self._has_content = True
-        self._buffer.seek(0)  # Reset to beginning for reading
-    
-    def read(self, size=-1):
-        if not self._has_content:
-            raise NoInputAvailable("Cannot read from stdin: no input available")
-        return self._buffer.read(size)
-    
-    def readline(self, size=-1):
-        if not self._has_content:
-            raise NoInputAvailable("Cannot read from stdin: no input available")
-        return self._buffer.readline(size)
-    
-    def readlines(self, hint=-1):
-        if not self._has_content:
-            raise NoInputAvailable("Cannot read from stdin: no input available")
-        return self._buffer.readlines(hint)
-    
-    def __iter__(self):
-        if not self._has_content:
-            raise NoInputAvailable("Cannot read from stdin: no input available")
-        return iter(self._buffer)
-
-def call_python_script_with_ipython(request_id: str, script: str, timeout: int = 120, max_output_size: int = 100 * 1024) -> Tuple[str, bool]:
-    """
-    Execute a Python script using IPython and return the output.
-    Thread-safe with memory management and timeout protection.
-    
-    Args:
-        request_id: Unique identifier for the request
-        script: Python script to execute
-        timeout: Maximum execution time in seconds
+    # Set the signal handler and alarm
+    old_handler = signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        # Restore the old handler and cancel the alarm
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
         
-    Returns:
-        Tuple of (output, success) where success indicates if execution completed without error
+@ray.remote
+class KernelActor:
+    """
+    A Ray actor that owns a single IPython shell in its own process.
+
+    This gives:
+    - Per-request session state (variables persist across executes)
+    - No stdout/stderr conflicts with other actors
+    - True CPU parallelism (separate processes)
+    """
+
+    def __init__(self):
+
+        c = Config()
+        c.HistoryManager.enabled = False
+        shell = TerminalInteractiveShell(colors='NoColor', config=c)
+
+        # Disable history to save memory
+        shell.history_manager.enabled = False
+        shell.cache_size = 1000
+
+        # Optional: non-interactive backend for matplotlib
+        try:    
+            import matplotlib
+            matplotlib.use('Agg')
+        except Exception:
+            pass
+
+        self.shell = shell
+
+    def execute(self, script: str, max_output_size: int = 100 * 1024, timeout: int = 120) -> Tuple[str, bool]:
+        """
+        Run a script in this actor's IPython shell, capturing stdout/stderr.
+        
+        Timeout is enforced within the actor using SIGALRM (Unix/Linux only).
+        """
+        if not isinstance(script, str) or not script.strip():
+            return "Error: script must be a non-empty string", False
+
+        stdout_capture = StringIO()
+        stderr_capture = StringIO()
+        success = True
+
+        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+            try:
+                with time_limit(timeout):
+                    result = self.shell.run_cell(script, silent=False)
+
+                    # Check for errors in IPython's execution result
+                    if result is not None:
+                        if getattr(result, "error_before_exec", None):
+                            print(result.error_before_exec, file=sys.stderr)
+                            success = False
+                        if getattr(result, "error_in_exec", None):
+                            print(result.error_in_exec, file=sys.stderr)
+                            success = False
+
+                        # If there's a Python-level result, print it to stdout
+                        if getattr(result, "result", None) is not None:
+                            print(result.result)
+            except TimeoutException as e:
+                print(f"\n{str(e)}", file=sys.stderr)
+                success = False
+            except Exception as e:
+                print(e, file=sys.stderr)
+                success = False
+
+        stdout_output = stdout_capture.getvalue()
+        stderr_output = stderr_capture.getvalue()
+
+        # Replace site-packages path if desired (mirror your old behavior)
+        stdout_output = stdout_output.replace(site_packages_dir, "/lib/python3.10/site-packages")
+        stderr_output = stderr_output.replace(site_packages_dir, "/lib/python3.10/site-packages")
+        
+        if "TimeoutException" in stderr_output:
+            print(f"Filtered traceback for timeout in {file_abs_path}")
+            # On timeout, we remove the lines in the traceback that contain this file's path
+            filtered_lines = stderr_output.splitlines()
+            idx = None
+            for i, line in enumerate(filtered_lines):
+                if file_abs_path in line:
+                    idx = i
+                    break
+            if idx is not None:
+                # Keep lines before the first occurrence of our file path
+                filtered_lines = filtered_lines[:idx]
+            stderr_output = "\n".join(filtered_lines)
+        if "TimeoutException" in stdout_output:
+            filtered_lines = stdout_output.splitlines()
+            idx = None
+            for i, line in enumerate(filtered_lines):
+                if file_abs_path in line:
+                    idx = i
+                    break
+            if idx is not None:
+                # Keep lines before the first occurrence of our file path
+                filtered_lines = filtered_lines[:idx]
+            stdout_output = "\n".join(filtered_lines)
+
+        if success:
+            output = stdout_output.strip()
+        else:
+            # On error, include both stdout and stderr
+            combined = stdout_output
+            if stderr_output:
+                if combined and not combined.endswith("\n"):
+                    combined += "\n"
+                combined += stderr_output
+            output = combined.strip()
+
+        return output[:max_output_size], success
+
+    def reset(self):
+        """Optional: clear namespace if you want."""
+        try:
+            if hasattr(self.shell, "user_ns"):
+                self.shell.user_ns.clear()
+            if hasattr(self.shell, "user_global_ns"):
+                self.shell.user_global_ns.clear()
+            if hasattr(self.shell, "reset"):
+                self.shell.reset(new_session=False)
+        except Exception as e:
+            print(f"Error resetting shell: {e}", file=sys.stderr)
+    
+    def get_namespace_info(self) -> dict:
+        """Return information about the current namespace."""
+        return {
+            'user_variables': list(self.shell.user_ns.keys()),
+            'user_globals': list(self.shell.user_global_ns.keys()) if hasattr(self.shell, 'user_global_ns') else [],
+            'builtin_count': len([k for k in self.shell.user_ns.keys() if k.startswith('_')])
+        }
+
+    def get_variable_names(self) -> list:
+        """Return all non-builtin variable names."""
+        return [k for k in self.shell.user_ns.keys() if not k.startswith('_')]
+
+
+def _get_actor(request_id: str) -> "ray.actor.ActorHandle":
+    """LRU get/create a Ray actor for a given request_id."""
+    with _actor_lock:
+        if request_id in _actor_cache:
+            actor = _actor_cache[request_id]
+            # actor = _actor_cache.pop(request_id)
+            # Move to end (most recently used)
+            # _actor_cache[request_id] = actor
+            return actor
+
+        # Create new actor
+        actor = KernelActor.remote()
+        _actor_cache[request_id] = actor
+        logger.info(f"Created new KernelActor for request_id={request_id}")
+
+        # LRU eviction if too many actors
+        if len(_actor_cache) > MAX_ACTORS:
+            old_id, old_actor = _actor_cache.popitem(last=False)
+            logger.info(f"Evicting KernelActor for request_id={old_id}")
+            try:
+                ray.kill(old_actor)
+            except Exception as e:
+                logger.warning(f"Error killing old actor {old_id}: {e}")
+
+        return actor
+
+
+async def call_python_script_with_ipython_async(
+    request_id: str,
+    script: str,
+    timeout: int = 120,
+    max_output_size: int = 100 * 1024,
+) -> Tuple[str, bool]:
+    """
+    Execute a Python script using a Ray-backed IPython actor and return (output, success).
+
+    - request_id: identifies which actor/kernel/session to use.
+    - script: code to run.
+    - timeout: max time in seconds for this call; enforced via ray.get(..., timeout).
+    - max_output_size: truncate output to this many bytes.
     """
     if not isinstance(request_id, str) or not request_id.strip():
         return "Error: request_id must be a non-empty string", False
-    script = script.replace("sys.stdin.buffer.read()", "sys.stdin.read()") # in case model uses buffer read which we don't support
+
+    # In case model uses stdin.buffer.read (not supported)
+    script = script.replace("sys.stdin.buffer.read()", "sys.stdin.read()")
     if not isinstance(script, str) or not script.strip():
         return "Error: script must be a non-empty string", False
-    
-    try:
-        kernel = _kernel_manager.get_kernel(request_id)
-        
-        # Capture stdout and stderr
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        
-        # Capture both stdout and stderr
-        stdout_capture = StringIO()
-        stderr_capture = StringIO()
-        
-        # Execute with timeout protection
-        success = True
-        
-        
-        
-        try:
-            sys.stdout = stdout_capture
-            sys.stderr = stderr_capture
-            
-            # Execute the code
-            result, success, error_output = _execute_with_timeout(kernel, script, timeout)
-            
-            # Get captured output
-            stdout_output = stdout_capture.getvalue()
-            stderr_output = stderr_capture.getvalue()
-            
-            # Check for errors
-            has_error = not result.success if result else True
-            if result and result.error_before_exec:
-                stderr_output += str(result.error_before_exec) + '\n'
-            if result and result.error_in_exec:
-                stderr_output += str(result.error_in_exec) + '\n'
-            
-            # If there's a result to display, add it to stdout
-            if result and result.result is not None:
-                stdout_output += str(result.result) + '\n'
-                
-        except Exception as e:
-            stdout_output = stdout_capture.getvalue()
-            stderr_output = stderr_capture.getvalue() + str(e) + '\n'
-            has_error = True
-        
-        finally:
-            # Restore original streams
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-        
-        if not result:
-            output = error_output
-        else:
-            output = stdout_output.rstrip('\n')
-        return output[:max_output_size], success
 
-    except Exception as e:
-        logger.error(f"Failed to execute script for {request_id}: {e}")
-        return f"System error: {str(e)}", False
+    actor = _get_actor(request_id)
+
+    loop = asyncio.get_event_loop()
+
+    def _run():
+        # Run the actor execute() with a timeout enforced by ray.get
+        future = actor.execute.remote(script, max_output_size, timeout)
+        try:
+            return ray.get(future, timeout=timeout+120)  # Allow some buffer time
+        except GetTimeoutError:
+            # Kill the actor on timeout and evict from cache
+            logger.warning(f"Execution timeout for request_id={request_id} after {timeout} seconds")
+            try:
+                ray.kill(actor)
+            except Exception as e:
+                logger.warning(f"Error killing actor on timeout: {e}")
+            with _actor_lock:
+                _actor_cache.pop(request_id, None)
+            return f"Execution timeout after {timeout} seconds", False
+
+    output, success = await loop.run_in_executor(None, _run)
+    
+    return output[:max_output_size], success
+
+def call_python_script_with_ipython(
+    request_id: str,
+    script: str,
+    timeout: int = 120,
+    max_output_size: int = 100 * 1024,
+) -> Tuple[str, bool]:
+    """Synchronous wrapper around the async version."""
+    output, success = asyncio.run(
+        call_python_script_with_ipython_async(
+            request_id, script, timeout, max_output_size
+        )
+    )
+    # actor = _get_actor(request_id)
+    # name_space_info = actor.get_namespace_info.remote()
+    # variable_names = actor.get_variable_names.remote()
+    # name_space_info = ray.get(name_space_info)
+    # variable_names = ray.get(variable_names)
+    # debug_file = Path(f"debug_ipython/{request_id}.txt")
+    # debug_file.parent.mkdir(parents=True, exist_ok=True)
+    # with debug_file.open("a+") as f:
+    #     f.write(f"\n\n==== {time.strftime('%Y-%m-%d %H:%M:%S')} ====\n")
+    #     f.write(f"----"* 20 + "\n")
+    #     f.write(f"kernel stats: {get_kernel_stats()}\n")
+    #     f.write(f"Actor: {actor}\n")
+    #     f.write(f"Script executed:\n{script}\n")
+    #     f.write(f"----"* 20 + "\n")
+    #     f.write(f"Output:\n{output}\n")
+    #     f.write(f"Success: {success}\n")
+    #     f.write(f"Namespace info: {name_space_info}\n")
+    #     f.write(f"Variable names: {variable_names}\n")
+    #     f.write(f"----"* 20 + "\n")
+    return output[:max_output_size], success
 
 def get_kernel_stats() -> Dict:
-    """Get current kernel manager statistics."""
-    return _kernel_manager.get_stats()
+    """Get simple stats about current actor usage."""
+    with _actor_lock:
+        memory_mb = psutil.Process().memory_info().rss / 1024 / 1024
+        return {
+            "active_kernels": len(_actor_cache),
+            "max_kernels": MAX_ACTORS,
+            "memory_usage_mb": memory_mb,
+            "kernel_ids": list(_actor_cache.keys()),
+        }
 
 
 def cleanup_all_kernels() -> None:
-    """Clean up all cached kernels."""
-    _kernel_manager.cleanup_all()
-    
+    """Kill all actors and clear the cache."""
+    with _actor_lock:
+        ids = list(_actor_cache.keys())
+        for rid in ids:
+            actor = _actor_cache.pop(rid, None)
+            if actor is not None:
+                try:
+                    ray.kill(actor)
+                except Exception as e:
+                    logger.warning(f"Error killing actor {rid}: {e}")
+        gc.collect()
+        logger.info("Cleaned up all KernelActors")
+
+
 def remove_kernel(request_id: str) -> None:
     """Remove a specific kernel by request_id."""
-    _kernel_manager._remove_kernel(request_id)
+    with _actor_lock:
+        actor = _actor_cache.pop(request_id, None)
+    if actor is not None:
+        try:
+            ray.kill(actor)
+        except Exception as e:
+            logger.warning(f"Error killing actor {request_id}: {e}")
+        gc.collect()
+        logger.info(f"Removed KernelActor for request_id={request_id}")
 
 
 # Example usage and configuration
 if __name__ == "__main__":
-    # Configure logging
     logging.basicConfig(level=logging.INFO)
-    
-    # Example usage
+
+    # Simple hello world
     result, success = call_python_script_with_ipython("test1", "print('Hello World')")
-    print(f"Result: {result}, Success: {success}")
+    print(f"[test1] Result: {result!r}, Success: {success}")
+
+    # Define a variable and reuse the same request_id to check state persistence
+    call_python_script_with_ipython("test1", "x = 41")
+    result, success = call_python_script_with_ipython("test1", "x + 1")
+    print(f"[test1] State test: {result!r}, Success: {success}")
+
+    # Timeout test: this should kill the actor for 'test2'
+    result, success = call_python_script_with_ipython(
+        "test2",
+        "a=1\nimport time\nwhile True: time.sleep(1)",
+        timeout=2,
+    )
+    print(f"[test2] Timeout test - Result: {result!r}, Success: {success}")
     
-    # Test timeout functionality
-    result, success = call_python_script_with_ipython("test2", "import time; time.sleep(5)", timeout=2)
-    print(f"Timeout test - Result: {result}, Success: {success}")
-    
-    # Check stats
+    # Timeout test: this should kill the actor for 'test2'
+    result, success = call_python_script_with_ipython(
+        "test2",
+        "print(a)",
+        timeout=2,
+    )
+    print(f"[test3] Timeout test - Result: {result!r}, Success: {success}")
+
+    # Stats
     stats = get_kernel_stats()
     print(f"Stats: {stats}")
+
+    # Cleanup
+    cleanup_all_kernels()
