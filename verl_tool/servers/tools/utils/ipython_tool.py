@@ -140,41 +140,19 @@ class KernelActor:
         stdout_output = stdout_output.replace(site_packages_dir, "/lib/python3.10/site-packages")
         stderr_output = stderr_output.replace(site_packages_dir, "/lib/python3.10/site-packages")
         
-        if "TimeoutException" in stderr_output:
-            print(f"Filtered traceback for timeout in {file_abs_path}")
-            # On timeout, we remove the lines in the traceback that contain this file's path
-            filtered_lines = stderr_output.splitlines()
-            idx = None
-            for i, line in enumerate(filtered_lines):
-                if file_abs_path in line:
-                    idx = i
-                    break
-            if idx is not None:
-                # Keep lines before the first occurrence of our file path
-                filtered_lines = filtered_lines[:idx]
-            stderr_output = "\n".join(filtered_lines)
-        if "TimeoutException" in stdout_output:
-            filtered_lines = stdout_output.splitlines()
-            idx = None
-            for i, line in enumerate(filtered_lines):
-                if file_abs_path in line:
-                    idx = i
-                    break
-            if idx is not None:
-                # Keep lines before the first occurrence of our file path
-                filtered_lines = filtered_lines[:idx]
-            stdout_output = "\n".join(filtered_lines)
-
-        if success:
-            output = stdout_output.strip()
+        if "TimeoutException" in stderr_output or "TimeoutException" in stdout_output:
+            output = f"Execution timed out after {timeout} seconds"
         else:
-            # On error, include both stdout and stderr
-            combined = stdout_output
-            if stderr_output:
-                if combined and not combined.endswith("\n"):
-                    combined += "\n"
-                combined += stderr_output
-            output = combined.strip()
+            if success:
+                output = stdout_output.strip()
+            else:
+                # On error, include both stdout and stderr
+                combined = stdout_output
+                if stderr_output:
+                    if combined and not combined.endswith("\n"):
+                        combined += "\n"
+                    combined += stderr_output
+                output = combined.strip()
 
         return output[:max_output_size], success
 
@@ -216,7 +194,7 @@ def _get_actor(request_id: str) -> "ray.actor.ActorHandle":
         # Create new actor
         actor = KernelActor.remote()
         _actor_cache[request_id] = actor
-        logger.info(f"Created new KernelActor for request_id={request_id}")
+        logger.debug(f"Created new KernelActor for request_id={request_id}")
 
         # LRU eviction if too many actors
         if len(_actor_cache) > MAX_ACTORS:

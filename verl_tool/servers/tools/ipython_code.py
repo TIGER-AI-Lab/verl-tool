@@ -8,7 +8,7 @@ import requests
 import atexit
 import socket
 import logging
-from .utils.ipython_tool import call_python_script_with_ipython
+from .utils.ipython_tool import call_python_script_with_ipython, remove_kernel
 logger = logging.getLogger(__name__)
 
 # Timeout for code execution in seconds
@@ -268,15 +268,15 @@ class IPythonTool(BaseTool):
         super().__init__(**kwargs)
         
         # Initialize server manager if not already done (singleton pattern)
-        if IPythonTool._server_manager is None:
-            logger.info("Initializing IPython HTTP server...")
-            IPythonTool._server_manager = IPythonServerManager(
-                host=server_host,
-                port=server_port
-            )
+        # if IPythonTool._server_manager is None:
+        #     logger.info("Initializing IPython HTTP server...")
+        #     IPythonTool._server_manager = IPythonServerManager(
+        #         host=server_host,
+        #         port=server_port
+        #     )
         
-        self.server = IPythonTool._server_manager
-        logger.info(f"IPythonTool initialized with server at {self.server.base_url}")
+        # self.server = IPythonTool._server_manager
+        # logger.info(f"IPythonTool initialized with server at {self.server.base_url}")
     
     def get_usage_inst(self):
         return "You are able to write and execute Python code using IPython with persistent state across executions."
@@ -330,7 +330,8 @@ class IPythonTool(BaseTool):
             del self.env_cache[trajectory_id]
         
         # Remove kernel via HTTP
-        self.server.remove_kernel(trajectory_id)
+        # self.server.remove_kernel(trajectory_id)
+        remove_kernel(trajectory_id)
     
     def parse_action(self, action: str) -> Tuple[str, bool]:
         """
@@ -459,15 +460,6 @@ class IPythonTool(BaseTool):
         self.save_env(trajectory_id, env)
         
         return observation, done, valid
-    
-    def get_server_stats(self):
-        """
-        Get server statistics.
-        
-        Returns:
-            Dictionary with server statistics
-        """
-        return self.server.get_stats()
     
     @classmethod
     def shutdown_server(cls):

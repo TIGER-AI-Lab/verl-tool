@@ -290,7 +290,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         use_tool = kwargs.get("use_tool", self.agent_config.enable_agent)
 
         metrics = {}
-        request_id = kwargs.get("traj_ids", uuid4().hex)
+        request_id = str(uuid4().hex)
         
         stats_dict = {
             "num_turns": 0,
@@ -338,10 +338,10 @@ class VerlToolAgentLoop(AgentLoopBase):
             # agent_sampling_params["max_new_tokens"] = max_tokens_for_this_turn # for sglang
             with simple_timer("generate_sequences", metrics):
                 output = await self.server_manager.generate(
-                    request_id=request_id, prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
-                )
+                    request_id=str(uuid4().hex), prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
+                ) # request_id here should be unique for each generate call, otherwise vllm can generate empty response
                 if output.text.strip() == "":
-                    logger.info(f"Turn {step}: Generated empty response for traj_id={request_id}. prompt_ids length: {len(running_prompt_ids)}")
+                    logger.warning(f"Turn {step}: Generated empty response for traj_id={request_id}. prompt_ids length: {len(running_prompt_ids)}")
             gen_ids = output.token_ids
             gen_logprobs = output.log_probs or [0.0] * len(gen_ids)
             gen_text = output.text
@@ -349,11 +349,6 @@ class VerlToolAgentLoop(AgentLoopBase):
             response_mask.extend([1] * len(gen_ids))
             response_logprobs.extend(gen_logprobs)
             
-            if not use_tool:
-                # only one turn generation
-                stats_dict["is_traj_finished"] = True
-                traj_stop_reason = "no_tool_used"
-                break
             
             stats_dict["num_turns"] += 1
             stats_dict["action_lengths"].append(len(gen_ids))
@@ -361,9 +356,16 @@ class VerlToolAgentLoop(AgentLoopBase):
             if gen_text.strip() == "":
                 stats_dict["empty_responses"] += 1
             
-            # judge whether to interact with tool or finish
             finish_reason = output.finish_reason
             stop_reason = output.stop_reason
+            
+            if not use_tool:
+                # only one turn generation
+                stats_dict["is_traj_finished"] = True
+                traj_stop_reason = f"no_tool-{finish_reason}"
+                break
+            
+            # judge whether to interact with tool or finish
             do_action = False
             action_text = ""
             if finish_reason == "stop" and stop_reason:

@@ -870,7 +870,6 @@ class AgentLoopManager:
             )
         if self.config.actor_rollout_ref.rollout.free_cache_engine:
             self.wake_up()
-        prompts.non_tensor_batch["traj_ids"] = np.array([str(uuid.uuid4()) for _ in range(len(prompts.batch))], dtype=object)
         chunkes = prompts.chunk(len(self.agent_loop_workers))
         outputs = ray.get(
             [
