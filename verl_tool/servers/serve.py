@@ -13,7 +13,7 @@ import fire
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 import concurrent.futures
 
 from .utils import hash_requests
@@ -31,22 +31,27 @@ DEBUG=False
 # === MODELS ===
 class ActionRequest(BaseModel):
     """Model for incoming action requests with validation"""
-    trajectory_ids: List[str] = Field(..., min_items=1)
-    actions: List[str] = Field(..., min_items=1)
+    trajectory_ids: List[str] = Field(..., min_length=1)
+    actions: List[str] = Field(..., min_length=1)
     extra_fields: Optional[List[Dict[str, Any]]] = None
     finish: Optional[List[bool]] = None
     is_last_step: Optional[List[bool]] = None
 
-    @validator('actions')
-    def validate_actions_length(cls, v, values):
-        if 'trajectory_ids' in values and len(v) != len(values['trajectory_ids']):
+    @field_validator('actions')
+    @classmethod
+    def validate_actions_length(cls, v, info: ValidationInfo):
+        trajectory_ids = info.data.get('trajectory_ids')
+        if trajectory_ids and len(v) != len(trajectory_ids):
             raise ValueError("Length of actions must match trajectory_ids")
         return v
 
-    @validator('extra_fields')
-    def validate_extra_fields_length(cls, v, values):
-        if v is not None and 'trajectory_ids' in values and len(v) != len(values['trajectory_ids']):
-            raise ValueError("Length of extra_fields must match trajectory_ids")
+    @field_validator('extra_fields')
+    @classmethod
+    def validate_extra_fields_length(cls, v, info: ValidationInfo):
+        if v is not None:
+            trajectory_ids = info.data.get('trajectory_ids')
+            if trajectory_ids and len(v) != len(trajectory_ids):
+                raise ValueError("Length of extra_fields must match trajectory_ids")
         return v
 
 

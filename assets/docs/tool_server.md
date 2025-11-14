@@ -39,7 +39,7 @@ host=localhost
 port=5000
 tool_type=ipython_code # separate by comma if you want to start multiple tool servers
 workers_per_tool=4 # number of workers for the tool server, meaning how many threads will be used to handle a single tool request with multiple trajectories
-python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray=False & # run in background
+python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray=True & # run in background
 ```
 
 After running, you should see the following output. Tools marked with 🟢 are active, while those marked with ⚪ are inactive. The `finish` tool is always added to manage the end of each trajectory (e.g., delete environment state):

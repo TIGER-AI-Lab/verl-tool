@@ -75,4 +75,7 @@ python_code_dep = [
     "scipy",
     "sympy",
     "tqdm",
+    "pulp",
+    "shapely",
+    "ortools",
 ]

@@ -69,181 +69,6 @@ def find_free_port(start_port: int = 8000, max_attempts: int = 100) -> int:
             continue
     raise RuntimeError(f"Could not find free port after {max_attempts} attempts")
 
-
-server_process = None
-
-def _start_server(host: str, port: int, base_url: str):
-    """Start the FastAPI server as a subprocess."""
-    try:
-        # Start the server process
-        server_process = subprocess.Popen(
-            [
-                "python", "-m", "uvicorn",
-                "verl_tool.servers.tools.utils.ipython_server:app",
-                "--host", host,
-                "--port", str(port),
-                "--log-level", "warning"  # Reduce log verbosity
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        ) # python -m uvicorn verl_tool.servers.tools.utils.ipython_server:app --host 0.0.0.0 --port 8000
-        
-        # Wait for server to be ready
-        max_retries = 30
-        for i in range(max_retries):
-            try:
-                response = requests.get(f"{base_url}/health", timeout=1)
-                if response.status_code == 200:
-                    logger.info(f"IPython server started successfully at {base_url}")
-                    return
-            except requests.exceptions.RequestException:
-                time.sleep(0.5)
-        
-        raise RuntimeError(f"Server failed to start after {max_retries} retries")
-        
-    except Exception as e:
-        logger.error(f"Failed to start IPython server: {e}")
-        if server_process:
-            server_process.kill()
-        raise
-    
-    
-def shutdown():
-    """Shutdown the server subprocess."""
-    if server_process:
-        try:
-            logger.info("Shutting down IPython server...")
-            server_process.terminate()
-            try:
-                server_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                logger.warning("Server did not terminate gracefully, killing...")
-                server_process.kill()
-                server_process.wait()
-            logger.info("IPython server shut down successfully")
-        except Exception as e:
-            logger.error(f"Error shutting down server: {e}")
-            
-atexit.register(shutdown)
-
-class IPythonServerManager:
-    """Manages the IPython HTTP server subprocess."""
-    
-    def __init__(self, host: str = "127.0.0.1", port: int = None):
-        """
-        Initialize and start the IPython server.
-        
-        Args:
-            host: Host to bind the server to
-            port: Port to use (if None, will find a free port)
-        """
-        self.host = host
-        self.port = port if port is not None else find_free_port()
-        self.base_url = f"http://{self.host}:{self.port}"
-        if not self.is_healthy():
-            _start_server(self.host, self.port, self.base_url)
-        
-    def call_python_script(self, request_id: str, script: str, timeout: int = 120, max_retry=1) -> Tuple[str, bool]:
-        """
-        Execute Python script via HTTP API.
-        
-        Args:
-            request_id: Unique identifier for the request
-            script: Python script to execute
-            timeout: Execution timeout in seconds
-            
-        Returns:
-            Tuple of (output, success)
-        """
-        num_retried = 0
-        while num_retried < max_retry:
-            num_retried += 1
-            try:
-                response = requests.post(
-                    f"{self.base_url}/execute",
-                    json={
-                        "request_id": request_id,
-                        "script": script,
-                        "timeout": timeout
-                    },
-                    timeout=3*timeout + 60 # HTTP timeout slightly longer than execution timeout
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                return result["output"], result["success"]
-                
-            except requests.exceptions.Timeout:
-                if num_retried < max_retry:
-                    logger.warning(f"Timeout executing script for {request_id}, retrying ({num_retried}/{max_retry})...")
-                    time.sleep(1)
-                    continue
-                return f"HTTP request timeout after {timeout} seconds", False
-            except requests.exceptions.RequestException as e:
-                if num_retried < max_retry:
-                    logger.warning(f"HTTP request error for {request_id}: {e}, retrying ({num_retried}/{max_retry})...")
-                    time.sleep(1)
-                    continue
-                logger.error(f"HTTP request failed for {request_id}: {e}")
-                return f"HTTP request failed: {str(e)}", False
-            except Exception as e:
-                logger.error(f"Unexpected error for {request_id}: {e}")
-                return f"Unexpected error: {str(e)}", False
-    
-    def remove_kernel(self, request_id: str) -> bool:
-        """
-        Remove a kernel via HTTP API.
-        
-        Args:
-            request_id: Identifier of the kernel to remove
-            
-        Returns:
-            Boolean indicating success
-        """
-        try:
-            response = requests.delete(
-                f"{self.base_url}/kernel/{request_id}",
-                timeout=5
-            )
-            response.raise_for_status()
-            logger.info(f"Removed kernel: {request_id}")
-            return True
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to remove kernel {request_id}: {e}")
-            return False
-    
-    def get_stats(self) -> dict:
-        """
-        Get kernel statistics via HTTP API.
-        
-        Returns:
-            Dictionary with statistics
-        """
-        try:
-            response = requests.get(f"{self.base_url}/stats", timeout=5)
-            response.raise_for_status()
-            return response.json()
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to get stats: {e}")
-            return {}
-    
-    def is_healthy(self) -> bool:
-        """
-        Check if the server is healthy.
-        
-        Returns:
-            Boolean indicating server health
-        """
-        try:
-            response = requests.get(f"{self.base_url}/health", timeout=2)
-            return response.status_code == 200
-        except:
-            return False
-
-
 @register_tool
 class IPythonTool(BaseTool):
     tool_type = "ipython_code"
@@ -253,12 +78,8 @@ class IPythonTool(BaseTool):
     done_without_error = False
     pre_import_lib = False
     
-    # Class-level server manager (shared across instances)
-    _server_manager = None
-    
     def __init__(self, server_host: str = "127.0.0.1", server_port: int = None, **kwargs):
         """
-        Initialize the IPythonTool with HTTP server.
         
         Args:
             server_host: Host for the IPython server
@@ -266,17 +87,6 @@ class IPythonTool(BaseTool):
             **kwargs: Additional arguments passed to BaseTool
         """
         super().__init__(**kwargs)
-        
-        # Initialize server manager if not already done (singleton pattern)
-        # if IPythonTool._server_manager is None:
-        #     logger.info("Initializing IPython HTTP server...")
-        #     IPythonTool._server_manager = IPythonServerManager(
-        #         host=server_host,
-        #         port=server_port
-        #     )
-        
-        # self.server = IPythonTool._server_manager
-        # logger.info(f"IPythonTool initialized with server at {self.server.base_url}")
     
     def get_usage_inst(self):
         return "You are able to write and execute Python code using IPython with persistent state across executions."
@@ -329,8 +139,6 @@ class IPythonTool(BaseTool):
         if trajectory_id in self.env_cache:
             del self.env_cache[trajectory_id]
         
-        # Remove kernel via HTTP
-        # self.server.remove_kernel(trajectory_id)
         remove_kernel(trajectory_id)
     
     def parse_action(self, action: str) -> Tuple[str, bool]:
@@ -376,7 +184,7 @@ class IPythonTool(BaseTool):
     
     def conduct_action(self, trajectory_id, action, extra_field):
         """
-        Execute the parsed action using IPython via HTTP.
+        Execute the parsed action using IPython
         
         Args:
             trajectory_id: ID for tracking the action
@@ -409,8 +217,6 @@ class IPythonTool(BaseTool):
             else:
                 code_to_execute = parsed_action
             
-            # Call via HTTP instead of direct function call
-            # stdout, success = self.server.call_python_script(
             stdout, success = call_python_script_with_ipython(
                 request_id=trajectory_id,
                 script=code_to_execute,

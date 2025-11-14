@@ -91,6 +91,18 @@ def verify_format_and_extract(output: str, action_list: list) -> Tuple[str, bool
     """
     is_correct_format = True
     # verify the <solution> tags in the last action
+    
+    # fallback: in verltool 0.6.0 the new agentloop only record tool_interact_info as actions in action list 
+    # when do_action=True, add extra parsing logic here to avoid indexing errors during regex parsing
+    if not action_list:
+        solution, found_solution = parse_action(output, "solution")
+    
+        if not found_solution:
+            solution, found_solution = parse_action(output, "sql")
+            
+        return solution, False    
+        
+    
     if not re.search(rf"{SOLUTION_START}.*?{SOLUTION_END}", action_list[-1], re.S):
         is_correct_format = False
 
@@ -184,15 +196,6 @@ class SQLCoderRewardManager:
                     reward = score
 
             reward_tensor[i, valid_response_length_i - 1] = reward
-
-        # Check for additional trajectory statistics if available
-        if "turns_stats" in data.non_tensor_batch:
-            num_turn = data.non_tensor_batch["turns_stats"]
-            num_valid_action = data.non_tensor_batch["valid_action_stats"]
-            is_active = data.non_tensor_batch["active_mask"]
-            is_done = [not is_active[i] for i in range(len(is_active))]
-
-        data_source = data.non_tensor_batch[self.reward_fn_key]
             
         if return_dict:
             return {
