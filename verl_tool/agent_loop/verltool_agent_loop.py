@@ -142,6 +142,9 @@ class VerlToolAgentLoop(AgentLoopBase):
                 messages = [{"role": "system", "content": "{obs}"}]
                 cls.agent_config.mtrl_sep = cls.agent_config.turn_end_token + "\n" + cls.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 cls.agent_config.mtrl_sep = cls.agent_config.mtrl_sep.replace("system", cls.agent_config.mtrl_role)
+                cls.mtrl_sep_prefix, cls.mtrl_sep_suffix = cls.agent_config.mtrl_sep.split("{obs}")
+                cls.mtrl_sep_prefix_ids = cls.tokenizer.encode(cls.mtrl_sep_prefix)
+                cls.mtrl_sep_suffix_ids = cls.tokenizer.encode(cls.mtrl_sep_suffix)
             cls.enable_mtrl = cls.agent_config.enable_mtrl
             cls.mtrl_sep = cls.agent_config.mtrl_sep
             cls.max_action_length = cls.agent_config.max_action_length if cls.agent_config.max_action_length is not None else 0
@@ -401,11 +404,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                         num_image_tags = len(decoded_images)
                     # now replace <image> tags with image placeholder tokens
                     obs_text = obs_text.replace("<image>", self.qwen_image_placeholder, num_image_tags)
-                    # for mtrl
-                    if self.enable_mtrl:
-                        obs_text = self.mtrl_sep.format(obs=obs_text)
                     obs_token_ids = self.processor(text=[obs_text], images=decoded_images, return_tensors="pt")["input_ids"].squeeze(0).tolist()
-                    # obs_token_ids = obs_token_ids[:max_obs_length]
                     if max_obs_length < len(obs_token_ids):
                         if self.agent_config.truncate_obs_side == 'left':
                             truncation_index = max_obs_length
@@ -419,8 +418,6 @@ class VerlToolAgentLoop(AgentLoopBase):
                         else:
                             raise NotImplementedError(f"Only left truncation is supported for multimodal observations for now.")
                 else:
-                    if self.enable_mtrl:
-                        obs_text = self.mtrl_sep.format(obs=obs_text)
                     obs_token_ids = self.tokenizer.encode(obs_text)
                     if max_obs_length < len(obs_token_ids):
                         if self.agent_config.truncate_obs_side == 'left':
@@ -434,7 +431,9 @@ class VerlToolAgentLoop(AgentLoopBase):
                             obs_token_ids = obs_token_ids[:half_len] + self.tokenizer.encode("...(truncated)...") + obs_token_ids[-half_len:]
                         else:
                             raise ValueError(f"Invalid truncate_obs_side: {self.agent_config.truncate_obs_side}")
-                    
+                
+                if self.enable_mtrl:
+                    obs_token_ids = self.mtrl_sep_prefix_ids + obs_token_ids + self.mtrl_sep_suffix_ids
                 # update stats
                 stats_dict["obs_lengths"].append(len(obs_token_ids))
                 if 'reward' in tool_results and tool_results['reward'] is not None:
