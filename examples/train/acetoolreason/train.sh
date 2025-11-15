@@ -1,8 +1,8 @@
 set -x
 train_data=data/math_rl/train_all.parquet
-val_data=data/math_rl/test_all.parquet
-# val_data=[data/math_rl/test_no_tool_aime24.parquet,\
-# data/math_rl/test_no_tool_aime25.parquet,\
+# val_data=data/math_rl/test_all.parquet
+val_data=[data/math_rl/test_no_tool_aime24.parquet,\
+data/math_rl/test_no_tool_aime25.parquet]
 # data/math_rl/test_tool_aime24.parquet,\
 # data/math_rl/test_tool_aime25.parquet]
 model_name=models/wenliang_nemotron_8b_hybrid_tool_mix_v1_sft_5500_step

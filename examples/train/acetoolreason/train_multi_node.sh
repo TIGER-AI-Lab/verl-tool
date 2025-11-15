@@ -304,9 +304,9 @@ echo "Ray cluster is ready with all $NUM_ACTORS workers connected!"
 work_dir=$CONTAINER_WORKDIR
 train_data=$CONTAINER_WORKDIR/data/math_rl/train_all.parquet
 val_data=[$CONTAINER_WORKDIR/data/math_rl/test_no_tool_aime24.parquet,\
-$CONTAINER_WORKDIR/data/math_rl/test_no_tool_aime25.parquet,\
-$CONTAINER_WORKDIR/data/math_rl/test_tool_aime24.parquet,\
-$CONTAINER_WORKDIR/data/math_rl/test_tool_aime25.parquet]
+$CONTAINER_WORKDIR/data/math_rl/test_no_tool_aime25.parquet]
+# $CONTAINER_WORKDIR/data/math_rl/test_tool_aime24.parquet,\
+# $CONTAINER_WORKDIR/data/math_rl/test_tool_aime25.parquet]
 
 model_name=$CONTAINER_WORKDIR/models/wenliang_nemotron_8b_hybrid_tool_mix_v1_sft_5500_step
 rl_alg=grpo
@@ -316,14 +316,14 @@ n=8
 batch_size=128
 ppo_mini_batch_size=$batch_size
 max_prompt_length=4096
-max_action_length=30000
-max_response_length=30000
+max_action_length=60000
+max_response_length=60000
 max_obs_length=2048
 temperature=1.0
 top_p=1.0
 val_temperature=0.6
 val_top_p=0.95
-val_n=4
+val_n=8
 enable_agent=True
 strategy="fsdp"
 action_stop_tokens='</tool_call>'
@@ -347,13 +347,13 @@ enable_prefix_caching=False
 mask_observations=True
 enable_mtrl=True
 model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="-math-rl-v1-multi-node"
+run_name_postfix="-math-rl-v1-multi-node-debug-no-tool"
 if [ "$enable_agent" = "True" ]; then
-    run_name="acereasontool-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="acetoolreason-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
-    run_name="acereasontool-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="acetoolreason-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 fi
-checkpoint_dir=$CONTAINER_WORKDIR/checkpoints/${reward_manager}/${run_name}
+checkpoint_dir=$CONTAINER_WORKDIR/checkpoints/acetoolreason/${run_name}
 
 export NCCL_DEBUG=INFO
 export VLLM_USE_V1=1

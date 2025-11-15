@@ -28,9 +28,9 @@ from verl.utils.reward_score import prime_math
 def extract_solution(solution_str):
     return remove_boxed(last_boxed_only_string(solution_str))
 
-default_system_prompt = """You are a helpful and harmless assistant. You should think step-by-step."""
+default_system_prompt = """You are a helpful and harmless assistant."""
 
-tool_system_prompt = """## python\n\nUse this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\n\nWhen you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster."""
+python_tool_system_prompt = """## python\n\nUse this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).\n\nWhen you send a message containing Python code to python, it will be executed in a stateful Jupyter notebook environment. python will respond with the output of the execution or time out after 120.0 seconds. The drive at '/mnt/data' can be used to save and persist user files. Internet access for this session is UNKNOWN. Depends on the cluster."""
 
 math_postfix = "Please reason step by step, and put your final answer within \\boxed{}. /think"
 
@@ -44,9 +44,10 @@ def apply_system_prompt(sys_prompt_style:str, question:str):
         list: A list of dictionaries representing the conversation with the system prompt applied.
     """
     if sys_prompt_style == 'no_tool':
-        return [{'role': 'system', 'content': default_system_prompt}, {'role': 'user', 'content': question + '\n' + math_postfix}]
+        return [{'role': 'system', 'content': default_system_prompt}, {'role': 'user', 'content': question.rstrip("\n") + '\n' + math_postfix}]
     elif sys_prompt_style == 'tool':
-        return [{'role': 'system', 'content': default_system_prompt + '\n\n' + tool_system_prompt}, {'role': 'user', 'content': question + '\n' + math_postfix}]
+        tool_system_prompt = "# Tools\n\nYou may call one or more functions to assist with the user query.\n\n" + python_tool_system_prompt
+        return [{'role': 'system', 'content': default_system_prompt + '\n\n' + tool_system_prompt}, {'role': 'user', 'content': question.rstrip("\n") + '\n' + math_postfix}]
     else:
         raise ValueError(f"Unknown system prompt style: {sys_prompt_style}")
 
