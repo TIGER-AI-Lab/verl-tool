@@ -1,10 +1,10 @@
 set -x
 train_data=data/math_rl/train_all.parquet
-# val_data=data/math_rl/test_tool_aime25.parquet
-val_data=[data/math_rl/test_no_tool_aime24.parquet,\
-data/math_rl/test_no_tool_aime25.parquet,\
-data/math_rl/test_tool_aime24.parquet,\
-data/math_rl/test_tool_aime25.parquet]
+val_data=data/math_rl/test_all.parquet
+# val_data=[data/math_rl/test_no_tool_aime24.parquet,\
+# data/math_rl/test_no_tool_aime25.parquet,\
+# data/math_rl/test_tool_aime24.parquet,\
+# data/math_rl/test_tool_aime25.parquet]
 model_name=models/wenliang_nemotron_8b_hybrid_tool_mix_v1_sft_5500_step
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
@@ -13,14 +13,14 @@ n=8
 batch_size=128
 ppo_mini_batch_size=$batch_size
 max_prompt_length=4096
-max_action_length=30000
-max_response_length=30000
+max_action_length=60000
+max_response_length=60000
 max_obs_length=2048
 temperature=1.0
 top_p=1.0
 val_temperature=0.6
 val_top_p=0.95
-val_n=4
+val_n=8
 enable_agent=True # enable agent for tool use
 strategy="fsdp"
 action_stop_tokens='</tool_call>'
@@ -43,7 +43,7 @@ fsdp_size=-1
 enable_prefix_caching=False
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=True # enable multi-turn training
-model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
+model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 run_name_postfix="-math-rl-v1-single-node-debug"
 if [ "$enable_agent" = "True" ]; then
     run_name="acereasontool-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"

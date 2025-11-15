@@ -118,18 +118,18 @@ def main(
     aime25_dataset = aime25_dataset.map(map_aime25)
     test_datasets[data_source] = aime25_dataset
 
-    math500_test_dataset = datasets.load_dataset('HuggingFaceH4/MATH-500', split='test')
-    def map_math500(item):
-        item['problem_id'] = f"math500-{item['unique_id']}"
-        item['data_source'] = "math500"
-        return {
-            "problem_id": item['problem_id'],
-            "data_source": item['data_source'],
-            "problem": item['problem'],
-            "answer": str(item['solution']),
-        }
-    math500_test_dataset = math500_test_dataset.map(map_math500)
-    test_datasets['math500'] = math500_test_dataset
+    # math500_test_dataset = datasets.load_dataset('HuggingFaceH4/MATH-500', split='test')
+    # def map_math500(item):
+    #     item['problem_id'] = f"math500-{item['unique_id']}"
+    #     item['data_source'] = "math500"
+    #     return {
+    #         "problem_id": item['problem_id'],
+    #         "data_source": item['data_source'],
+    #         "problem": item['problem'],
+    #         "answer": str(item['solution']),
+    #     }
+    # math500_test_dataset = math500_test_dataset.map(map_math500)
+    # test_datasets['math500'] = math500_test_dataset
     
     
     def make_map_fn(split, data_source, sys_prompt_style):

@@ -63,7 +63,7 @@ def time_limit(seconds):
         signal.signal(signal.SIGALRM, old_handler)
 
 
-@ray.remote
+@ray.remote(num_cpus=0.1)
 class KernelActor:
     """
     A Ray actor that owns a single IPython shell in its own process.

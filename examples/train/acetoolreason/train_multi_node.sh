@@ -346,8 +346,8 @@ fsdp_size=-1
 enable_prefix_caching=False
 mask_observations=True
 enable_mtrl=True
-model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-run_name_postfix="-math-rl-v1-debug"
+model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
+run_name_postfix="-math-rl-v1-multi-node"
 if [ "$enable_agent" = "True" ]; then
     run_name="acereasontool-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -379,7 +379,7 @@ srun $COMMON_SRUN_ARGS \
     --container-name=ray-head \
     --nodes=1 \
     --ntasks=1 \
-    --cpus-per-task=4 \
+    --cpus-per-gpu=$CPUS_PER_TASK \
     --overlap \
     --gpus=$GPUS_PER_NODE \
     -w "$head_node" \
@@ -395,7 +395,7 @@ srun $COMMON_SRUN_ARGS \
             --port $port \
             --tool_type ipython_code \
             --workers_per_tool 8 \
-            --use_ray=False 2>&1 | tee -a $LOG_DIR/tool-server-console.log
+            --use_ray=True 2>&1 | tee -a $LOG_DIR/tool-server-console.log
     " &
 
 SRUN_PIDS["tool-server"]=$!
