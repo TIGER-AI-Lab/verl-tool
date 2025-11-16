@@ -302,15 +302,14 @@ echo "Ray cluster is ready with all $NUM_ACTORS workers connected!"
 # Training configuration
 ########################################################
 work_dir=$CONTAINER_WORKDIR
-train_data=$CONTAINER_WORKDIR/data/math_rl/train_all.parquet
+train_data=[$CONTAINER_WORKDIR/data/math_rl/train_no_tool_acereason_math.parquet,\
+$CONTAINER_WORKDIR/data/math_rl/train_no_tool_acereason_v2_math.parquet]
 val_data=[$CONTAINER_WORKDIR/data/math_rl/test_no_tool_aime24.parquet,\
-$CONTAINER_WORKDIR/data/math_rl/test_no_tool_aime25.parquet,\
-$CONTAINER_WORKDIR/data/math_rl/test_tool_aime24.parquet,\
-$CONTAINER_WORKDIR/data/math_rl/test_tool_aime25.parquet]
+$CONTAINER_WORKDIR/data/math_rl/test_no_tool_aime25.parquet]
+# $CONTAINER_WORKDIR/data/math_rl/test_tool_aime24.parquet,\
+# $CONTAINER_WORKDIR/data/math_rl/test_tool_aime25.parquet]
 
-model_name=$CONTAINER_WORKDIR/models/wenliang_nemotron_8b_hybrid_9e-6_tool_mix_v2.3_sft/2000_step
-# model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-model_pretty_name=wenliang_nemotron_8b_toolmix_v2.3_sft_2000step
+model_name=$CONTAINER_WORKDIR/models/wenliang_8b_hybrid_thinking_enhanced
 rl_alg=grpo
 n_gpus_per_node=$GPUS_PER_NODE
 n_nodes=$SLURM_JOB_NUM_NODES
@@ -332,7 +331,6 @@ enable_agent=True
 strategy="fsdp"
 action_stop_tokens='</tool_call>'
 max_turns=50
-val_max_turns=100
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
@@ -351,7 +349,8 @@ fsdp_size=-1
 enable_prefix_caching=False
 mask_observations=True
 enable_mtrl=True
-run_name_postfix="-math-rl-v1-with-tool"
+model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
+run_name_postfix="-math-rl-no-tool"
 if [ "$enable_agent" = "True" ]; then
     run_name="acetoolreason-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -490,7 +489,6 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     actor_rollout_ref.agent.max_start_length=$max_prompt_length \
     actor_rollout_ref.agent.max_obs_length=$max_obs_length \
     actor_rollout_ref.agent.max_turns=$max_turns \
-    actor_rollout_ref.agent.val_max_turns=$val_max_turns \
     actor_rollout_ref.agent.mask_observations=$mask_observations \
     actor_rollout_ref.agent.action_stop_tokens=$action_stop_tokens_file \
     actor_rollout_ref.agent.enable_mtrl=$enable_mtrl \

@@ -45,16 +45,18 @@ CONTROL_CHAR_RE = re.compile(
 class AgentActorConfig:
     enable_agent: bool=True
     max_turns: int=0
-    min_turns: int=0
+    val_max_turns: int=0
     max_start_length: int=None
     max_prompt_length: int=None
     max_response_length: int=None
+    train_max_response_length: int=None
+    val_max_response_length: int=None
     max_model_len: int=None  # Maximum model length, used for async rollout to limit the input length.
     max_obs_length: int=None
     max_action_length: int=None
     tool_server_url: str = None
     n: int=1
-    truncate_obs_side: str='left'
+    truncate_obs_side: str='middle'
     truncate_response_side: str='left'
     action_stop_tokens: list=None
     mask_observations: bool=True
@@ -76,6 +78,7 @@ class AgentActorConfig:
     additional_eos_token_ids: list=None
     max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
+    min_turns: int=0
     
     
 def sanitize_request(obj: Any) -> Any:
@@ -147,12 +150,22 @@ class VerlToolAgentLoop(AgentLoopBase):
                 cls.mtrl_sep_suffix_ids = cls.tokenizer.encode(cls.mtrl_sep_suffix)
             cls.enable_mtrl = cls.agent_config.enable_mtrl
             cls.mtrl_sep = cls.agent_config.mtrl_sep
-            cls.max_action_length = cls.agent_config.max_action_length if cls.agent_config.max_action_length is not None else 0
-            cls.max_obs_length = cls.agent_config.max_obs_length if cls.agent_config.max_obs_length is not None else 0
-            cls.max_response_length = cls.agent_config.max_response_length if cls.agent_config.max_response_length is not None else 0
+            cls.max_model_len = int(cls.agent_config.max_model_len or (cls.agent_config.max_prompt_length + max(cls.max_response_length, cls.val_max_response_length)))
+            
+            cls.response_length = rollout_config.rollout.response_length
+            cls.max_response_length = cls.agent_config.max_response_length if cls.agent_config.max_response_length is not None else cls.response_length
+            cls.max_response_length = min(cls.max_response_length, cls.max_model_len)
+            cls.val_max_response_length = cls.agent_config.val_max_response_length if cls.agent_config.val_max_response_length is not None else cls.max_response_length
+            cls.train_max_response_length = cls.agent_config.train_max_response_length if cls.agent_config.train_max_response_length is not None else cls.max_response_length
+            assert cls.response_length >= cls.max_response_length, f"rollout.response_length {cls.response_length} must be >= agent.max_response_length {cls.max_response_length}"
+            assert cls.response_length >= cls.val_max_response_length, f"rollout.response_length {cls.response_length} must be >= agent.val_max_response_length {cls.val_max_response_length}"
+            assert cls.response_length >= cls.train_max_response_length, f"rollout.response_length {cls.response_length} must be >= agent.train_max_response_length {cls.train_max_response_length}"
+            cls.max_action_length = cls.agent_config.max_action_length
+            cls.max_obs_length = cls.agent_config.max_obs_length if cls.agent_config.max_obs_length is not None else 512
+            cls.max_turns = cls.agent_config.max_turns if cls.agent_config.max_turns > 0 else 10
+            cls.val_max_turns = cls.agent_config.val_max_turns if cls.agent_config.val_max_turns > 0 else cls.agent_config.max_turns
             
             
-            cls.max_model_len = int(cls.agent_config.max_model_len or cls.agent_config.max_prompt_length + cls.agent_config.max_response_length)
             # for multimodal processing
             cls.qwen_image_placeholder = "<|vision_start|><|image_pad|><|vision_end|>"
             cls.qwen_video_placeholder = "<|vision_start|><|video_pad|><|vision_end|>"
@@ -311,10 +324,11 @@ class VerlToolAgentLoop(AgentLoopBase):
             raw_prompt_text = self.tokenizer.decode(prompt_ids, skip_special_tokens=False)
             model_inputs = self.processor(text=[raw_prompt_text], images=image_data, return_tensors="pt")
             prompt_ids = model_inputs["input_ids"].squeeze(0).tolist()
-            
-        max_response_length = self.agent_config.max_response_length
-        max_action_length = self.agent_config.max_action_length
-        max_obs_length = self.agent_config.max_obs_length
+        
+        max_turns = self.max_turns if not kwargs.get("validate", False) else self.val_max_turns
+        max_response_length = self.train_max_response_length if not kwargs.get("validate", False) else self.val_max_response_length
+        max_action_length = self.max_action_length or max_response_length
+        max_obs_length = self.max_obs_length
         
         agent_sampling_params = sampling_params.copy()
         agent_sampling_params.update({
@@ -329,10 +343,12 @@ class VerlToolAgentLoop(AgentLoopBase):
         response_logprobs = []
         traj_stop_reason = ""
 
-        for step in range(self.agent_config.max_turns + 1):
-            available_length = max(min(max_response_length, self.max_model_len) - len(running_prompt_ids), 0)
+        logger.debug(f"Starting agent loop for traj_id={request_id} with use_tool={use_tool}, max_turns={max_turns}, max_response_length={max_response_length}, max_action_length={max_action_length}, max_obs_length={max_obs_length}")
+        
+        for step in range(max_turns + 1):
+            available_length = max(max_response_length - len(running_prompt_ids) + len(prompt_ids), 0)
             max_tokens_for_this_turn = min(max_action_length, available_length)
-            is_last_step = (step == self.agent_config.max_turns)
+            is_last_step = (step == max_turns)
             if max_tokens_for_this_turn <= 0:
                 traj_stop_reason = "max_model_len_exceeded"
                 break
