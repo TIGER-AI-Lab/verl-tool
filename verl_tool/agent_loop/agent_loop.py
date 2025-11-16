@@ -520,6 +520,7 @@ class AgentLoopWorker:
                 tokenizer=self.tokenizer,
                 processor=self.processor,
             )
+            kwargs["validate"] = trajectory["validate"]
             output: AgentLoopOutput = await agent_loop.run(sampling_params, **kwargs)
 
             # Some AgentLoop may have already computed the reward score, e.g SWE-agent.

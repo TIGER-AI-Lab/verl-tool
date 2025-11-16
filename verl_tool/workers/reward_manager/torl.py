@@ -24,6 +24,55 @@ from verl.workers.reward_manager import register
 import torch
 from collections import defaultdict
 
+def extract_box_contents(text):
+    """
+    Extract contents from \box{} commands in a string.
+    
+    Args:
+        text (str): Input string containing \box{} commands
+        
+    Returns:
+        list: List of contents found inside \box{} commands
+    """
+    # Pattern to match \box{content} with proper brace matching
+    pattern = r'\\boxed\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}'
+    
+    # Find all matches
+    matches = re.findall(pattern, text)
+    return matches[-1] if matches else ""
+
+def extract_answer(text, mode='math'):
+    """
+    Extract the final answer from the text based on the mode.
+    
+    Args:
+        text (str): Input string containing the answer
+        mode (str): Mode of extraction ('math' or 'lcb_code')
+    Returns:
+        str: Extracted answer
+    """
+    if mode == 'math':
+        return extract_box_contents(text)
+    elif mode == 'lcb_code':
+        start_idx = text.rfind('```python')
+        if start_idx != -1:
+            end_idx = text.find('```', start_idx+len('```python'))
+            if end_idx != -1:
+                end_idx += len('```')
+                return text[start_idx:end_idx].strip()
+            else:
+                return text[start_idx:].strip()
+        else:
+            if text.startswith("#"):
+                # this is alread the pure code, but without ```python
+                return "```python\n" + text.strip() + "\n```"
+            else:
+                return ""
+    elif mode == 'hle_judge':
+        return text
+    else:
+        raise ValueError(f"Unsupported mode: {mode}")
+    
 @register("torl")
 class ToRLRewardManager:
     """The reward manager.
@@ -134,7 +183,8 @@ class ToRLRewardManager:
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
 
             extra_info = data_item.non_tensor_batch.get('extra_info', None)
-
+            extracted_answer = extract_answer(response_str, mode='math')
+            
             torl_score = self.compute_score(
                 # data_source=data_source,
                 solution_str=response_str,
@@ -143,6 +193,7 @@ class ToRLRewardManager:
             ) # 1 or -1
             score['accuracy'] = 1. if torl_score > 0 else 0.
             score['score'] = torl_score
+            score['has_answer'] = 1. if extracted_answer else 0.
 
             # add additional penalty
             score = self.add_additional_penalties(response_str, data_item, score)      

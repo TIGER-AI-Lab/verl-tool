@@ -12,7 +12,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from collections import OrderedDict
 from typing import Dict, Optional, Tuple
 import logging
-from IPython.terminal.interactiveshell import TerminalInteractiveShell
+from IPython.terminal.interactiveshell import TerminalInteractiveShell, InteractiveShell
 from pathlib import Path
 import ray
 from ray.exceptions import GetTimeoutError
@@ -52,7 +52,7 @@ class TimeoutException(Exception):
 def time_limit(seconds):
     """Context manager that raises TimeoutException after specified seconds"""
     def signal_handler(signum, frame):
-        raise TimeoutException(f"Execution timed out after {seconds} seconds")
+        raise TimeoutException(f"Execution time out after {seconds} seconds")
     
     old_handler = signal.signal(signal.SIGALRM, signal_handler)
     signal.alarm(seconds)
@@ -63,7 +63,7 @@ def time_limit(seconds):
         signal.signal(signal.SIGALRM, old_handler)
 
 
-@ray.remote
+@ray.remote(num_cpus=0.1)
 class KernelActor:
     """
     A Ray actor that owns a single IPython shell in its own process.
@@ -72,7 +72,8 @@ class KernelActor:
     def __init__(self):
         c = Config()
         c.HistoryManager.enabled = False
-        shell = TerminalInteractiveShell(colors='NoColor', config=c)
+        # shell = TerminalInteractiveShell(colors='NoColor', config=c)
+        shell = InteractiveShell.instance(colors='NoColor', config=c)
         shell.history_manager.enabled = False
         shell.cache_size = 1000
 
@@ -100,49 +101,59 @@ class KernelActor:
         stdout_capture = StringIO()
         stderr_capture = StringIO()
         success = True
-
+        
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
             try:
                 with time_limit(timeout):
                     result = self.shell.run_cell(script, silent=False)
-
-                    if result is not None:
-                        if getattr(result, "error_before_exec", None):
-                            print(result.error_before_exec, file=sys.stderr)
-                            success = False
-                        if getattr(result, "error_in_exec", None):
-                            print(result.error_in_exec, file=sys.stderr)
-                            success = False
-
-                        if getattr(result, "result", None) is not None:
-                            print(result.result)
+                    
+                if result.error_before_exec:
+                    error_output = f"Error before execution: {result.error_before_exec}"
+                    success = False
+                elif result.error_in_exec:
+                    error_output = f"Error during execution: {result.error_in_exec}"
+                    success = False
+                else:
+                    error_output = ""
+                    success = True
             except TimeoutException as e:
-                print(f"\n{str(e)}", file=sys.stderr)
+                error_output = f"Execution time out after {timeout} seconds"
                 success = False
             except Exception as e:
-                print(e, file=sys.stderr)
+                error_output = f"Execution error: {str(e)}"
                 success = False
 
-        stdout_output = stdout_capture.getvalue()
-        stderr_output = stderr_capture.getvalue()
-
-        stdout_output = stdout_output.replace(site_packages_dir, "/lib/python3.10/site-packages")
-        stderr_output = stderr_output.replace(site_packages_dir, "/lib/python3.10/site-packages")
+        # Collect output
+        stdout_content = stdout_capture.getvalue()
+        stderr_content = stderr_capture.getvalue()
         
-        if "TimeoutException" in stderr_output or "TimeoutException" in stdout_output:
-            output = f"Execution timed out after {timeout} seconds"
-        else:
-            if success:
-                output = stdout_output.strip()
+        if not success:
+            if "Execution time out" in error_output:
+                output = f"Execution time out after {timeout} seconds"
             else:
-                combined = stdout_output
-                if stderr_output:
-                    if combined and not combined.endswith("\n"):
-                        combined += "\n"
-                    combined += stderr_output
-                output = combined.strip()
-
-        return output[:max_output_size], success
+                output = stdout_content.rstrip(' \n')
+                # remove "----" lines before Traceback
+                output_lines = output.splitlines()
+                for k in range(len(output_lines)-2, -1, -1):
+                    line = output_lines[k]
+                    if line and not line.strip('-') and "Traceback" in output_lines[k+1]:
+                        output_lines[k+1] = output_lines[k+1][output_lines[k+1].find("Traceback"):]
+                        output_lines.pop(k)
+                        break
+                    
+                output = "\n".join(output_lines)
+                if stderr_content:
+                    output += f"\nStderr: {stderr_content}"
+        else:
+            output = stdout_content
+            if stderr_content:
+                output += f"\nWarnings: {stderr_content}"
+        
+        # Truncate output if too large
+        if len(output) > max_output_size:
+            output = output[:max_output_size] + "\n...[output truncated]..."
+        output = output.replace(site_packages_dir, "/lib/python3.10/site-packages").rstrip(' \n')
+        return output if output else "Script executed successfully (no output)", success
 
     def reset(self):
         """Optional: clear namespace if you want."""
@@ -430,6 +441,14 @@ if __name__ == "__main__":
         timeout=2,
     )
     print(f"[test3] After timeout - Result: {result!r}, Success: {success}")
+    
+    # Test that actor was killed
+    result, success = call_python_script_with_ipython(
+        "test2",
+        "print(b)",
+        timeout=2,
+    )
+    print(f"[test4] After print a - Result: {result!r}, Success: {success}")
 
     # Stats
     stats = get_kernel_stats()
