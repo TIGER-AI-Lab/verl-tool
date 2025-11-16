@@ -1,10 +1,9 @@
 import ray
-import uuid
+import numpy as np
 from verl.workers.rollout.vllm_rollout.vllm_async_server import (
     vLLMHttpServerBase,
     SamplingParams, 
     TokensPrompt, 
-    _qwen2_5_vl_dedup_image_tokens,
     RolloutConfig,
     RewardModelConfig,
     HFModelConfig,
@@ -52,6 +51,7 @@ class VerlToolvLLMHttpServer(vLLMHttpServerBase):
         sampling_params: dict[str, Any],
         request_id: str,
         image_data: Optional[list[Any]] = None,
+        audio_data: Optional[list[Any]] = None,
     ) -> VerlToolTokenOutput:
         """Generate sequence with token-in-token-out."""
         # TODO(@wuxibin): switch to `/generate` http endpoint once multi-modal support ready.
@@ -60,9 +60,15 @@ class VerlToolvLLMHttpServer(vLLMHttpServerBase):
         sampling_params["logprobs"] = 0 if sampling_params.pop("logprobs", False) else None
         sampling_params.setdefault("repetition_penalty", self.config.get("repetition_penalty", 1.0))
         sampling_params = SamplingParams(**sampling_params)
-        prompt_ids = _qwen2_5_vl_dedup_image_tokens(prompt_ids, self.model_config.processor)
+        prompt_ids = _qwen2_5_dedup_multimodal_tokens(prompt_ids, self.model_config.processor)
+        
+        multi_modal_data: dict[str, Any] = {}
+        if image_data:
+            multi_modal_data["image"] = image_data
+        if audio_data:
+            multi_modal_data["audio"] = audio_data
         prompt = TokensPrompt(
-            prompt_token_ids=prompt_ids, multi_modal_data={"image": image_data} if image_data else None
+            prompt_token_ids=prompt_ids, multi_modal_data=multi_modal_data or None
         )
 
         # Add lora request
@@ -95,3 +101,54 @@ class VerlToolvLLMHttpServer(vLLMHttpServerBase):
         finished = final_res.finished
 
         return VerlToolTokenOutput(token_ids=token_ids, log_probs=log_probs, finish_reason=finish_reason, stop_reason=stop_reason, text=text, finished=finished)
+
+
+def _qwen2_5_dedup_multimodal_tokens(prompt_ids: list[int], processor):
+    """Deduplicate consecutive image and *audio* tokens in prompt_ids for Qwen2.5-VL/Omni, since vLLM will replicate the
+    <|image_pad|> token by image_data and <|AUDIO|> token by audio_data.
+
+    For example,
+    ```
+    <|vision_start|><|image_pad|><|image_pad|>...<|image_pad|><|vision_end|>
+    =>
+    <|vision_start|><|image_pad|><|vision_end|>
+    
+    <|audio_bos|><|AUDIO|><|AUDIO|>...<|AUDIO|><|audio_eos|>
+    =>
+    <|audio_bos|><|AUDIO|><|audio_eos|>
+    ```
+    """
+    if processor is None:
+        return prompt_ids
+    
+    # Check for Qwen2_5OmniProcessor (needs to get image_token_id from tokenizer)
+    is_qwen2_5_omni = "Qwen2_5OmniProcessor" in processor.__class__.__name__
+    # Check for Qwen2VLImageProcessor (has image_token_id attribute)
+    is_qwen2vl = not is_qwen2_5_omni and "Qwen2VLImageProcessor" in processor.image_processor.__class__.__name__
+    
+    if is_qwen2vl or is_qwen2_5_omni:
+        prompt_ids = np.array(prompt_ids)
+
+        # Create a mask where True indicates elements to keep
+        mask = np.ones(len(prompt_ids), dtype=bool)
+
+        # Get image_token_id based on processor type
+        if is_qwen2vl:
+            # Qwen2VLImageProcessor has image_token_id attribute
+            image_token_id = processor.image_token_id
+        else:
+            # Qwen2_5OmniProcessor: get image_token_id from tokenizer
+            image_token_id = processor.tokenizer.image_token_id
+
+        # Deduplicate consecutive image tokens
+        is_image_token = prompt_ids == image_token_id
+        mask[1:] &= ~(is_image_token[1:] & is_image_token[:-1])
+
+        # For Qwen2_5OmniProcessor, also deduplicate consecutive audio tokens
+        audio_token_id = processor.tokenizer.audio_token_id
+        is_audio_token = prompt_ids == audio_token_id
+        mask[1:] &= ~(is_audio_token[1:] & is_audio_token[:-1])
+
+        return prompt_ids[mask].tolist()
+    else:
+        return prompt_ids

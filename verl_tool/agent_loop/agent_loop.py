@@ -92,6 +92,7 @@ class AsyncLLMServerManager:
         prompt_ids: list[int],
         sampling_params: dict[str, Any],
         image_data: Optional[list[Any]] = None,
+        audio_data: Optional[list[Any]] = None,
     ) -> TokenOutput:
         """Generate tokens from prompt ids.
 
@@ -109,6 +110,7 @@ class AsyncLLMServerManager:
             prompt_ids=prompt_ids,
             sampling_params=sampling_params,
             image_data=image_data,
+            audio_data=audio_data,
         )
         return output
 
@@ -586,10 +588,27 @@ class AgentLoopWorker:
             input_ids = torch.cat([prompt_output["input_ids"], response_output["input_ids"]], dim=1)
 
             # Handle multi-modal inputs and position_ids calculation
-            # Only support Qwen2VLImageProcessor for multi-modal processing currently
+            # Only support Qwen2VLImageProcessor for multi-modal processing 
+            # and Qwen2_5OmniProcessor for audio processing currently
             # TODO: support other multi-modal inputs
             multi_modal_inputs = None
             if (
+                self.processor is not None 
+                and "Qwen2_5OmniProcessor" in self.processor.__class__.__name__
+            ):
+                audios = output.multi_modal_data.get("audio", None)
+                current_text = self.tokenizer.decode(input_ids.squeeze(0), skip_special_tokens=True)
+                processor_kwargs = {"text": [current_text], "return_tensors": "pt"}
+                if audios:
+                    processor_kwargs["audio"] = audios
+                multi_modal_inputs = self.processor(**processor_kwargs)
+                multi_modal_inputs.pop("input_ids", None)
+                multi_modal_inputs.pop("attention_mask", None)
+                # Convert to plain dict to keep tensor values when wrapped later
+                multi_modal_inputs = dict(multi_modal_inputs)
+                # Qwen2.5-Omni uses standard sequential position ids
+                position_ids = compute_position_id_with_mask(attention_mask)  # (1, seq_len)
+            elif (
                 self.processor is not None
                 and "Qwen2VLImageProcessor" in self.processor.image_processor.__class__.__name__
             ):
@@ -625,6 +644,7 @@ class AgentLoopWorker:
                 position_ids = torch.cat((text_position_ids, vision_position_ids), dim=1)  # (1, 4, seq_length)
             else:
                 position_ids = compute_position_id_with_mask(attention_mask)  # (1, seq_len)
+            
             enable_async_reward = (
                 self.rm_executor is not None and self.config.reward_model.enable_resource_pool
             ) or not self.config.reward_model.enable
