@@ -302,7 +302,6 @@ class VerlToolAgentLoop(AgentLoopBase):
         prompt_ids = list(kwargs["raw_prompt_ids"])
         image_data = (kwargs.get("multi_modal_data") or {}).get("image", None)
         encoded_image_data = [encode_image_url(img) for img in image_data] if image_data is not None else None
-        assert "use_tool" in kwargs, 'debugging: must specify use_tool in kwargs'
         use_tool = kwargs.get("use_tool", self.agent_config.enable_agent)
 
         metrics = {}
