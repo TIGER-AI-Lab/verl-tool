@@ -60,7 +60,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "python_code" --workers_per_tool 8 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "ipython_code" --workers_per_tool 8 --use_ray=True &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"

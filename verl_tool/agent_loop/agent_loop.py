@@ -106,7 +106,7 @@ class AsyncLLMServerManager:
         """
         server = self._choose_server(request_id)
         output = await server.generate.remote(
-            request_id=request_id,
+            request_id=str(uuid.uuid4()),
             prompt_ids=prompt_ids,
             sampling_params=sampling_params,
             image_data=image_data,

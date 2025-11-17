@@ -151,7 +151,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                 cls.mtrl_sep_suffix_ids = cls.tokenizer.encode(cls.mtrl_sep_suffix)
             cls.enable_mtrl = cls.agent_config.enable_mtrl
             cls.mtrl_sep = cls.agent_config.mtrl_sep
-            cls.max_model_len = int(cls.agent_config.max_model_len or (cls.agent_config.max_prompt_length + max(cls.max_response_length, cls.val_max_response_length)))
+            cls.max_model_len = int(cls.agent_config.max_model_len or (cls.agent_config.max_prompt_length + cls.agent_config.max_response_length))
             
             cls.response_length = rollout_config.rollout.response_length
             cls.max_response_length = cls.agent_config.max_response_length if cls.agent_config.max_response_length is not None else cls.response_length

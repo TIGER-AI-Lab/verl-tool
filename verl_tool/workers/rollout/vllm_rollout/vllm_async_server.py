@@ -43,7 +43,7 @@ class VerlToolvLLMHttpServer(vLLMHttpServerBase):
     ):
         original_max_model_len = config.max_model_len
         super().__init__(config, model_config, rollout_mode, workers, replica_rank, node_rank, gpus_per_node, nnodes)
-        self.config.max_model_len = max(original_max_model_len, self.config.max_model_len)
+        self.config.max_model_len = max(original_max_model_len, self.config.max_model_len) if original_max_model_len is not None else self.config.max_model_len
         
     async def generate(
         self,
