@@ -21,8 +21,7 @@ import fire
 from verl.utils.hdfs_io import copy, makedirs
 import argparse
 
-from verl.utils.reward_score.math import remove_boxed, last_boxed_only_string
-from verl.utils.reward_score import prime_math
+from verl.utils.reward_score.math_dapo import remove_boxed, last_boxed_only_string
 
 def extract_solution(solution_str):
     return remove_boxed(last_boxed_only_string(solution_str))

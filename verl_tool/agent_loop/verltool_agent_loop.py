@@ -28,6 +28,7 @@ from uuid import uuid4
 from verl.utils.profiler import simple_timer
 from .agent_loop import AgentLoopBase, register, AgentLoopOutput
 from .vision_utils import decode_image_url, encode_image, encode_image_url
+from verl_tool.utils.dataset.audio_utils import encode_audio_data
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -150,7 +151,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                 cls.mtrl_sep_suffix_ids = cls.tokenizer.encode(cls.mtrl_sep_suffix)
             cls.enable_mtrl = cls.agent_config.enable_mtrl
             cls.mtrl_sep = cls.agent_config.mtrl_sep
-            cls.max_model_len = int(cls.agent_config.max_model_len or (cls.agent_config.max_prompt_length + max(cls.max_response_length, cls.val_max_response_length)))
+            cls.max_model_len = int(cls.agent_config.max_model_len or (cls.agent_config.max_prompt_length + cls.agent_config.max_response_length))
             
             cls.response_length = rollout_config.rollout.response_length
             cls.max_response_length = cls.agent_config.max_response_length if cls.agent_config.max_response_length is not None else cls.response_length
@@ -169,7 +170,16 @@ class VerlToolAgentLoop(AgentLoopBase):
             # for multimodal processing
             cls.qwen_image_placeholder = "<|vision_start|><|image_pad|><|vision_end|>"
             cls.qwen_video_placeholder = "<|vision_start|><|video_pad|><|vision_end|>"
-            cls.non_truncate_tokens = ["<|vision_start|>", "<|image_pad|>", "<|vision_end|>", "<|video_pad|>"]
+            cls.qwen_audio_placeholder = "<|audio_bos|><|AUDIO|><|audio_eos|>"  # for qwen2.5-omni
+            cls.non_truncate_tokens = [
+                "<|vision_start|>",
+                "<|image_pad|>",
+                "<|vision_end|>",
+                "<|video_pad|>",
+                "<|audio_bos|>",
+                "<|AUDIO|>",
+                "<|audio_eos|>",
+            ]
             cls.non_truncate_token_ids = [cls.tokenizer.convert_tokens_to_ids(tok) for tok in cls.non_truncate_tokens]
             
             
@@ -300,10 +310,13 @@ class VerlToolAgentLoop(AgentLoopBase):
         
     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
         prompt_ids = list(kwargs["raw_prompt_ids"])
-        image_data = (kwargs.get("multi_modal_data") or {}).get("image", None)
+        multi_modal_data = kwargs.get("multi_modal_data") or {}
+        image_data = multi_modal_data.get("image")
         encoded_image_data = [encode_image_url(img) for img in image_data] if image_data is not None else None
+        audio_data = multi_modal_data.get("audio")
+        encoded_audio_data = [encode_audio_data(audio) for audio in audio_data] if audio_data is not None else None
         use_tool = kwargs.get("use_tool", self.agent_config.enable_agent)
-
+        
         metrics = {}
         request_id = str(uuid4().hex)
         
@@ -319,9 +332,14 @@ class VerlToolAgentLoop(AgentLoopBase):
             "is_traj_finished": False,
         }
         
-        if image_data:
+        if image_data or audio_data:
             raw_prompt_text = self.tokenizer.decode(prompt_ids, skip_special_tokens=False)
-            model_inputs = self.processor(text=[raw_prompt_text], images=image_data, return_tensors="pt")
+            processor_kwargs = {"text": [raw_prompt_text], "return_tensors": "pt"}
+            if image_data:
+                processor_kwargs["images"] = image_data
+            if audio_data:
+                processor_kwargs["audio"] = audio_data
+            model_inputs = self.processor(**processor_kwargs)
             prompt_ids = model_inputs["input_ids"].squeeze(0).tolist()
         
         max_turns = self.max_turns if not kwargs.get("validate", False) else self.val_max_turns
@@ -338,6 +356,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         
         running_prompt_ids = prompt_ids.copy()
         running_image_data = image_data.copy() if image_data is not None else None
+        running_audio_data = audio_data.copy() if audio_data is not None else None
         response_mask = []
         response_logprobs = []
         traj_stop_reason = ""
@@ -356,7 +375,11 @@ class VerlToolAgentLoop(AgentLoopBase):
             # agent_sampling_params["max_new_tokens"] = max_tokens_for_this_turn # for sglang
             with simple_timer("generate_sequences", metrics):
                 output = await self.server_manager.generate(
-                    request_id=str(uuid4().hex), prompt_ids=running_prompt_ids, sampling_params=agent_sampling_params, image_data=running_image_data
+                    request_id=request_id,
+                    prompt_ids=running_prompt_ids,
+                    sampling_params=agent_sampling_params,
+                    image_data=running_image_data,
+                    audio_data=running_audio_data,
                 ) # request_id here should be unique for each generate call, otherwise vllm can generate empty response
                 if output.text.strip() == "":
                     logger.warning(f"Turn {step}: Generated empty response for traj_id={request_id}. prompt_ids length: {len(running_prompt_ids)}")
@@ -395,13 +418,18 @@ class VerlToolAgentLoop(AgentLoopBase):
                         break
             # send generated action to tool server
             if do_action and not is_last_step:
-                logger.debug(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
+                extra_fields = {}
+                if encoded_image_data is not None:
+                    extra_fields["images"] = encoded_image_data
+                if encoded_audio_data is not None:
+                    extra_fields["audio"] = encoded_audio_data
+                logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
                 with simple_timer("interact_with_tool_server", metrics):
                     tool_results = await self.interact_with_tool_server(
                         traj_id=request_id,
                         action=action_text,
                         do_action=do_action,
-                        extra_fields={"images": encoded_image_data} if encoded_image_data is not None else None,
+                        extra_fields=extra_fields,
                         is_last_step=is_last_step,
                     )
                 # process observations and prepare for next turn
@@ -420,6 +448,36 @@ class VerlToolAgentLoop(AgentLoopBase):
                     # now replace <image> tags with image placeholder tokens
                     obs_text = obs_text.replace("<image>", self.qwen_image_placeholder, num_image_tags)
                     obs_token_ids = self.processor(text=[obs_text], images=decoded_images, return_tensors="pt")["input_ids"].squeeze(0).tolist()
+                    if max_obs_length < len(obs_token_ids):
+                        if self.agent_config.truncate_obs_side == 'left':
+                            truncation_index = max_obs_length
+                            if obs_token_ids[max_obs_length] in self.non_truncate_token_ids:
+                                # find the nearest non-truncate token id before max_obs_length
+                                truncation_index = max_obs_length - 1
+                                while truncation_index > 0 and obs_token_ids[truncation_index] in self.non_truncate_token_ids:
+                                    truncation_index -= 1
+                            obs_token_ids = obs_token_ids[:truncation_index]
+                            obs_token_ids.extend(self.tokenizer.encode("...(truncated)"))
+                        else:
+                            raise NotImplementedError(f"Only left truncation is supported for multimodal observations for now.")
+                elif tool_results.get('audio', None):
+                    audios = [tool_results['audio']] if not isinstance(tool_results['audio'], list) else tool_results['audio']
+                    decoded_audios = [decode_image_url(audio_url) for audio_url in audios]
+                    running_audio_data.extend(decoded_audios)
+                    # add audio placeholder token ids
+                    # first see whether there are <audio> tags in obs_text
+                    num_audio_tags = obs_text.count("<audio>")
+                    if num_audio_tags < len(decoded_audios):
+                        # append at the end
+                        obs_text += "<audio>" * (len(decoded_audios) - num_audio_tags)
+                        num_audio_tags = len(decoded_audios)
+                    # now replace <audio> tags with audio placeholder tokens
+                    obs_text = obs_text.replace("<audio>", self.qwen_audio_placeholder, num_audio_tags)
+                    # for mtrl
+                    if self.enable_mtrl:
+                        obs_text = self.mtrl_sep.format(obs=obs_text)
+                    obs_token_ids = self.processor(text=[obs_text], audio=decoded_audios, return_tensors="pt")["input_ids"].squeeze(0).tolist()
+                    # obs_token_ids = obs_token_ids[:max_obs_length]
                     if max_obs_length < len(obs_token_ids):
                         if self.agent_config.truncate_obs_side == 'left':
                             truncation_index = max_obs_length
@@ -509,12 +567,18 @@ class VerlToolAgentLoop(AgentLoopBase):
             "is_traj_finished": float(stats_dict["is_traj_finished"]),
         })
         
+        multi_modal_output = {}
+        if running_image_data is not None:
+            multi_modal_output["image"] = running_image_data
+        if running_audio_data is not None:
+            multi_modal_output["audio"] = running_audio_data
+
         output = AgentLoopOutput(
             prompt_ids=prompt_ids,
             response_ids=response_ids[: self.response_length],
             response_mask=response_mask[: self.response_length],
             response_logprobs=response_logprobs[: self.response_length],
-            multi_modal_data={"image": running_image_data} if running_image_data is not None else {},
+            multi_modal_data=multi_modal_output,
             num_turns=stats_dict["num_turns"],
             metrics=metrics,
             extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", []), "traj_stop_reason": traj_stop_reason},
