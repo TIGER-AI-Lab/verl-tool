@@ -23,7 +23,7 @@ max_response_length: ${data.max_response_length}
 train_max_response_length: ${data.max_response_length}
 
 # Validation maximum length of the response
-val_max_response_length: ${data.val_max_response_length}
+val_max_response_length: ${data.max_response_length}
 
 # Maximum model length, used for async rollout to limit the input length
 max_model_len: null
