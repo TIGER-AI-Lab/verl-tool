@@ -20,7 +20,7 @@ max_prompt_length: ${data.max_prompt_length}
 max_response_length: ${data.max_response_length}
 
 # Training maximum length of the response
-train_max_response_length: ${data.train_max_response_length}
+train_max_response_length: ${data.max_response_length}
 
 # Validation maximum length of the response
 val_max_response_length: ${data.val_max_response_length}
