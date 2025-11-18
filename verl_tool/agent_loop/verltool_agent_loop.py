@@ -582,6 +582,16 @@ class VerlToolAgentLoop(AgentLoopBase):
             "generated_length": len(output.token_ids),
             "is_traj_finished": float(stats_dict["is_traj_finished"]),
         }
+        # additional metrics in tool_interact_info can be added later
+        if stats_dict["tool_interact_info"] and all("metrics" in info for info in stats_dict["tool_interact_info"]):
+            # do mean aggregation for each metric key
+            tool_metric_keys = stats_dict["tool_interact_info"][0]["metrics"].keys()
+            print(f"Aggregating tool metrics: {tool_metric_keys}")
+            for key in tool_metric_keys:
+                try:
+                    verl_tool_metrics[f"tool_avg_{key}"] = np.mean([float(info["metrics"][key]) for info in stats_dict["tool_interact_info"] if key in info["metrics"]])
+                except Exception as e:
+                    logger.warning(f"Failed to compute mean for tool metric {key}: {e}")
         
         multi_modal_output = {}
         if running_image_data is not None:

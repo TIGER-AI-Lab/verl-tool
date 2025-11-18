@@ -30,10 +30,12 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
     """
     result = verl_compute_data_metrics(batch, use_critic)
     
-    
     verl_tool_metrics = batch.non_tensor_batch.get("verl_tool_metrics", [])
-    keys = verl_tool_metrics[0].keys() if len(verl_tool_metrics) > 0 else []
-    for key in keys:
+    all_keys = []
+    for x in verl_tool_metrics:
+        all_keys.extend(list(x.keys()))
+    all_keys = set(all_keys)
+    for key in all_keys:
         values = np.array([float(m[key]) for m in verl_tool_metrics if key in m])
         result[f"verl_tool/{key}/mean"] = values.mean()
         result[f"verl_tool/{key}/max"] = values.max()
