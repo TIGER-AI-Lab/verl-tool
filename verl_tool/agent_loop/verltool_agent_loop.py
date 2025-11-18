@@ -299,7 +299,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         actions = [''] # no actions, just finish the trajectories
         is_last_step = True # this is the last step
         batch_data = {
-            "trajectory_ids": request_id,
+            "trajectory_ids": [request_id],
             "actions": actions,
             "finish": finishs, # if do_action is False, then it is a finish action, finishing the trajectory,
             "is_last_step": [is_last_step] * len(finishs)

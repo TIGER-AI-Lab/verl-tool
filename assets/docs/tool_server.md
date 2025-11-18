@@ -95,3 +95,7 @@ payload = {
     "processing_time_ms": 65.95945358276367
 }
 ```
+
+
+Notes:
+    - If you set `use_ray=True`, please adjust the `workers_per_tool` parameter according to your system resources, as this parameter will be strictly enforced **globally** when using Ray actors. Try larger values if you find that your training is blocked waiting for tool server responses. This gives better control on how many concurrent requests can be handled by each tool.

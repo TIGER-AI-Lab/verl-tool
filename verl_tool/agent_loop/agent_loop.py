@@ -484,11 +484,24 @@ class AgentLoopWorker:
         trajectory_info = await get_trajectory_info(
             batch.meta_info.get("global_steps", -1), index.tolist(), batch.meta_info.get("validate", False)
         )
+        
+        if self.config.actor_rollout_ref.agent.max_concurrent_trajectories is not None:
+            semaphore = asyncio.Semaphore(self.config.actor_rollout_ref.agent.max_concurrent_trajectories)
+            def semaphore_wrapper(func):
+                async def wrapper(*args, **kwargs):
+                    async with semaphore:
+                        return await func(*args, **kwargs)
+                return wrapper
+        else:
+            def semaphore_wrapper(func):
+                async def wrapper(*args, **kwargs):
+                    return await func(*args, **kwargs)
+                return wrapper
 
         tasks = []
         for i in range(len(batch)):
             kwargs = {k: v[i] for k, v in batch.non_tensor_batch.items()}
-            tasks.append(asyncio.create_task(self._run_agent_loop(sampling_params, trajectory_info[i], **kwargs)))
+            tasks.append(asyncio.create_task(semaphore_wrapper(self._run_agent_loop)(sampling_params, trajectory_info[i], **kwargs)))
         # outputs = await asyncio.gather(*tasks)
         outputs = await tqdm.gather(*tasks, desc=f"Agent Worker {self.name} Looping", total=len(tasks))
 
