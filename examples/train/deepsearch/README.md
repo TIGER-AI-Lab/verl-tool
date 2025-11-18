@@ -14,7 +14,7 @@ huggingface-cli download VerlTool/deepsearch google_search_cache.jsonl --local-d
 export SERPER_API_KEY="..."
 host=localhost
 port=5000
-tool_type=google_search,python_code # separate by comma if you want to start multiple tool servers
+tool_type=google_search,ipython_code # separate by comma if you want to start multiple tool servers
 workers_per_tool=4 # number of workers for the tool server, meaning how many threads will be used to handle a single tool request with multiple trajectories
 python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray True & # run in background
 ```
@@ -24,7 +24,7 @@ python -m verl_tool.servers.tests.test_python_code_tool python --url=http://loca
 ```
 ### Training
 ```bash
-bash examples/train/deepsearch/train.sh > logs/deepsearch_3b_debug.log 2>&1 &
+bash examples/train/deepsearch/train_8b.sh > logs/deepsearch_8b_debug.log 2>&1 &
 ```
 
 Note: Serper API's return snippet is limited to be the first 128 chars. If want full text need to set `process_snippets: bool = True` in the `GoogleSearchTool` tool class. But this can involve large-scale url scraping and slow down the RL training. Therefore, we set `process_snippets: bool = False` during the RL trainng and only bring it on during the evaluation. Therefore, it's common to see the validation score during the training is lower than the actual evalution score.

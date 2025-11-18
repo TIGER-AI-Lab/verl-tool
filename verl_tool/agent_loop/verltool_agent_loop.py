@@ -80,6 +80,7 @@ class AgentActorConfig:
     additional_eos_token_ids: list=None
     over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
     min_turns: int=0
+    retokeniziation: bool=False
     
     
 def sanitize_request(obj: Any) -> Any:
@@ -364,6 +365,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         logger.debug(f"Starting agent loop for traj_id={request_id} with use_tool={use_tool}, max_turns={max_turns}, max_response_length={max_response_length}, max_action_length={max_action_length}, max_obs_length={max_obs_length}")
         
         for step in range(max_turns + 1):
+            previous_length = len(running_prompt_ids)
             available_length = max(max_response_length - len(running_prompt_ids) + len(prompt_ids), 0)
             max_tokens_for_this_turn = min(max_action_length, available_length)
             is_last_step = (step == max_turns)
@@ -521,6 +523,21 @@ class VerlToolAgentLoop(AgentLoopBase):
                 else:
                     response_mask.extend([1] * len(obs_token_ids))
                 response_logprobs.extend([0.0] * len(obs_token_ids)) # pad with 0.0 logprobs for observations
+                
+                if self.agent_config.retokeniziation:
+                    new_text = self.tokenizer.decode(running_prompt_ids[previous_length:], skip_special_tokens=False)
+                    new_ids = self.tokenizer.encode(new_text)
+                    if len(new_ids) != len(running_prompt_ids) - previous_length:
+                        logger.warning(f"Retokenization changed the length from {len(running_prompt_ids) - previous_length} to {len(new_ids)}. traj_id={request_id}, turn={step}")
+                    running_prompt_ids = running_prompt_ids[:previous_length] + new_ids
+                    if len(response_mask) > running_prompt_ids:
+                        response_mask = response_mask[:len(running_prompt_ids)]
+                    else:
+                        response_mask.extend([response_mask[-1]] * (len(running_prompt_ids) - len(response_mask)))
+                    if len(response_logprobs) > running_prompt_ids:
+                        response_logprobs = response_logprobs[:len(running_prompt_ids)]
+                    else:
+                        response_logprobs.extend([0.0] * (len(running_prompt_ids) - len(response_logprobs)))
 
                 if tool_results['done']:
                     # finish the trajectory

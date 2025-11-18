@@ -120,17 +120,6 @@ class AgentLoopMetrics(BaseModel):
 
     generate_sequences: float = 0.0
     tool_calls: float = 0.0
-    num_turns: float = 0.0
-    valid_action: float = 0.0
-    per_action_length: float = 0.0
-    per_obs_length: float = 0.0
-    per_action_logp: float = 0.0
-    per_reward_from_tool: Optional[float] = None
-    traj_actions_length: float = 0.0
-    traj_obs_length: float = 0.0
-    generated_length: float = 0.0
-    is_traj_finished: float = 0.0
-    empty_responses: float = 0.0
     
     
 

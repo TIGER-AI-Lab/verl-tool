@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 import os
+import os
 from typing import Dict, List, Optional, Tuple, Any, Union
 from collections import defaultdict
 
@@ -82,7 +83,6 @@ class RayToolManager:
                 tool_cls = get_tool_cls(tool_type)
 
                 tool_instance = ray.remote(max_concurrency=self.config.workers_per_tool)(tool_cls).remote()
-
                 self.tools[tool_type] = tool_instance
                 initialized_tools.append(tool_type)
                 logger.info(f"✓ Initialized Ray tool: {tool_type}")
