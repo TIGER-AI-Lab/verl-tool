@@ -27,9 +27,11 @@ import verl.trainer.ppo.ray_trainer
 from .reward import compute_reward, compute_reward_async
 from verl_tool.workers.rollout.vllm_rollout.vllm_async_server import VerlToolvLLMHttpServer
 import verl.workers.rollout.vllm_rollout.vllm_async_server
+from .metric_util import compute_data_metrics
 verl.experimental.agent_loop.AgentLoopManager = AgentLoopManager
 verl.trainer.ppo.ray_trainer.compute_reward = compute_reward
 verl.trainer.ppo.ray_trainer.compute_reward_async = compute_reward_async
+verl.trainer.ppo.ray_trainer.compute_data_metrics = compute_data_metrics
 verl.workers.rollout.vllm_rollout.vllm_async_server.vLLMHttpServer = VerlToolvLLMHttpServer
 ##############################################################################
 

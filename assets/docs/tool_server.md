@@ -39,7 +39,7 @@ host=localhost
 port=5000
 tool_type=ipython_code # separate by comma if you want to start multiple tool servers
 workers_per_tool=4 # number of workers for the tool server, meaning how many threads will be used to handle a single tool request with multiple trajectories
-python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray=True & # run in background
+python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray=True --log_level debug &
 ```
 
 After running, you should see the following output. Tools marked with 🟢 are active, while those marked with ⚪ are inactive. The `finish` tool is always added to manage the end of each trajectory (e.g., delete environment state):
@@ -95,3 +95,6 @@ payload = {
     "processing_time_ms": 65.95945358276367
 }
 ```
+
+Notes:
+    - If you set `use_ray=True`, please adjust the `workers_per_tool` parameter according to your system resources, as this parameter will be strictly enforced **globally** when using Ray actors. Try larger values if you find that your training is blocked waiting for tool server responses. This gives better control on how many concurrent requests can be handled by each tool.

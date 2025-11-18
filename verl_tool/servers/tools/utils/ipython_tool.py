@@ -63,7 +63,7 @@ def time_limit(seconds):
         signal.signal(signal.SIGALRM, old_handler)
 
 
-@ray.remote(num_cpus=0.1)
+@ray.remote(max_concurrency=1, num_cpus=0)
 class KernelActor:
     """
     A Ray actor that owns a single IPython shell in its own process.
@@ -72,7 +72,6 @@ class KernelActor:
     def __init__(self):
         c = Config()
         c.HistoryManager.enabled = False
-        # shell = TerminalInteractiveShell(colors='NoColor', config=c)
         shell = InteractiveShell.instance(colors='NoColor', config=c)
         shell.history_manager.enabled = False
         shell.cache_size = 1000
@@ -180,7 +179,7 @@ class KernelActor:
         return [k for k in self.shell.user_ns.keys() if not k.startswith('_')]
 
 
-@ray.remote
+@ray.remote(max_concurrency=MAX_ACTORS)
 class KernelManager:
     """
     Centralized manager for all KernelActor instances.
@@ -220,7 +219,7 @@ class KernelManager:
             # LRU eviction if too many actors
             if len(self.actor_cache) > self.max_actors:
                 old_id, old_actor = self.actor_cache.popitem(last=False)
-                logger.info(f"Evicting KernelActor for request_id={old_id}")
+                logger.warning(f"Evicting KernelActor for request_id={old_id}")
                 try:
                     ray.kill(old_actor)
                 except Exception as e:
@@ -406,9 +405,10 @@ def remove_kernel(request_id: str) -> None:
     """Remove a specific kernel by request_id."""
     manager = _get_kernel_manager()
     removed = ray.get(manager.remove_kernel.remote(request_id))
+    logger.debug(f"Requested removal of KernelActor for request_id={request_id}, success={removed}")
     if removed:
         gc.collect()
-        logger.info(f"Removed KernelActor for request_id={request_id}")
+        logger.debug(f"Removed KernelActor for request_id={request_id}")
 
 
 # Example usage and configuration

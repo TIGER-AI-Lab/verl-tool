@@ -152,7 +152,7 @@ class AsyncToolManager:
                 finish_tool = get_tool_cls("finish")
                 self.tools["finish"] = finish_tool(
                     num_workers=self.config.workers_per_tool, 
-                    other_tools=[self.tools[t] for t in initialized_tools if t != "finish"]
+                    other_tools={t:self.tools[t] for t in initialized_tools if t != "finish"}
                 )
                 logger.info("✓ Initialized finish tool")
             except Exception as e:

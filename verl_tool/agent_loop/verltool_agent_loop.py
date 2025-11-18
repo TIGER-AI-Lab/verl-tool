@@ -77,9 +77,10 @@ class AgentActorConfig:
     rolling_with_prompt: bool=False
     call_tool_first: bool=False
     additional_eos_token_ids: list=None
-    max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
+    max_concurrent_trajectories: int=None # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
     min_turns: int=0
+    retokeniziation: bool=False
     
     
 def sanitize_request(obj: Any) -> Any:
@@ -299,7 +300,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         actions = [''] # no actions, just finish the trajectories
         is_last_step = True # this is the last step
         batch_data = {
-            "trajectory_ids": request_id,
+            "trajectory_ids": [request_id],
             "actions": actions,
             "finish": finishs, # if do_action is False, then it is a finish action, finishing the trajectory,
             "is_last_step": [is_last_step] * len(finishs)
@@ -364,6 +365,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         logger.debug(f"Starting agent loop for traj_id={request_id} with use_tool={use_tool}, max_turns={max_turns}, max_response_length={max_response_length}, max_action_length={max_action_length}, max_obs_length={max_obs_length}")
         
         for step in range(max_turns + 1):
+            previous_length = len(running_prompt_ids)
             available_length = max(max_response_length - len(running_prompt_ids) + len(prompt_ids), 0)
             max_tokens_for_this_turn = min(max_action_length, available_length)
             is_last_step = (step == max_turns)
@@ -424,7 +426,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                 if encoded_audio_data is not None:
                     extra_fields["audio"] = encoded_audio_data
                 logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
-                with simple_timer("interact_with_tool_server", metrics):
+                with simple_timer("tool_calls", metrics):
                     tool_results = await self.interact_with_tool_server(
                         traj_id=request_id,
                         action=action_text,
@@ -521,6 +523,21 @@ class VerlToolAgentLoop(AgentLoopBase):
                 else:
                     response_mask.extend([1] * len(obs_token_ids))
                 response_logprobs.extend([0.0] * len(obs_token_ids)) # pad with 0.0 logprobs for observations
+                
+                if self.agent_config.retokeniziation:
+                    new_text = self.tokenizer.decode(running_prompt_ids[previous_length:], skip_special_tokens=False)
+                    new_ids = self.tokenizer.encode(new_text)
+                    if len(new_ids) != len(running_prompt_ids) - previous_length:
+                        logger.warning(f"Retokenization changed the length from {len(running_prompt_ids) - previous_length} to {len(new_ids)}. traj_id={request_id}, turn={step}")
+                    running_prompt_ids = running_prompt_ids[:previous_length] + new_ids
+                    if len(response_mask) > running_prompt_ids:
+                        response_mask = response_mask[:len(running_prompt_ids)]
+                    else:
+                        response_mask.extend([response_mask[-1]] * (len(running_prompt_ids) - len(response_mask)))
+                    if len(response_logprobs) > running_prompt_ids:
+                        response_logprobs = response_logprobs[:len(running_prompt_ids)]
+                    else:
+                        response_logprobs.extend([0.0] * (len(running_prompt_ids) - len(response_logprobs)))
 
                 if tool_results['done']:
                     # finish the trajectory
@@ -552,20 +569,19 @@ class VerlToolAgentLoop(AgentLoopBase):
         assert len(response_ids) == len(response_mask), f"Response ids and mask length mismatch: {len(response_ids)} vs {len(response_mask)}"
         await self.close_traj_tool_threads(request_id=request_id)
             
-        metrics.update({
+        verl_tool_metrics = {
             "num_turns": stats_dict["num_turns"],
-            "tool_calls": len(stats_dict["tool_interact_info"]),
             "empty_responses": stats_dict["empty_responses"],
             "valid_action": stats_dict["valid_action"],
             "per_action_length": np.mean(stats_dict["action_lengths"]) if len(stats_dict["action_lengths"]) > 0 else 0,
             "per_obs_length": np.mean(stats_dict["obs_lengths"]) if len(stats_dict["obs_lengths"]) > 0 else 0,
             "per_action_logp": np.mean(stats_dict["action_logps"]) if len(stats_dict["action_logps"]) > 0 else 0,
-            "per_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else None,
+            "per_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else 0,
             "traj_actions_length": sum(stats_dict["action_lengths"]),
             "traj_obs_length": sum(stats_dict["obs_lengths"]),
             "generated_length": len(output.token_ids),
             "is_traj_finished": float(stats_dict["is_traj_finished"]),
-        })
+        }
         
         multi_modal_output = {}
         if running_image_data is not None:
@@ -581,6 +597,6 @@ class VerlToolAgentLoop(AgentLoopBase):
             multi_modal_data=multi_modal_output,
             num_turns=stats_dict["num_turns"],
             metrics=metrics,
-            extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", []), "traj_stop_reason": traj_stop_reason},
+            extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", []), "traj_stop_reason": traj_stop_reason, "verl_tool_metrics": verl_tool_metrics},
         )
         return output

@@ -5,81 +5,13 @@ import ray
 import asyncio
 import logging
 import time
+import os
 from typing import Dict, List, Optional, Tuple, Any, Union
 from collections import defaultdict
 
 from .tools import get_tool_cls, ALL_TOOLS, set_use_tqdm
 
 logger = logging.getLogger(__name__)
-
-
-# === RAY REMOTE FUNCTIONS ===
-@ray.remote(num_cpus=0.1)
-def ray_execute_action(tool_serialized, trajectory_id: str, action: str, extra_field: Dict[str, Any]):
-    """
-    Execute a single tool action in a Ray worker.
-    
-    Args:
-        tool_serialized: Serialized tool instance
-        trajectory_id: Unique identifier for the trajectory
-        action: The action string to execute
-        extra_field: Additional data for the action
-        
-    Returns:
-        tuple: (observation, done, valid) result of the action
-    """
-    try:
-        return tool_serialized.conduct_action(trajectory_id, action, extra_field)
-    except Exception as e:
-        logger.error(f"Ray action execution failed: {e}")
-        return {"obs": "", "error": str(e)}, True, False
-
-
-@ray.remote(num_cpus=0.1)
-def ray_batch_execute(tool_serialized, trajectory_ids: List[str], actions: List[str], extra_fields: List[Dict[str, Any]]):
-    """
-    Execute a batch of actions for the same tool type.
-    
-    Args:
-        tool_serialized: Serialized tool instance
-        trajectory_ids: List of trajectory IDs
-        actions: List of actions
-        extra_fields: List of extra fields
-        
-    Returns:
-        tuple: (observations, dones, valids) for the batch
-    """
-    try:
-        # Check if tool has batch processing capability
-        if hasattr(tool_serialized, 'get_observations'):
-            return tool_serialized.get_observations(trajectory_ids, actions, extra_fields)
-        else:
-            # Fallback to individual processing
-            observations, dones, valids = [], [], []
-            for tid, action, extra in zip(trajectory_ids, actions, extra_fields):
-                obs, done, valid = tool_serialized.conduct_action(tid, action, extra)
-                observations.append(obs)
-                dones.append(done)
-                valids.append(valid)
-            return observations, dones, valids
-    except Exception as e:
-        logger.error(f"Ray batch execution failed: {e}")
-        # Return error for entire batch
-        error_obs = {"obs": "", "error": str(e)}
-        return ([error_obs] * len(trajectory_ids), 
-                [True] * len(trajectory_ids), 
-                [False] * len(trajectory_ids))
-
-
-@ray.remote(num_cpus=0)
-def handle_invalid_action(trajectory_id: str, action: str, extra_field: Dict[str, Any], done_if_invalid: bool):
-    """Handle actions that don't match any tool"""
-    observation = {
-        "obs": "",
-        "invalid_reason": "No valid tool found for action",
-        "action": action
-    }
-    return observation, done_if_invalid, False
 
 
 # === RAY TOOL MANAGER ===
@@ -142,13 +74,15 @@ class RayToolManager:
         failed_tools = []
         
         logger.info(f"Initializing Ray tools: {ordered_tools}")
+        if self.config.workers_per_tool <= os.cpu_count() * 2:
+            logger.warning(f"You are using ray with workers_per_tool={self.config.workers_per_tool} which is less than or equal to the 2 times of CPU cores  ({os.cpu_count() * 4}). This may lead to suboptimal performance due to resource contention. Consider increasing workers_per_tool if you see low gpu utilization during rollouts.")
         
         for tool_type in ordered_tools:
             try:
                 tool_cls = get_tool_cls(tool_type)
-                
-                tool_instance = tool_cls(num_workers=self.config.workers_per_tool)
-                
+
+                tool_instance = ray.remote(max_concurrency=self.config.workers_per_tool, num_cpus=0.1)(tool_cls).remote()
+
                 self.tools[tool_type] = tool_instance
                 initialized_tools.append(tool_type)
                 logger.info(f"✓ Initialized Ray tool: {tool_type}")
@@ -158,9 +92,9 @@ class RayToolManager:
                 logger.error(f"✗ Failed to initialize Ray tool {tool_type}: {e}")
                 
         if "finish" not in self.tools:
-            tool_instance = get_tool_cls("finish")(
-                num_workers=self.config.workers_per_tool,
-                other_tools=[self.tools[t] for t in initialized_tools if t in self.tools]
+            tool_instance = ray.remote(max_concurrency=self.config.workers_per_tool)(get_tool_cls("finish")).remote(
+                num_workers=1,
+                other_tools={t: self.tools[t] for t in initialized_tools if t in self.tools}
             )
             self.tools["finish"] = tool_instance
         
@@ -184,7 +118,7 @@ class RayToolManager:
         for tool_type, tool in self.tools.items():
             if tool_type not in ["finish", "base"] and hasattr(tool, 'get_usage_inst'):
                 try:
-                    usage_inst = tool.get_usage_inst()
+                    usage_inst = ray.get(tool.get_usage_inst.remote())
                     instructions.append(f"• {tool_type}: {usage_inst}")
                 except Exception as e:
                     logger.warning(f"Could not get usage instructions for {tool_type}: {e}")
@@ -223,7 +157,7 @@ class RayToolManager:
             try:
                 tool = self.tools[tool_type]
                 if hasattr(tool, 'parse_action'):
-                    _, valid = tool.parse_action(action)
+                    _, valid = ray.get(tool.parse_action.remote(action))
                     if valid:
                         return tool_type
             except Exception as e:
@@ -233,7 +167,7 @@ class RayToolManager:
         # Try MCP interface as fallback
         if "mcp_interface" in self.tools:
             try:
-                _, valid = self.tools["mcp_interface"].parse_action(action)
+                _, valid = ray.get(self.tools["mcp_interface"].parse_action.remote(action))
                 if valid:
                     return "mcp_interface"
             except Exception as e:
@@ -323,12 +257,12 @@ class RayToolManager:
         # Use batch processing if available, otherwise individual Ray tasks
         if hasattr(tool, 'get_observations'):
             # Batch processing
-            future = ray_batch_execute.remote(tool, trajectory_ids, actions, extra_fields)
+            future = tool.get_observations.remote(trajectory_ids, actions, extra_fields)
             return await self._ray_get_async(future)
         else:
             # Individual processing with Ray parallelization
             futures = [
-                ray_execute_action.remote(tool, tid, action, extra)
+                tool.conduct_action.remote(tid, action, extra)
                 for tid, action, extra in zip(trajectory_ids, actions, extra_fields)
             ]
             

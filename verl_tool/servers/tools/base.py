@@ -99,6 +99,9 @@ class BaseTool:
         """
         self.env_cache.pop(trajectory_id, None)
     
+    def get_env_cache_keys(self):
+        return list(self.env_cache.keys())
+    
     def parse_action(self, action:str):
         """
         Parse the raw action string (which is the llm response) into a actual action and it's contents
