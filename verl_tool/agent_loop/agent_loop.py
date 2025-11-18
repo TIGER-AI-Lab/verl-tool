@@ -132,6 +132,7 @@ class AgentLoopMetrics(BaseModel):
     is_traj_finished: float = 0.0
     empty_responses: float = 0.0
     
+    
 
 class AgentLoopOutput(BaseModel):
     """Agent loop output."""

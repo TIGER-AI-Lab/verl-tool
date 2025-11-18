@@ -72,12 +72,12 @@ class AgentActorConfig:
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
     tool_call_time_out: int=None # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.
+    max_concurrent_trajectories: int=None # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     
     # The following fields are to be disgarded, only for compatibility
     rolling_with_prompt: bool=False
     call_tool_first: bool=False
     additional_eos_token_ids: list=None
-    max_concurrent_trajectories: int=256 # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
     min_turns: int=0
     
@@ -424,7 +424,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                 if encoded_audio_data is not None:
                     extra_fields["audio"] = encoded_audio_data
                 logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
-                with simple_timer("interact_with_tool_server", metrics):
+                with simple_timer("tool_calls", metrics):
                     tool_results = await self.interact_with_tool_server(
                         traj_id=request_id,
                         action=action_text,
@@ -552,20 +552,19 @@ class VerlToolAgentLoop(AgentLoopBase):
         assert len(response_ids) == len(response_mask), f"Response ids and mask length mismatch: {len(response_ids)} vs {len(response_mask)}"
         await self.close_traj_tool_threads(request_id=request_id)
             
-        metrics.update({
+        verl_tool_metrics = {
             "num_turns": stats_dict["num_turns"],
-            "tool_calls": len(stats_dict["tool_interact_info"]),
             "empty_responses": stats_dict["empty_responses"],
             "valid_action": stats_dict["valid_action"],
             "per_action_length": np.mean(stats_dict["action_lengths"]) if len(stats_dict["action_lengths"]) > 0 else 0,
             "per_obs_length": np.mean(stats_dict["obs_lengths"]) if len(stats_dict["obs_lengths"]) > 0 else 0,
             "per_action_logp": np.mean(stats_dict["action_logps"]) if len(stats_dict["action_logps"]) > 0 else 0,
-            "per_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else None,
+            "per_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else 0,
             "traj_actions_length": sum(stats_dict["action_lengths"]),
             "traj_obs_length": sum(stats_dict["obs_lengths"]),
             "generated_length": len(output.token_ids),
             "is_traj_finished": float(stats_dict["is_traj_finished"]),
-        })
+        }
         
         multi_modal_output = {}
         if running_image_data is not None:
@@ -581,6 +580,6 @@ class VerlToolAgentLoop(AgentLoopBase):
             multi_modal_data=multi_modal_output,
             num_turns=stats_dict["num_turns"],
             metrics=metrics,
-            extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", []), "traj_stop_reason": traj_stop_reason},
+            extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", []), "traj_stop_reason": traj_stop_reason, "verl_tool_metrics": verl_tool_metrics},
         )
         return output
