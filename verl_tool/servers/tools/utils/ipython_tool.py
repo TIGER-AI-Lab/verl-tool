@@ -63,7 +63,7 @@ def time_limit(seconds):
         signal.signal(signal.SIGALRM, old_handler)
 
 
-@ray.remote(max_concurrency=1, num_cpus=0.01)
+@ray.remote(num_cpus=0)
 class KernelActor:
     """
     A Ray actor that owns a single IPython shell in its own process.
@@ -179,7 +179,7 @@ class KernelActor:
         return [k for k in self.shell.user_ns.keys() if not k.startswith('_')]
 
 
-@ray.remote(max_concurrency=MAX_ACTORS)
+@ray.remote
 class KernelManager:
     """
     Centralized manager for all KernelActor instances.
@@ -193,6 +193,7 @@ class KernelManager:
         self.actor_cache: "OrderedDict[str, ray.actor.ActorHandle]" = OrderedDict()
         self.max_actors = max_actors
         self.manager_id = ray.get_runtime_context().get_actor_id()
+        self.available_actors = []
         # NEW: Lock for thread-safe access when max_concurrency > 1
         self.cache_lock = threading.RLock()
         logger.info(f"KernelManager initialized with manager_id={self.manager_id}, max_actors={max_actors}")
@@ -211,49 +212,28 @@ class KernelManager:
                 logger.debug(f"Cache HIT for request_id={request_id}")
                 return actor
             
+            
+                                                  
             # Create new actor
             logger.info(f"Cache MISS for request_id={request_id}, creating new KernelActor")
-            actor = KernelActor.remote()
-            self.actor_cache[request_id] = actor
+            if self.available_actors:
+                actor = self.available_actors.pop()
+                future = actor.reset.remote()
+                ray.get(future)
+            else:
+                if len(self.actor_cache) + len(self.available_actors) < self.max_actors:
+                    actor = KernelActor.remote()
+                else:
+                    # wait for an available actor to be recycled
+                    while not self.available_actors:
+                        time.sleep(0.5)
+                    actor = self.available_actors.pop()
+                    future = actor.reset.remote()
+                    ray.get(future)
             
-            # LRU eviction if too many actors
-            if len(self.actor_cache) > self.max_actors:
-                old_id, old_actor = self.actor_cache.popitem(last=False)
-                logger.warning(f"Evicting KernelActor for request_id={old_id}")
-                try:
-                    ray.kill(old_actor)
-                except Exception as e:
-                    logger.warning(f"Error killing old actor {old_id}: {e}")
+            self.actor_cache[request_id] = actor
         
         return actor
-    
-    def execute(
-        self,
-        request_id: str,
-        script: str,
-        max_output_size: int = 100 * 1024,
-        timeout: int = 120
-    ) -> Tuple[str, bool]:
-        """
-        Execute script using the actor for this request_id.
-        """
-        actor = self.get_or_create_actor(request_id)
-        
-        try:
-            # Execute on the kernel actor with timeout
-            future = actor.execute.remote(script, max_output_size, timeout)
-            result = ray.get(future, timeout=timeout + 120)
-            return result
-        except GetTimeoutError:
-            logger.warning(f"Execution timeout for request_id={request_id}")
-            # Kill the timed-out actor and remove from cache
-            try:
-                ray.kill(actor)
-            except Exception as e:
-                logger.warning(f"Error killing actor on timeout: {e}")
-            
-            self.actor_cache.pop(request_id, None)
-            return f"Execution timeout after {timeout} seconds", False
     
     def get_stats(self) -> Dict:
         """Get statistics about the manager."""
@@ -266,27 +246,25 @@ class KernelManager:
     
     def remove_kernel(self, request_id: str) -> bool:
         """Remove a specific kernel."""
-        actor = self.actor_cache.pop(request_id, None)
-        if actor is not None:
-            try:
-                ray.kill(actor)
-                logger.info(f"Removed kernel for request_id={request_id}")
-                return True
-            except Exception as e:
-                logger.warning(f"Error killing actor {request_id}: {e}")
-                return False
-        return False
+        with self.cache_lock:
+            actor = self.actor_cache.pop(request_id, None)
+            if actor is not None:
+                try:
+                    ray.get(actor.reset.remote())
+                    self.available_actors.append(actor)
+                    logger.debug(f"Removed kernel for request_id={request_id}")
+                    return True
+                except Exception as e:
+                    logger.warning(f"Error killing actor {request_id}: {e}")
+                    return False
+            return False
     
     def cleanup_all(self) -> None:
         """Kill all actors and clear the cache."""
         ids = list(self.actor_cache.keys())
         for rid in ids:
-            actor = self.actor_cache.pop(rid, None)
-            if actor is not None:
-                try:
-                    ray.kill(actor)
-                except Exception as e:
-                    logger.warning(f"Error killing actor {rid}: {e}")
+            self.remove_kernel(rid)
+        gc.collect()
         logger.info("Cleaned up all KernelActors")
 
 
@@ -317,7 +295,6 @@ def _get_kernel_manager() -> "ray.actor.ActorHandle":
             _kernel_manager = KernelManager.options(
                 name="kernel_manager",
                 lifetime="detached",
-                max_concurrency=100  # Allow concurrent calls to the manager
             ).remote(max_actors=MAX_ACTORS)
         
         return _kernel_manager
@@ -349,16 +326,27 @@ async def call_python_script_with_ipython_async(
         return "Error: script must be a non-empty string", False
 
     manager = _get_kernel_manager()
+    actor = ray.get(manager.get_or_create_actor.remote(request_id))
     
     loop = asyncio.get_event_loop()
 
     def _run():
-        # Execute through the manager
-        future = manager.execute.remote(request_id, script, max_output_size, timeout)
+        
         try:
-            return ray.get(future, timeout=timeout + 240)  # Extra buffer
+            # Execute on the kernel actor with timeout
+            future = actor.execute.remote(script, max_output_size, timeout)
+            result = ray.get(future, timeout=timeout + 120)
+            return result
         except GetTimeoutError:
-            logger.warning(f"Manager call timeout for request_id={request_id}")
+            logger.warning(f"Execution timeout for request_id={request_id}")
+            # Kill the timed-out actor and remove from cache
+            try:
+                ray.kill(actor)
+            except Exception as e:
+                logger.warning(f"Error killing actor on timeout: {e}")
+            
+            future = manager.remove_kernel.remote(request_id)
+            ray.get(future)
             return f"Execution timeout after {timeout} seconds", False
 
     output, success = await loop.run_in_executor(None, _run)

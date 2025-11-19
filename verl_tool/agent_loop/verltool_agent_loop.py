@@ -586,7 +586,6 @@ class VerlToolAgentLoop(AgentLoopBase):
         if stats_dict["tool_interact_info"] and all("metrics" in info for info in stats_dict["tool_interact_info"]):
             # do mean aggregation for each metric key
             tool_metric_keys = stats_dict["tool_interact_info"][0]["metrics"].keys()
-            print(f"Aggregating tool metrics: {tool_metric_keys}")
             for key in tool_metric_keys:
                 try:
                     verl_tool_metrics[f"tool_avg_{key}"] = np.mean([float(info["metrics"][key]) for info in stats_dict["tool_interact_info"] if key in info["metrics"]])

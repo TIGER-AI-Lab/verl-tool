@@ -2,7 +2,7 @@
 #SBATCH --job-name=acetoolreason_mathrl_grpo_multi_node
 #SBATCH --output=logs/acetoolreason_mathrl_grpo_multi_node_%j/%a.out
 #SBATCH --error=logs/acetoolreason_mathrl_grpo_multi_node_%j/%a.err
-#SBATCH --time=180
+#SBATCH --time=60
 #SBATCH --gpus-per-node=8
 #SBATCH --partition=batch
 #SBATCH --cpus-per-gpu=8
@@ -308,9 +308,9 @@ $CONTAINER_WORKDIR/data/math_rl/test_no_tool_aime25.parquet,\
 $CONTAINER_WORKDIR/data/math_rl/test_tool_aime24.parquet,\
 $CONTAINER_WORKDIR/data/math_rl/test_tool_aime25.parquet]
 
-model_name=$CONTAINER_WORKDIR/models/wenliang_nemotron_8b_hybrid_9e-6_tool_mix_v2.3_sft/2000_step
+model_name=$CONTAINER_WORKDIR/models/wenliang_nemotron_8b_hybrid_9e-6_tool_mix_v2.3_sft_2epoch/4681_step
 # model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-model_pretty_name=wenliang_nemotron_8b_toolmix_v2.3_sft_2000step
+model_pretty_name=models_wenliang_nemotron_8b_hybrid_9e-6_tool_mix_v2.3_sft_2epoch_4681_step
 rl_alg=grpo
 n_gpus_per_node=$GPUS_PER_NODE
 n_nodes=$SLURM_JOB_NUM_NODES
@@ -318,10 +318,7 @@ n=8
 batch_size=128
 ppo_mini_batch_size=$batch_size
 max_prompt_length=4096
-train_max_response_length=30000
-val_max_response_length=60000
-max_response_length=$(($train_max_response_length > $val_max_response_length ? $train_max_response_length : $val_max_response_length))
-max_model_len=$((max_prompt_length + (max_response_length > val_max_response_length ? max_response_length : val_max_response_length)))
+max_response_length=30000
 max_obs_length=2048
 temperature=1.0
 top_p=1.0
@@ -351,7 +348,7 @@ fsdp_size=-1
 enable_prefix_caching=False
 mask_observations=True
 enable_mtrl=True
-run_name_postfix="-math-rl-v1-with-tool"
+run_name_postfix="-math-rl-v1-with-tool-30k"
 if [ "$enable_agent" = "True" ]; then
     run_name="acetoolreason-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
@@ -398,7 +395,7 @@ srun $COMMON_SRUN_ARGS \
             --host $host \
             --port $port \
             --tool_type ipython_code \
-            --workers_per_tool 8 \
+            --workers_per_tool 1024 \
             --use_ray=True 2>&1 | tee -a $LOG_DIR/tool-server-console.log
     " &
 
@@ -485,8 +482,6 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     actor_rollout_ref.agent.tool_server_url=$tool_server_url \
     actor_rollout_ref.agent.max_prompt_length=$max_prompt_length \
     actor_rollout_ref.agent.max_response_length=$max_response_length \
-    actor_rollout_ref.agent.train_max_response_length=$train_max_response_length \
-    actor_rollout_ref.agent.val_max_response_length=$val_max_response_length \
     actor_rollout_ref.agent.max_start_length=$max_prompt_length \
     actor_rollout_ref.agent.max_obs_length=$max_obs_length \
     actor_rollout_ref.agent.max_turns=$max_turns \
@@ -501,7 +496,6 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \
     actor_rollout_ref.rollout.temperature=$temperature \
-    actor_rollout_ref.rollout.max_model_len=$max_model_len \
     actor_rollout_ref.rollout.top_p=$top_p \
     actor_rollout_ref.rollout.top_k=-1 \
     actor_rollout_ref.rollout.n=$n \
