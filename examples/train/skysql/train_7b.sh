@@ -6,7 +6,7 @@ $(pwd)/data/${dataset_name}/test_spider_dk.parquet,\
 $(pwd)/data/${dataset_name}/test_spider_test.parquet,\
 $(pwd)/data/${dataset_name}/test_spider_syn.parquet,\
 $(pwd)/data/${dataset_name}/test_spider_realistic.parquet]
-model_name=Qwen/Qwen2.5-Coder-7B-Instruct # should use coder model
+model_name="models/qwen2.5_coder_7b_instruct"
 rl_alg=grpo # gae(ppo) or grpo, if grpo, then better set n>1 otherwise the group norm can not be effective
 n_gpus_per_node=8
 n_nodes=1
@@ -32,14 +32,15 @@ reward_manager=sqlcoder
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
 tensor_model_parallel_size=1
-gpu_memory_utilization=0.6 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
-do_offload=True # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
+gpu_memory_utilization=0.8 # higher gpu_memory_utilization will likely cause the vllm to OOM and get stuck, so set it to a lower value like 0.4 or 0.5
+do_offload=False # control actor's fsdp.[param|optimizer]_offload and actor_rollout_ref.rollout.fsdp.[param|optimizer]_offload; if gpu_memory_utilization is set to > 0.6, then do_offload should be set to True otherwise it will cause OOM
 use_dynamic_bsz=True # faster
 ulysses_sequence_parallel_size=1 # set to 1 for normal verl behavior, otherwise it will cause OOM
 fsdp_size=-1
 mask_observations=True # mask observations for kl loss and gradient descent
 enable_mtrl=False # enable multi-turn training
 rollout_mode='async'
+retokenization=False
 
 model_pretty_name=$(echo $model_name | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 run_name_postfix=""
@@ -58,7 +59,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=127.0.0.1 # $(hostname -I | awk '{print $1}')
 
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "sql" --workers_per_tool 4 &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "sql" --workers_per_tool 256 --use_ray True &
 # --done-if-invalid True
 server_pid=$!
 
@@ -106,6 +107,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     actor_rollout_ref.agent.enable_mtrl=$enable_mtrl \
     actor_rollout_ref.agent.min_turns=$min_turns \
     actor_rollout_ref.agent.max_action_length=$max_action_length \
+    +actor_rollout_ref.agent.retokenization=$retokenization \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$tensor_model_parallel_size \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.rollout.enforce_eager=False \
@@ -136,6 +138,8 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.val_before_train=True \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
+    trainer.rollout_data_dir=$(pwd)/verl_step_records/$run_name \
+    trainer.validation_data_dir=$(pwd)/verl_step_records/$run_name-val \
     trainer.nnodes=$n_nodes \
     +trainer.remove_previous_ckpt_in_save=True \
     trainer.save_freq=5 \

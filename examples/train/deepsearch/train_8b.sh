@@ -61,7 +61,7 @@ echo "action_stop_tokens_file=$action_stop_tokens_file"
 host=$(hostname -i | awk '{print $1}')
 port=$(shuf -i 30000-31000 -n 1)
 tool_server_url=http://$host:$port/get_observation
-python -m verl_tool.servers.serve --host $host --port $port --tool_type "google_search,ipython_code" --workers_per_tool 4 --use_ray True &
+python -m verl_tool.servers.serve --host $host --port $port --tool_type "google_search,ipython_code" --workers_per_tool 512 --use_ray True &
 server_pid=$!
 
 echo "Server (pid=$server_pid) started at $tool_server_url"
@@ -140,7 +140,8 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=$n_nodes \
-    +trainer.remove_previous_ckpt_in_save=True \
+    trainer.rollout_data_dir=$(pwd)/verl_step_records/$run_name \
+    trainer.validation_data_dir=$(pwd)/verl_step_records/$run_name-val \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
     trainer.total_epochs=10 \

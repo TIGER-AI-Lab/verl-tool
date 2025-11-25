@@ -124,7 +124,8 @@ def main(
             db_path = test_databases_dir / test_databases_source_sub_dir_map[data_source] / db_id / f"{db_id}.sqlite"
         assert db_path.exists(), f"Database file {db_path} does not exist for db_id {db_id} in split {split}, data_source {data_source}."
         
-        item['extra_info']['db_path'] = str(db_path.relative_to("."))  # Make db_path relative to current directory
+        # item['extra_info']['db_path'] = str(db_path.relative_to("."))  # Make db_path relative to current directory
+        item['extra_info']['db_path'] = str(db_path.resolve())  # Use absolute path
         question = item['prompt'][-1]['content']  # Extract question from the last prompt entry
         item['extra_info']['question'] = question 
         

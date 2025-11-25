@@ -2,9 +2,9 @@
 #SBATCH --job-name=vt_rb_math_tir
 #SBATCH --output=logs/vt_rb_math_tir_%j/%a.out
 #SBATCH --error=logs/vt_rb_math_tir_%j/%a.err
-#SBATCH --time=60
+#SBATCH --time=180
 #SBATCH --gpus-per-node=8
-#SBATCH --partition=interactive
+#SBATCH --partition=batch
 #SBATCH --cpus-per-gpu=16
 #SBATCH --ntasks-per-node=2
 #SBATCH --nodes=1
@@ -397,7 +397,7 @@ srun $COMMON_SRUN_ARGS \
             --host $host \
             --port $port \
             --tool_type ipython_code \
-            --workers_per_tool 256 \
+            --max_concurrent_requests 1024 \
             --use_ray=True 2>&1 | tee -a $LOG_DIR/tool-server-console.log
     " &
 
@@ -443,6 +443,9 @@ fi
 ########################################################
 job_submit_cmd=$(cat <<EOF
 set -x
+source .venv/bin/activate
+which python
+which ray
 
 RAY_ADDRESS="http://127.0.0.1:$DASHBOARD_PORT" \
 ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
@@ -533,9 +536,9 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     trainer.default_local_dir=$checkpoint_dir \
     trainer.rollout_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name \
     trainer.validation_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name-val \
-    trainer.save_freq=20 \
+    trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.total_training_steps=300
+    trainer.total_training_steps=2000
 
 
 EOF

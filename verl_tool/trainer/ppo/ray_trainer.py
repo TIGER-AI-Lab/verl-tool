@@ -27,11 +27,12 @@ import verl.trainer.ppo.ray_trainer
 from .reward import compute_reward, compute_reward_async
 from verl_tool.workers.rollout.vllm_rollout.vllm_async_server import VerlToolvLLMHttpServer
 import verl.workers.rollout.vllm_rollout.vllm_async_server
-from .metric_util import compute_data_metrics
+from .metric_util import compute_data_metrics, process_validation_metrics
 verl.experimental.agent_loop.AgentLoopManager = AgentLoopManager
 verl.trainer.ppo.ray_trainer.compute_reward = compute_reward
 verl.trainer.ppo.ray_trainer.compute_reward_async = compute_reward_async
 verl.trainer.ppo.ray_trainer.compute_data_metrics = compute_data_metrics
+verl.trainer.ppo.ray_trainer.process_validation_metrics = process_validation_metrics
 verl.workers.rollout.vllm_rollout.vllm_async_server.vLLMHttpServer = VerlToolvLLMHttpServer
 ##############################################################################
 
@@ -146,6 +147,9 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                 reward_extra_infos_dict["traj_stop_reason"].extend(
                     test_batch.non_tensor_batch.get("traj_stop_reason", [None] * reward_tensor.shape[0])
                 )
+                reward_extra_infos_dict["verl_tool_metrics"].extend(
+                    test_batch.non_tensor_batch.get("verl_tool_metrics", [None] * reward_tensor.shape[0])
+                )
 
             # collect num_turns of each prompt
             if "__num_turns__" in test_batch.non_tensor_batch:
@@ -171,6 +175,8 @@ class AgentRayPPOTrainer(RayPPOTrainer):
             reward_extra_infos_dict.pop("tool_interact_info")
         if "traj_stop_reason" in reward_extra_infos_dict:
             reward_extra_infos_dict.pop("traj_stop_reason")
+        if "verl_tool_metrics" in reward_extra_infos_dict:
+            reward_extra_infos_dict.pop("verl_tool_metrics")
 
         for key_info, lst in reward_extra_infos_dict.items():
             assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
@@ -241,6 +247,7 @@ class AgentRayPPOTrainer(RayPPOTrainer):
                 reward_extra_infos_to_dump.update({
                     "tool_interact_info": tool_interact_info,
                     "traj_stop_reason": batch.non_tensor_batch.get("traj_stop_reason", None),
+                    "verl_tool_metrics": batch.non_tensor_batch.get("verl_tool_metrics", None),
                 })
 
             self._dump_generations(

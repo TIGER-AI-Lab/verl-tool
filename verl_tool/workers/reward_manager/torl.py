@@ -232,8 +232,8 @@ class ToRLRewardManager:
                 else:
                     print(f"[score]", score)
                 
-        correct_response_length_mean = np.mean(reward_extra_info['correct_response_length']) if reward_extra_info['correct_response_length'] else 0.0
-        wrong_response_length_mean = np.mean(reward_extra_info['wrong_response_length']) if reward_extra_info['wrong_response_length'] else 0.0
+        correct_response_length_mean = np.mean(reward_extra_info['correct_response_length']) if reward_extra_info['correct_response_length'] else None
+        wrong_response_length_mean = np.mean(reward_extra_info['wrong_response_length']) if reward_extra_info['wrong_response_length'] else None
         reward_extra_info['correct_response_length'] = [correct_response_length_mean] * len(reward_tensor)
         reward_extra_info['wrong_response_length'] = [wrong_response_length_mean] * len(reward_tensor)
 

@@ -354,9 +354,9 @@ mask_observations=True
 enable_mtrl=False
 run_name_postfix="-acc-only-${max_turns}-turns"
 if [ "$enable_agent" = "True" ]; then
-    run_name="math_tir-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="math_tir-${strategy}-agent-${n_nodes}nodes-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
-    run_name="math_tir-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="math_tir-${strategy}-${n_nodes}nodes-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 fi
 checkpoint_dir=$CONTAINER_WORKDIR/checkpoints/math_tir/${run_name}
 
@@ -398,8 +398,8 @@ srun $COMMON_SRUN_ARGS \
         python -m verl_tool.servers.serve \
             --host $host \
             --port $port \
-            --tool_type ipython_code \
-            --workers_per_tool 256 \
+            --tool_type python_code \
+            --max_concurrent_requests 1024 \
             --use_ray=True 2>&1 | tee -a $LOG_DIR/tool-server-console.log
     " &
 
@@ -445,6 +445,9 @@ fi
 ########################################################
 job_submit_cmd=$(cat <<EOF
 set -x
+source .venv/bin/activate
+which python
+which ray
 
 RAY_ADDRESS="http://127.0.0.1:$DASHBOARD_PORT" \
 ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
@@ -535,9 +538,9 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     trainer.default_local_dir=$checkpoint_dir \
     trainer.rollout_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name \
     trainer.validation_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name-val \
-    trainer.save_freq=20 \
+    trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.total_training_steps=300
+    trainer.total_training_steps=2000
 
 
 EOF

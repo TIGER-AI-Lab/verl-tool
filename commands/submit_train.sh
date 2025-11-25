@@ -6,10 +6,12 @@ nodes=${2:-8}
 num_submits=${3:-1}
 dep_jid=$4
 
+job_name=$(basename $script_path .sh)
+
 echo "Using $nodes nodes for submission"
 echo "Submitting $num_submits sequential jobs"
 
-COMMON_ARGS="--parsable --nodes=$nodes --account=llmservice_fm_post"
+COMMON_ARGS="--parsable --nodes=$nodes --account=llmservice_fm_post --job-name=$job_name"
 
 # Submit the first job
 if [ -n "$dep_jid" ]; then

@@ -261,6 +261,8 @@ class IPythonTool(BaseTool):
             else: 
                 done = False
             valid = True
+            
+            observation = {"obs": observation, "metrics": {"code_success": success, "code_lines": parsed_action.count('\n') + 1}, "timeout": "execution time out" in execution_result.lower()}
         
         self.update_env(trajectory_id, env, parsed_action, is_valid, extra_field, execution_result)
         self.save_env(trajectory_id, env)

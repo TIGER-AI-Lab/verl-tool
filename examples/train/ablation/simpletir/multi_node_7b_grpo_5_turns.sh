@@ -1,0 +1,617 @@
+#!/bin/bash
+#SBATCH --job-name=vt_rb_simple_tir
+#SBATCH --output=logs/vt_rb_simple_tir_%j/%a.out
+#SBATCH --error=logs/vt_rb_simple_tir_%j/%a.err
+#SBATCH --time=180
+#SBATCH --gpus-per-node=8
+#SBATCH --partition=batch
+#SBATCH --cpus-per-gpu=16
+#SBATCH --ntasks-per-node=2
+#SBATCH --nodes=1
+#SBATCH --mem=0
+
+set -eoux pipefail
+
+########################################################
+# Container and mount configuration
+########################################################
+CONTAINER=${1:-"/lustre/fsw/portfolios/llmservice/users/dongfuj/images/verltool.sqsh"} # the global container path
+MOUNTS=${2:-"/lustre"} # the mount paths, comma separated
+CONTAINER_WORKDIR=${3:-"/lustre/fsw/portfolios/llmservice/users/dongfuj/Workspace/rebuttal/verl-tool"} # the workdir inside the container
+
+echo "Using container: $CONTAINER"
+echo "Container workdir: $CONTAINER_WORKDIR"
+echo "Mounts: $MOUNTS"
+
+########################################################
+# Common srun arguments for container execution
+########################################################
+GPUS_PER_NODE=${SLURM_GPUS_ON_NODE:-8}
+CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_PER_GPU:-8}}
+CPUS_PER_WORKER=$((GPUS_PER_NODE * CPUS_PER_TASK))
+echo "GPUS_PER_NODE=$GPUS_PER_NODE"
+echo "CPUS_PER_TASK=$CPUS_PER_TASK"
+echo "CPUS_PER_WORKER=$CPUS_PER_WORKER"
+
+COMMON_SRUN_ARGS="--container-image=$CONTAINER"
+COMMON_SRUN_ARGS+=" --container-mounts=$MOUNTS"
+COMMON_SRUN_ARGS+=" --container-workdir=$CONTAINER_WORKDIR"
+COMMON_SRUN_ARGS+=" --export=ALL,PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python"
+COMMON_SRUN_ARGS+=" --mem=0"
+
+echo "COMMON_SRUN_ARGS=$COMMON_SRUN_ARGS"
+
+########################################################
+# Ray cluster configuration
+########################################################
+export RAY_TMPDIR=/tmp/ray_${SLURM_JOB_ID}
+echo "RAY_TMPDIR=$RAY_TMPDIR"
+
+# Ray ports configuration
+NODE_MANAGER_PORT=${NODE_MANAGER_PORT:-53001}
+OBJECT_MANAGER_PORT=${OBJECT_MANAGER_PORT:-53003}
+RUNTIME_ENV_AGENT_PORT=${RUNTIME_ENV_AGENT_PORT:-53005}
+DASHBOARD_AGENT_GRPC_PORT=${DASHBOARD_AGENT_GRPC_PORT:-53007}
+METRICS_EXPORT_PORT=${METRICS_EXPORT_PORT:-53009}
+
+# Head node ports
+PORT=${PORT:-54514}
+RAY_CLIENT_SERVER_PORT=${RAY_CLIENT_SERVER_PORT:-10001}
+DASHBOARD_PORT=${DASHBOARD_PORT:-8265}
+DASHBOARD_AGENT_LISTEN_PORT=${DASHBOARD_AGENT_LISTEN_PORT:-52365}
+
+MIN_WORKER_PORT=${MIN_WORKER_PORT:-54001}
+MAX_WORKER_PORT=${MAX_WORKER_PORT:-54513}
+
+########################################################
+# Create logs directory
+########################################################
+BASE_LOG_DIR=$CONTAINER_WORKDIR
+LOG_DIR="$BASE_LOG_DIR/ray-logs/$SLURM_JOB_ID"
+mkdir -p $LOG_DIR
+echo "Logs will be stored in $LOG_DIR"
+
+########################################################
+# Track backgrounded srun PIDs
+########################################################
+declare -A SRUN_PIDS
+
+check_srun_processes() {
+  for name in "${!SRUN_PIDS[@]}"; do
+    pid="${SRUN_PIDS[$name]}"
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "[ERROR] Background srun '$name' died (pid=$pid)" >&2
+      touch "$LOG_DIR/ENDED"
+      exit 1
+    fi
+  done
+}
+
+########################################################
+# Get node information
+########################################################
+nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+nodes_array=($nodes)
+ip_addresses_array=()
+
+for node in $nodes; do
+    echo "[DEBUG] Resolving hostname: $node"
+    ip_address=""
+    
+    # Try multiple methods to get IP address
+    ip_address=$(host $node 2>/dev/null | awk '/has address/ { print $4 }' | head -1 || true)
+    
+    if [[ -z "$ip_address" ]]; then
+        ip_address=$(getent hosts $node 2>/dev/null | awk '{ print $1 }' | head -1 || true)
+    fi
+    
+    if [[ -z "$ip_address" ]]; then
+        ip_address=$(nslookup $node 2>/dev/null | awk '/^Address: / { print $2 }' | head -1 || true)
+    fi
+    
+    if [[ -z "$ip_address" ]]; then
+        echo "[WARNING] Could not resolve IP for $node, using hostname as fallback"
+        ip_address=$node
+    fi
+    
+    echo "[INFO] Node: $node -> IP: $ip_address"
+    ip_addresses_array+=("$ip_address")
+done
+
+head_node=${nodes_array[0]}
+head_node_ip=${ip_addresses_array[0]}
+ip_head=$head_node_ip:$PORT
+
+NUM_ACTORS=$((GPUS_PER_NODE * SLURM_JOB_NUM_NODES))
+
+########################################################
+# Start Ray head node
+########################################################
+head_cmd=$(cat <<'EOF'
+set -x
+source .venv/bin/activate
+mkdir -p ${RAY_TMPDIR}
+
+exit_dramatically() {
+    pkill -P $$ || true
+    kill -TERM 0 || true
+    exit 1
+}
+
+monitor_sidecar() {
+  set +x
+  while true; do
+    sleep 60
+    if [[ -f "$LOG_DIR/ENDED" ]]; then
+      echo "Detected ENDED file, terminating..."
+      exit_dramatically
+    fi
+  done
+}
+monitor_sidecar &
+
+touch $LOG_DIR/STARTED_RAY_HEAD
+
+ray start --head \
+    --disable-usage-stats \
+    --resources="{\"worker_units\": $GPUS_PER_NODE, \"slurm_managed_ray_cluster\": 1}" \
+    --node-ip-address="$HEAD_NODE_IP" \
+    --port=$PORT \
+    --ray-client-server-port=$RAY_CLIENT_SERVER_PORT \
+    --dashboard-port=$DASHBOARD_PORT \
+    --node-manager-port=$((NODE_MANAGER_PORT + 1)) \
+    --object-manager-port=$((OBJECT_MANAGER_PORT + 1)) \
+    --runtime-env-agent-port=$((RUNTIME_ENV_AGENT_PORT + 1)) \
+    --dashboard-agent-grpc-port=$((DASHBOARD_AGENT_GRPC_PORT + 1)) \
+    --dashboard-agent-listen-port=$((DASHBOARD_AGENT_LISTEN_PORT + 1)) \
+    --metrics-export-port=$((METRICS_EXPORT_PORT + 1)) \
+    --temp-dir=${RAY_TMPDIR} \
+    --block
+EOF
+)
+
+srun $COMMON_SRUN_ARGS \
+    --container-name=ray-head \
+    --nodes=1 \
+    --ntasks=1 \
+    --cpus-per-task=$CPUS_PER_WORKER \
+    --gpus=$GPUS_PER_NODE \
+    -w "$head_node" \
+    -o $LOG_DIR/ray-head.log \
+    bash -c "export HEAD_NODE_IP=$head_node_ip; \
+    export PORT=$PORT; \
+    export RAY_CLIENT_SERVER_PORT=$RAY_CLIENT_SERVER_PORT; \
+    export DASHBOARD_PORT=$DASHBOARD_PORT; \
+    export NODE_MANAGER_PORT=$NODE_MANAGER_PORT; \
+    export OBJECT_MANAGER_PORT=$OBJECT_MANAGER_PORT; \
+    export RUNTIME_ENV_AGENT_PORT=$RUNTIME_ENV_AGENT_PORT; \
+    export DASHBOARD_AGENT_GRPC_PORT=$DASHBOARD_AGENT_GRPC_PORT; \
+    export DASHBOARD_AGENT_LISTEN_PORT=$DASHBOARD_AGENT_LISTEN_PORT; \
+    export METRICS_EXPORT_PORT=$METRICS_EXPORT_PORT; \
+    export GPUS_PER_NODE=$GPUS_PER_NODE; \
+    export LOG_DIR=$LOG_DIR; \
+    export SLURM_JOB_ID=$SLURM_JOB_ID; \
+    export RAY_TMPDIR=$RAY_TMPDIR; \
+    $head_cmd" &
+SRUN_PIDS["ray-head"]=$!
+
+sleep 5
+
+########################################################
+# Start Ray worker nodes
+########################################################
+for ((i = 1; i < SLURM_JOB_NUM_NODES; i++)); do
+  node_i=${nodes_array[$i]}
+  
+  worker_cmd=$(cat <<'EOF'
+set -x
+source .venv/bin/activate
+mkdir -p ${RAY_TMPDIR}
+
+exit_dramatically() {
+    pkill -P $$ || true
+    kill -TERM 0 || true
+    exit 1
+}
+
+monitor_sidecar() {
+  set +x
+  while true; do
+    sleep 60
+    if [[ -f "$LOG_DIR/ENDED" ]]; then
+      echo "Detected ENDED file, terminating..."
+      exit_dramatically
+    fi
+  done
+}
+monitor_sidecar &
+
+ray start --address "$IP_HEAD" \
+    --disable-usage-stats \
+    --resources="{\"worker_units\": $GPUS_PER_NODE, \"slurm_managed_ray_cluster\": 1}" \
+    --min-worker-port=$MIN_WORKER_PORT \
+    --max-worker-port=$MAX_WORKER_PORT \
+    --node-manager-port=$NODE_MANAGER_PORT \
+    --object-manager-port=$OBJECT_MANAGER_PORT \
+    --runtime-env-agent-port=$RUNTIME_ENV_AGENT_PORT \
+    --dashboard-agent-grpc-port=$DASHBOARD_AGENT_GRPC_PORT \
+    --dashboard-agent-listen-port=$DASHBOARD_AGENT_LISTEN_PORT \
+    --metrics-export-port=$METRICS_EXPORT_PORT \
+    --temp-dir=${RAY_TMPDIR} \
+    --block
+EOF
+)
+
+  srun $COMMON_SRUN_ARGS \
+      --container-name=ray-worker-$i \
+      --nodes=1 \
+      --ntasks=1 \
+      --cpus-per-task=$CPUS_PER_WORKER \
+      --gpus=$GPUS_PER_NODE \
+      -w "$node_i" \
+      -o $LOG_DIR/ray-worker-$i.log \
+      bash -c "export IP_HEAD=$ip_head; \
+      export MIN_WORKER_PORT=$MIN_WORKER_PORT; \
+      export MAX_WORKER_PORT=$MAX_WORKER_PORT; \
+      export NODE_MANAGER_PORT=$NODE_MANAGER_PORT; \
+      export OBJECT_MANAGER_PORT=$OBJECT_MANAGER_PORT; \
+      export RUNTIME_ENV_AGENT_PORT=$RUNTIME_ENV_AGENT_PORT; \
+      export DASHBOARD_AGENT_GRPC_PORT=$DASHBOARD_AGENT_GRPC_PORT; \
+      export DASHBOARD_AGENT_LISTEN_PORT=$DASHBOARD_AGENT_LISTEN_PORT; \
+      export METRICS_EXPORT_PORT=$METRICS_EXPORT_PORT; \
+      export GPUS_PER_NODE=$GPUS_PER_NODE; \
+      export LOG_DIR=$LOG_DIR; \
+      export SLURM_JOB_ID=$SLURM_JOB_ID; \
+      export RAY_TMPDIR=$RAY_TMPDIR; \
+      $worker_cmd" &
+  SRUN_PIDS["ray-worker-$i"]=$!
+  sleep 3
+done
+
+########################################################
+# Wait for Ray cluster to be ready
+########################################################
+while check_srun_processes && ! srun $COMMON_SRUN_ARGS --overlap --nodes=1 --ntasks=1 --gpus=1 -w $head_node test -f $LOG_DIR/STARTED_RAY_HEAD; do
+  echo "[INFO][$(date)] Waiting for head node to start..."
+  sleep 2
+done
+
+extract_worker_units() {
+  status_output=$(srun $COMMON_SRUN_ARGS --overlap --container-name=ray-head --nodes=1 --ntasks=1 --gpus=1 -w "$head_node" bash -c "source .venv/bin/activate; ray status")
+  if echo "$status_output" | grep -q "worker_units"; then
+    worker_units=$(echo "$status_output" | grep "worker_units" | awk -F'[/. ]' '{print $4}')
+    echo $worker_units
+  else
+    echo 0
+  fi
+}
+
+while true; do
+  worker_units=$(extract_worker_units)
+  echo "[INFO] Number of actors online: $worker_units/$NUM_ACTORS"
+  if [[ "$worker_units" -eq "$NUM_ACTORS" ]]; then
+    break
+  fi
+  check_srun_processes
+  sleep 2
+done
+
+echo "Ray cluster is ready with all $NUM_ACTORS workers connected!"
+
+########################################################
+# Training configuration
+########################################################
+work_dir=$CONTAINER_WORKDIR
+dataset_name=simple_tir # or math_torl_offical to use torl training data
+train_data=$CONTAINER_WORKDIR/data/${dataset_name}/train.parquet
+val_data=[$CONTAINER_WORKDIR/data/${dataset_name}/math500_test.parquet,\
+$CONTAINER_WORKDIR/data/${dataset_name}/aime24_test.parquet,\
+$CONTAINER_WORKDIR/data/${dataset_name}/aime25_test.parquet]
+
+
+model_name=$CONTAINER_WORKDIR/models/qwen2.5_7b
+model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
+rl_alg=grpo
+n_gpus_per_node=$GPUS_PER_NODE
+n_nodes=$SLURM_JOB_NUM_NODES
+n=16
+batch_size=512
+ppo_mini_batch_size=128
+max_prompt_length=2048
+train_max_response_length=16000
+val_max_response_length=16000
+max_response_length=$(($train_max_response_length > $val_max_response_length ? $train_max_response_length : $val_max_response_length))
+max_model_len=$((max_prompt_length + (max_response_length > val_max_response_length ? max_response_length : val_max_response_length)))
+max_obs_length=512
+temperature=1.0
+top_p=1.0
+val_temperature=0.6
+val_top_p=0.95
+val_n=8
+enable_agent=True
+strategy="fsdp"
+action_stop_tokens='Code execution result:'
+max_turns=5
+val_max_turns=10
+kl_loss_coef=0.0
+kl_coef=0
+entropy_coeff=0
+kl_loss_type=low_var_kl
+lr=1e-6
+project_name=vt_rb_simpletir
+reward_manager=torl
+ppo_micro_batch_size_per_gpu=1
+log_prob_micro_batch_size_per_gpu=8
+tensor_model_parallel_size=1
+gpu_memory_utilization=0.8
+max_token_len_per_gpu=$((max_prompt_length + max_response_length)) # at least 8192
+max_token_len_per_gpu=$((max_token_len_per_gpu < 8192 ? 8192 : max_token_len_per_gpu)) # at least 16384 for simple_tir
+do_offload=False
+use_dynamic_bsz=True
+ulysses_sequence_parallel_size=1
+fsdp_size=-1
+enable_prefix_caching=False
+mask_observations=True
+mask_overlong_loss=True
+mask_void_traj=True
+enable_mtrl=False
+tool_call_timeout=30
+max_concurrent_requests=$((batch_size * n))
+run_name_postfix="-acc-only-${max_turns}-turns"
+if [ "$enable_agent" = "True" ]; then
+    run_name="simple_tir-${strategy}-agent-${n_nodes}nodes-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+else
+    run_name="simple_tir-${strategy}-${n_nodes}nodes-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+fi
+checkpoint_dir=$CONTAINER_WORKDIR/checkpoints/simple_tir/${run_name}
+
+export NCCL_DEBUG=INFO
+export VLLM_USE_V1=1
+rollout_mode='async'
+
+
+########################################################
+# Start per-node tool servers with better error handling
+########################################################
+
+# 所有节点共享同一个端口号（每个 job 随机一个）
+tool_server_port=$(shuf -i 30000-31000 -n 1)
+# only use localhost in trainer, as each node runs its own tool server
+tool_server_url="http://127.0.0.1:${tool_server_port}/get_observation"
+
+# Create action stop tokens file
+action_stop_tokens_file="$CONTAINER_WORKDIR/tmp/verl_tool_action_stop_tokens_$SLURM_JOB_ID.txt"
+mkdir -p "$(dirname "$action_stop_tokens_file")"
+echo -e -n "$action_stop_tokens" > "$action_stop_tokens_file"
+echo "action_stop_tokens_file=$action_stop_tokens_file"
+echo "tool_server_url=$tool_server_url"
+
+# start a separate tool server on each node, listening on the same port
+for node in "${nodes_array[@]}"; do
+    echo "[INFO] Starting tool server on node $node at port $tool_server_port"
+    tool_server_log_dir="$LOG_DIR/tool_server_${node}"
+
+    srun $COMMON_SRUN_ARGS \
+        --container-name=tool-server-$node \
+        --nodes=1 \
+        --ntasks=1 \
+        --cpus-per-gpu=$CPUS_PER_TASK \
+        --overlap \
+        -w "$node" \
+        -o "$LOG_DIR/tool-server-${node}.log" \
+        -e "$LOG_DIR/tool-server-${node}.err" \
+        bash -c "
+            set -euo pipefail
+            source .venv/bin/activate
+            which python
+            echo '[INFO] Python location verified on $node'
+            echo '[INFO] Starting tool server on $node ...'
+            python -m verl_tool.servers.serve \
+                --host 0.0.0.0 \
+                --port ${tool_server_port} \
+                --tool_type python_code \
+                --max_concurrent_requests ${max_concurrent_requests} \
+                --log_directory \"$tool_server_log_dir\" \
+                --use_ray=True 2>&1 | tee -a \"$LOG_DIR/tool-server-${node}-console.log\"
+        " &
+
+    SRUN_PIDS["tool-server-$node"]=$!
+    echo "[INFO] Tool server process started on $node (pid=${SRUN_PIDS["tool-server-$node"]})"
+done
+
+# wait for all tool servers to be ready
+echo "[INFO] Waiting for tool servers to start on all nodes..."
+max_wait=60
+
+for node in "${nodes_array[@]}"; do
+    wait_count=0
+    pid="${SRUN_PIDS["tool-server-$node"]}"
+
+    while [ $wait_count -lt $max_wait ]; do
+        # check if the srun process is still running
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "[ERROR] Tool server process on node $node died! Check logs:"
+            echo "  - $LOG_DIR/tool-server-${node}.log"
+            echo "  - $LOG_DIR/tool-server-${node}.err"
+            exit 1
+        fi
+
+        # use curl to probe the tool server locally on that node
+        if srun $COMMON_SRUN_ARGS \
+            --overlap \
+            --nodes=1 \
+            --ntasks=1 \
+            --cpus-per-task=1 \
+            -w "$node" \
+            bash -c "curl -s --max-time 2 http://127.0.0.1:${tool_server_port}/health > /dev/null 2>&1"
+        then
+            echo "[INFO] Tool server on node $node is ready!"
+            break
+        fi
+
+        wait_count=$((wait_count + 1))
+        echo "[INFO] Still waiting for tool server on $node... ($wait_count/$max_wait)"
+        sleep 2
+    done
+
+    if [ $wait_count -eq $max_wait ]; then
+        echo "[ERROR] Tool server on node $node failed to start within ${max_wait} seconds"
+        echo "[ERROR] Check the logs at:"
+        echo "  - $LOG_DIR/tool-server-${node}.log"
+        echo "  - $LOG_DIR/tool-server-${node}.err"
+        exit 1
+    fi
+done
+
+########################################################
+# Submit Ray job
+########################################################
+job_submit_cmd=$(cat <<EOF
+set -x
+source .venv/bin/activate
+which python
+which ray
+
+RAY_ADDRESS="http://127.0.0.1:$DASHBOARD_PORT" \
+ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
+    -- \
+    PYTHONUNBUFFERED=1 \
+    python3 -m verl_tool.trainer.main_ppo \
+    algorithm.adv_estimator=$rl_alg \
+    data.train_files=$train_data \
+    data.val_files=$val_data \
+    data.train_batch_size=$batch_size \
+    data.val_batch_size=1024 \
+    data.max_prompt_length=$max_prompt_length \
+    data.max_response_length=$max_response_length \
+    data.truncation='right' \
+    reward_model.reward_manager=$reward_manager \
+    +reward_model.reward_kwargs={'record_dir':'$checkpoint_dir/step_records'} \
+    reward_model.launch_reward_fn_async=True \
+    actor_rollout_ref.model.path=$model_name \
+    actor_rollout_ref.model.enable_gradient_checkpointing=True \
+    actor_rollout_ref.actor.optim.lr=$lr \
+    actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
+    actor_rollout_ref.model.use_remove_padding=True \
+    actor_rollout_ref.model.trust_remote_code=True \
+    actor_rollout_ref.actor.checkpoint.save_contents=['model','optimizer','extra','hf_model'] \
+    actor_rollout_ref.actor.ppo_mini_batch_size=$ppo_mini_batch_size \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
+    actor_rollout_ref.actor.use_dynamic_bsz=$use_dynamic_bsz \
+    actor_rollout_ref.actor.use_kl_loss=True \
+    actor_rollout_ref.actor.strategy=$strategy \
+    actor_rollout_ref.actor.kl_loss_coef=$kl_loss_coef \
+    actor_rollout_ref.actor.kl_loss_type=$kl_loss_type \
+    actor_rollout_ref.actor.entropy_coeff=$entropy_coeff \
+    actor_rollout_ref.actor.fsdp_config.param_offload=$do_offload \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=$do_offload \
+    actor_rollout_ref.actor.fsdp_config.fsdp_size=$fsdp_size \
+    actor_rollout_ref.actor.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$max_token_len_per_gpu \
+    actor_rollout_ref.agent.enable_agent=$enable_agent \
+    actor_rollout_ref.agent.tool_server_url=$tool_server_url \
+    actor_rollout_ref.agent.max_prompt_length=$max_prompt_length \
+    actor_rollout_ref.agent.max_response_length=$max_response_length \
+    actor_rollout_ref.agent.train_max_response_length=$train_max_response_length \
+    actor_rollout_ref.agent.val_max_response_length=$val_max_response_length \
+    actor_rollout_ref.agent.max_start_length=$max_prompt_length \
+    actor_rollout_ref.agent.max_obs_length=$max_obs_length \
+    actor_rollout_ref.agent.max_turns=$max_turns \
+    actor_rollout_ref.agent.val_max_turns=$val_max_turns \
+    actor_rollout_ref.agent.mask_observations=$mask_observations \
+    actor_rollout_ref.agent.mask_overlong_loss=$mask_overlong_loss \
+    +actor_rollout_ref.agent.mask_void_traj=$mask_void_traj \
+    actor_rollout_ref.agent.action_stop_tokens=$action_stop_tokens_file \
+    actor_rollout_ref.agent.enable_mtrl=$enable_mtrl \
+    actor_rollout_ref.agent.tool_call_timeout=$tool_call_timeout \
+    actor_rollout_ref.agent.max_concurrent_trajectories=$max_concurrent_requests \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=$tensor_model_parallel_size \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
+    actor_rollout_ref.rollout.enforce_eager=False \
+    actor_rollout_ref.rollout.free_cache_engine=True \
+    actor_rollout_ref.rollout.name=vllm \
+    actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \
+    actor_rollout_ref.rollout.temperature=$temperature \
+    actor_rollout_ref.rollout.max_model_len=$max_model_len \
+    actor_rollout_ref.rollout.top_p=$top_p \
+    actor_rollout_ref.rollout.top_k=-1 \
+    actor_rollout_ref.rollout.n=$n \
+    actor_rollout_ref.rollout.val_kwargs.temperature=$val_temperature \
+    actor_rollout_ref.rollout.val_kwargs.top_p=$val_top_p \
+    actor_rollout_ref.rollout.val_kwargs.n=$val_n \
+    actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=$use_dynamic_bsz \
+    actor_rollout_ref.rollout.max_num_seqs=512 \
+    actor_rollout_ref.rollout.mode=$rollout_mode \
+    actor_rollout_ref.rollout.enable_prefix_caching=$enable_prefix_caching \
+    actor_rollout_ref.ref.log_prob_use_dynamic_bsz=$use_dynamic_bsz \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=$max_token_len_per_gpu \
+    actor_rollout_ref.ref.fsdp_config.param_offload=$do_offload \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
+    actor_rollout_ref.ref.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
+    critic.optim.lr=1e-5 \
+    critic.strategy=$strategy \
+    critic.model.path=$model_name \
+    critic.model.fsdp_config.fsdp_size=$fsdp_size \
+    critic.ppo_micro_batch_size_per_gpu=$ppo_micro_batch_size_per_gpu \
+    critic.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
+    algorithm.kl_ctrl.kl_coef=$kl_coef \
+    trainer.logger=['console','wandb'] \
+    trainer.project_name=$project_name \
+    trainer.experiment_name=$run_name \
+    trainer.val_before_train=True \
+    trainer.default_hdfs_dir=null \
+    trainer.n_gpus_per_node=$n_gpus_per_node \
+    trainer.nnodes=$n_nodes \
+    trainer.default_local_dir=$checkpoint_dir \
+    trainer.rollout_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name \
+    trainer.validation_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name-val \
+    trainer.save_freq=5 \
+    trainer.test_freq=10 \
+    trainer.total_training_steps=2000
+
+
+EOF
+)
+
+srun $COMMON_SRUN_ARGS \
+    --overlap \
+    --container-name=ray-head \
+    --nodes=1 \
+    --ntasks=1 \
+    --gpus=$GPUS_PER_NODE \
+    -w "$head_node" \
+    -o $LOG_DIR/ray-job-submit.log \
+    bash -c "$job_submit_cmd"
+
+########################################################
+# Cleanup
+########################################################
+echo "Training complete. Cleaning up..."
+
+# Stop tool servers on all nodes
+for name in "${!SRUN_PIDS[@]}"; do
+  if [[ "$name" == tool-server-* ]]; then
+    pid="${SRUN_PIDS[$name]}"
+    echo "[INFO] Stopping $name (pid=$pid)..."
+    pkill -P "$pid" 2>/dev/null || true
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+done
+
+# Signal Ray nodes to stop
+touch "$LOG_DIR/ENDED"
+
+# Stop Ray cluster
+srun $COMMON_SRUN_ARGS \
+    --overlap \
+    --container-name=ray-head \
+    --nodes=1 \
+    --ntasks=1 \
+    --gpus=1 \
+    -w "$head_node" \
+    bash -c "ray stop --force" 2>/dev/null || true
+
+# Clean up temporary files
+rm -f "$action_stop_tokens_file"
+
+echo "Cleanup complete!"

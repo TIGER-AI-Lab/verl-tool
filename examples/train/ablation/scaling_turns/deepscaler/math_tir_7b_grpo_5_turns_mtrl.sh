@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=vt_rebuttal_math_tir
-#SBATCH --output=logs/vt_rebuttal_math_tir_%j/%a.out
-#SBATCH --error=logs/vt_rebuttal_math_tir_%j/%a.err
+#SBATCH --job-name=vt_rb_math_tir
+#SBATCH --output=logs/vt_rb_math_tir_%j/%a.out
+#SBATCH --error=logs/vt_rb_math_tir_%j/%a.err
 #SBATCH --time=180
 #SBATCH --gpus-per-node=8
 #SBATCH --partition=batch
-#SBATCH --cpus-per-gpu=8
+#SBATCH --cpus-per-gpu=16
 #SBATCH --ntasks-per-node=2
 #SBATCH --nodes=1
 #SBATCH --mem=0
@@ -17,7 +17,7 @@ set -eoux pipefail
 ########################################################
 CONTAINER=${1:-"/lustre/fsw/portfolios/llmservice/users/dongfuj/images/verltool.sqsh"} # the global container path
 MOUNTS=${2:-"/lustre"} # the mount paths, comma separated
-CONTAINER_WORKDIR=${3:-"/lustre/fsw/portfolios/llmservice/users/dongfuj/Workspace/verl-tool"} # the workdir inside the container
+CONTAINER_WORKDIR=${3:-"/lustre/fsw/portfolios/llmservice/users/dongfuj/Workspace/rebuttal/verl-tool"} # the workdir inside the container
 
 echo "Using container: $CONTAINER"
 echo "Container workdir: $CONTAINER_WORKDIR"
@@ -302,24 +302,23 @@ echo "Ray cluster is ready with all $NUM_ACTORS workers connected!"
 # Training configuration
 ########################################################
 work_dir=$CONTAINER_WORKDIR
-dataset_name=deepmath_torl # or math_torl_offical to use torl training data
-train_data=$(pwd)/data/${dataset_name}/train.parquet
-val_data=[$(pwd)/data/${dataset_name}/test.parquet,\
-$(pwd)/data/${dataset_name}/math500_test.parquet,\
-$(pwd)/data/${dataset_name}/aime24_test.parquet,\
-$(pwd)/data/${dataset_name}/aime25_test.parquet]
+dataset_name=simple_tir # or math_torl_offical to use torl training data
+train_data=$CONTAINER_WORKDIR/data/${dataset_name}/train.parquet
+val_data=[$CONTAINER_WORKDIR/data/${dataset_name}/aime24_test.parquet,\
+$CONTAINER_WORKDIR/data/${dataset_name}/aime25_test.parquet]
 
-model_name=$CONTAINER_WORKDIR/models/qwen2.5_math_1.5b
+
+model_name=$CONTAINER_WORKDIR/models/qwen2.5_math_7b
 model_pretty_name=$(echo $model_name | rev | cut -d'/' -f1-2 | rev | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 rl_alg=grpo
 n_gpus_per_node=$GPUS_PER_NODE
 n_nodes=$SLURM_JOB_NUM_NODES
-n=8
+n=16
 batch_size=128
 ppo_mini_batch_size=$batch_size
-max_prompt_length=2048
-train_max_response_length=4096
-val_max_response_length=4096
+max_prompt_length=1024
+train_max_response_length=3072
+val_max_response_length=3072
 max_response_length=$(($train_max_response_length > $val_max_response_length ? $train_max_response_length : $val_max_response_length))
 max_model_len=$((max_prompt_length + (max_response_length > val_max_response_length ? max_response_length : val_max_response_length)))
 max_obs_length=512
@@ -331,19 +330,21 @@ val_n=8
 enable_agent=True
 strategy="fsdp"
 action_stop_tokens='```output'
-max_turns=1
-val_max_turns=1
+max_turns=5
+val_max_turns=10
 kl_loss_coef=0.0
 kl_coef=0
 entropy_coeff=0
 kl_loss_type=low_var_kl
 lr=1e-6
-project_name=vt_rebuttal_math
+project_name=vt_rb_math_deepscaler
 reward_manager=torl
 ppo_micro_batch_size_per_gpu=1
 log_prob_micro_batch_size_per_gpu=8
-tensor_model_parallel_size=2
+tensor_model_parallel_size=1
 gpu_memory_utilization=0.8
+max_token_len_per_gpu=$((max_prompt_length + max_response_length)) # at least 8192
+max_token_len_per_gpu=$((max_token_len_per_gpu < 8192 ? 8192 : max_token_len_per_gpu)) # at least 16384 for math_tir
 do_offload=False
 use_dynamic_bsz=True
 ulysses_sequence_parallel_size=1
@@ -351,11 +352,11 @@ fsdp_size=-1
 enable_prefix_caching=False
 mask_observations=True
 enable_mtrl=True
-run_name_postfix="-acc-only-1-turns"
+run_name_postfix="-acc-only-${max_turns}-turns-mtrl"
 if [ "$enable_agent" = "True" ]; then
-    run_name="math_tir-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="math_tir-deepscaler-${strategy}-agent-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 else
-    run_name="math_tir-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
+    run_name="math_tir-deepscaler-${strategy}-${model_pretty_name}-${rl_alg}-n${n}-b${batch_size}-t${temperature}-lr${lr}${run_name_postfix}"
 fi
 checkpoint_dir=$CONTAINER_WORKDIR/checkpoints/math_tir/${run_name}
 
@@ -397,8 +398,8 @@ srun $COMMON_SRUN_ARGS \
         python -m verl_tool.servers.serve \
             --host $host \
             --port $port \
-            --tool_type ipython_code \
-            --workers_per_tool 8 \
+            --tool_type python_code \
+            --max_concurrent_requests 1024 \
             --use_ray=True 2>&1 | tee -a $LOG_DIR/tool-server-console.log
     " &
 
@@ -444,6 +445,9 @@ fi
 ########################################################
 job_submit_cmd=$(cat <<EOF
 set -x
+source .venv/bin/activate
+which python
+which ray
 
 RAY_ADDRESS="http://127.0.0.1:$DASHBOARD_PORT" \
 ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
@@ -480,7 +484,7 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=$do_offload \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=$fsdp_size \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((max_prompt_length + max_response_length)) \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$max_token_len_per_gpu \
     actor_rollout_ref.agent.enable_agent=$enable_agent \
     actor_rollout_ref.agent.tool_server_url=$tool_server_url \
     actor_rollout_ref.agent.max_prompt_length=$max_prompt_length \
@@ -494,7 +498,6 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     actor_rollout_ref.agent.mask_observations=$mask_observations \
     actor_rollout_ref.agent.action_stop_tokens=$action_stop_tokens_file \
     actor_rollout_ref.agent.enable_mtrl=$enable_mtrl \
-    +actor_rollout_ref.agent.retokenization=True \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$tensor_model_parallel_size \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.rollout.enforce_eager=False \
@@ -514,7 +517,7 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     actor_rollout_ref.rollout.mode=$rollout_mode \
     actor_rollout_ref.rollout.enable_prefix_caching=$enable_prefix_caching \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=$use_dynamic_bsz \
-    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=$((max_prompt_length + max_response_length)) \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=$max_token_len_per_gpu \
     actor_rollout_ref.ref.fsdp_config.param_offload=$do_offload \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=$ulysses_sequence_parallel_size \
@@ -535,9 +538,9 @@ ray job submit --runtime-env=verl_tool/trainer/runtime_env.yaml \
     trainer.default_local_dir=$checkpoint_dir \
     trainer.rollout_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name \
     trainer.validation_data_dir=${CONTAINER_WORKDIR}/verl_step_records/$run_name-val \
-    trainer.save_freq=2 \
-    trainer.test_freq=5 \
-    trainer.total_training_steps=300
+    trainer.save_freq=10 \
+    trainer.test_freq=10 \
+    trainer.total_training_steps=2000
 
 
 EOF

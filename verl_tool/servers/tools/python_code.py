@@ -270,6 +270,8 @@ def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Opt
     assert isinstance(stderr, str), f"Expected stderr to be a string, got {type(stderr)}"
     return stdout, stderr, has_error
 
+
+MAX_OBS_LENGTH = 100000  # maximum observation length to send back to the tool server
 @register_tool
 class PythonCodeTool(BaseTool):
     tool_type = "python_code"
@@ -348,6 +350,8 @@ class PythonCodeTool(BaseTool):
         
         if not all_valid_python_code:
             all_valid_python_code = re.findall(r"```\n?python(.*?)```", action, re.DOTALL)
+        if not all_valid_python_code:
+            all_valid_python_code = re.findall(r"```\n?py(.*?)```", action, re.DOTALL)
         
         # if not all_valid_python_code:
         #     all_valid_python_code = re.findall(r"<tool_call>(.*?)</tool_call>", action, re.DOTALL)
@@ -456,7 +460,7 @@ class PythonCodeTool(BaseTool):
             stdout, stderr, has_error = execute_python(code_to_execute, self.timeout, stdin, self.python_path, self.pre_import_lib, self.use_firejail)
             execution_result = stdout + "\n" + stderr
             execution_result = execution_result.strip(' \n')
-            observation = execution_result
+            observation = execution_result[:MAX_OBS_LENGTH]
             
             observation = self.postprocess_observation(action, observation)
 
