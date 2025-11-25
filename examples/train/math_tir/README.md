@@ -12,11 +12,11 @@ python examples/data_preprocess/deepmath.py --data_source zwhe99/DeepMath-103K -
 ## Training example
 - grpo
 ```bash
-bash examples/train/acecoder/train_1.5b_grpo.sh
+bash examples/train/math_tir/train_1.5b_grpo.sh
 ```
 - dapo
 ```bash
-bash examples/train/acecoder/train_1.5b_dapo.sh
+bash examples/train/math_tir/train_1.5b_dapo.sh
 ```
 
 ## Tips
