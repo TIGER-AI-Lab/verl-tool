@@ -37,10 +37,11 @@ We provide a tool server starting command to start any tool server supported by 
 # Start the tool server
 host=localhost
 port=5000
-tool_type=ipython_code # separate by comma if you want to start multiple tool servers
-workers_per_tool=4 # number of workers for the tool server, meaning how many threads will be used to handle a single tool request with multiple trajectories
-python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray=True --log_level debug &
+tool_type=python_code # separate by comma if you want to start multiple tool servers
+workers_per_tool=512 # number of workers for the tool server, meaning how many threads will be used to handle a single tool request with multiple trajectories
+python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray=True --max_concurrent_requests=8192 --router_workers=64 --log_level debug > tool_server.log 2>&1 &
 ```
+for production use with multiple workers, please increase the `uvi_workers` parameter to utilize multiple CPU cores, e.g., `--uvi_workers=16`.
 
 After running, you should see the following output. Tools marked with 🟢 are active, while those marked with ⚪ are inactive. The `finish` tool is always added to manage the end of each trajectory (e.g., delete environment state):
 
@@ -70,6 +71,12 @@ To test the tool server, we provide corresponding test scripts in the `verl_tool
 # Test the python_code tool server
 python -m verl_tool.servers.tests.test_python_code_tool python --url=http://localhost:$port/get_observation
 # python -m verl_tool.servers.tests.test_bash_terminal_tool bash --url=http://localhost:$port/get_observation
+python verl_tool/servers/tests/test_ipython_efficiency.py --url=http://localhost:5000/get_observation --requests=200 --concurrency=512
+python verl_tool/servers/tests/test_ipython_efficiency.py --url=http://localhost:5000/get_observation --requests=512 --concurrency=512 
+
+for i in {1..8}; do
+    python verl_tool/servers/tests/test_ipython_efficiency.py --url=http://localhost:5000/get_observation --requests=512 --concurrency=512 >> ipython_efficiency_$i.log 2>&1 &
+done
 ```
 
 - request

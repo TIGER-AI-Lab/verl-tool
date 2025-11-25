@@ -83,4 +83,7 @@ rollout_mode: async
 mask_overlong_loss: False
 
 # Maximum concurrent trajectories
-max_concurrent_trajectories: null
+max_concurrent_trajectories: 1024
+
+# tool call timeout in seconds
+tool_call_timeout: 30

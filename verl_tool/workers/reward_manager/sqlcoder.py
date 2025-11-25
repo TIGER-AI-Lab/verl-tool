@@ -92,18 +92,7 @@ def verify_format_and_extract(output: str, action_list: list) -> Tuple[str, bool
     is_correct_format = True
     # verify the <solution> tags in the last action
     
-    # fallback: in verltool 0.6.0 the new agentloop only record tool_interact_info as actions in action list 
-    # when do_action=True, add extra parsing logic here to avoid indexing errors during regex parsing
-    if not action_list:
-        solution, found_solution = parse_action(output, "solution")
-    
-        if not found_solution:
-            solution, found_solution = parse_action(output, "sql")
-            
-        return solution, False    
-        
-    
-    if not re.search(rf"{SOLUTION_START}.*?{SOLUTION_END}", action_list[-1], re.S):
+    if not re.search(rf"{SOLUTION_START}.*?{SOLUTION_END}", output, re.S):
         is_correct_format = False
 
     # verify the <think> tags in as starts in each action
@@ -152,7 +141,7 @@ class SQLCoderRewardManager:
         reward_extra_info = defaultdict(list)
         
         scores = []
-        for i in tqdm(range(len(data)), desc="Processing SQLCoder responses", total=len(data)):
+        for i in tqdm(range(len(data)), desc="Processing SQLCoder responses", total=len(data), disable=True):
             # Get the entire response for format checking
             valid_response_length_i = valid_response_length[i].item()
             response = self.tokenizer.decode(
@@ -171,9 +160,9 @@ class SQLCoderRewardManager:
             
             parsed_solution, is_format_correct = verify_format_and_extract(response, action_list)
             if is_format_correct:
-                score['is_format_correct'] = 1
+                score['is_format_correct'] = 1.
             else:
-                score['is_format_correct'] = 0
+                score['is_format_correct'] = 0.
                 
             execution_score = sql_score_func(parsed_solution, meta)[0] if parsed_solution else 0.0
             score['accuracy'] = execution_score

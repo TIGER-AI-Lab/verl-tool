@@ -14,16 +14,15 @@
 import os
 import time
 import json
-import regex as re
 import numpy as np
 from pathlib import Path
 from verl import DataProto
-from .reward_score import _default_compute_score
-from .reward_score.torl_math import compute_score as torl_compute_score
+from verl.utils.reward_score import default_compute_score
 from verl.workers.reward_manager import register
 import torch
 from collections import defaultdict
-
+import regex as re
+from contextlib import redirect_stderr, redirect_stdout
 def extract_box_contents(text):
     """
     Extract contents from \box{} commands in a string.
@@ -41,7 +40,7 @@ def extract_box_contents(text):
     matches = re.findall(pattern, text)
     return matches[-1] if matches else ""
 
-def extract_answer(text, mode='math'):
+def extract_answer(text):
     """
     Extract the final answer from the text based on the mode.
     
@@ -51,39 +50,37 @@ def extract_answer(text, mode='math'):
     Returns:
         str: Extracted answer
     """
-    if mode == 'math':
-        return extract_box_contents(text)
-    elif mode == 'lcb_code':
-        start_idx = text.rfind('```python')
-        if start_idx != -1:
-            end_idx = text.find('```', start_idx+len('```python'))
-            if end_idx != -1:
-                end_idx += len('```')
-                return text[start_idx:end_idx].strip()
-            else:
-                return text[start_idx:].strip()
-        else:
-            if text.startswith("#"):
-                # this is alread the pure code, but without ```python
-                return "```python\n" + text.strip() + "\n```"
-            else:
-                return ""
-    elif mode == 'hle_judge':
-        return text
-    else:
-        raise ValueError(f"Unsupported mode: {mode}")
     
-@register("torl")
-class ToRLRewardManager:
+    all_valid_python_code = re.findall(r"```\n?python(.*?)```", text, re.DOTALL)
+    if not all_valid_python_code:
+        all_valid_python_code = re.findall(r"```\n?(.*?)```", text, re.DOTALL)
+    last_code_block = all_valid_python_code[-1] if all_valid_python_code else ""
+    if "final_answer" in last_code_block:
+        final_answer_func = "_final_answer_result = None\ndef final_answer(answer):\n    global _final_answer_result\n    _final_answer_result = answer\n"
+        # execute the code block to get the return value of final_answer
+        local_vars = {}
+        global_vars = {}
+        try:
+            with redirect_stdout(None), redirect_stderr(None):
+                exec(final_answer_func + last_code_block, global_vars, local_vars)
+            return str(local_vars.get('_final_answer_result', global_vars.get('_final_answer_result', "")))
+        except Exception as e:
+            return ""
+    else:
+        return extract_box_contents(text)
+
+    
+@register("simpletir")
+class SimpleTIRRewardManager:
     """The reward manager.
     """
-    name="torl"
+    name="simpletir"
 
     def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source', **kwargs) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         # self.compute_score = compute_score if compute_score else _default_compute_score
-        self.compute_score = torl_compute_score
+        self.compute_score = compute_score or default_compute_score
         self.reward_fn_key = reward_fn_key
         self.step = None
         self.add_format_think_penalty = False # -0.5 if not begines with <think> and end with </think>
@@ -93,55 +90,6 @@ class ToRLRewardManager:
         self.add_no_tool_interact_penalty = False # -0.25 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
 
-    def add_additional_penalties(self, response: str, data_i, scores_i: dict):
-        # 1.4 format penalty
-        if self.add_format_think_penalty:
-            match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
-            if not match or not response.startswith("<think>") or response.count("<think>") != 1 or response.count("</think>") != 1:
-                scores_i['score'] -= 0.5
-                scores_i['think_format_penalty'] = 1
-            else:
-                scores_i['think_format_penalty'] = 0
-        if self.add_format_answer_penalty:
-            match = re.search(r"<answer>(.*?)</answer>", response, re.DOTALL)
-            if not match or not response.endswith("</answer>") or response.count("<answer>") != 1 or response.count("</answer>") != 1:
-                scores_i['score'] -= 0.5
-                scores_i['answer_format_penalty'] = 1
-            else:
-                scores_i['answer_format_penalty'] = 0
-        if "turns_stats" in data_i.non_tensor_batch:
-            if self.add_valid_action_penalty:
-                num_turn = data_i.non_tensor_batch["turns_stats"]
-                num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
-                if num_valid_action < num_turn:
-                    scores_i['score'] -= 0.25
-                    scores_i['valid_action_penalty'] = 1
-                else:
-                    scores_i['valid_action_penalty'] = 0
-            if self.add_unfinished_traj_penalty:
-                is_active = data_i.non_tensor_batch["active_mask"]
-                if is_active:
-                    scores_i['score'] -= 0.25
-                    scores_i['unfinished_traj_penalty'] = 1
-                else:
-                    scores_i['unfinished_traj_penalty'] = 0
-            if self.add_no_tool_interact_penalty:
-                num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
-                if num_valid_action == 0:
-                    scores_i['score'] -= 0.25
-                    scores_i['no_tool_interact_penalty'] = 1
-                else:
-                    scores_i['no_tool_interact_penalty'] = 0
-            if self.add_code_exec_penalty:
-                keywords = ["ERROR:\nTraceback", "Execution timed out"]
-                if any(keyword in response for keyword in keywords):
-                    scores_i['score'] -= 0.25
-                    scores_i['exec_error'] = 1
-                else:
-                    scores_i['exec_error'] = 0
-        
-        return scores_i
-    
     def __call__(self, data: DataProto, return_dict=False):
         """We will expand this function gradually based on the available datasets"""
         # check the last step index
@@ -183,20 +131,17 @@ class ToRLRewardManager:
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
 
             extra_info = data_item.non_tensor_batch.get('extra_info', None)
-            extracted_answer = extract_answer(response_str, mode='math')
+            extracted_answer = extract_answer(response_str)
             
-            torl_score = self.compute_score(
-                # data_source=data_source,
+            _score = self.compute_score(
+                data_source=data_source,
                 solution_str=response_str,
                 ground_truth=ground_truth,
-                # extra_info=extra_info,
+                extra_info=extra_info,
             ) # 1 or -1
-            score['accuracy'] = 1. if torl_score > 0 else 0.
-            score['score'] = torl_score
+            score['accuracy'] = 1. if _score > 0 else 0.
+            score['score'] = _score
             score['has_answer'] = 1. if extracted_answer else 0.
-
-            # add additional penalty
-            score = self.add_additional_penalties(response_str, data_item, score)      
 
             if score['accuracy'] > 0:
                 reward_extra_info['correct_response_length'].append(valid_response_length)

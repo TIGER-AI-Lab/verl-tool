@@ -23,7 +23,7 @@ packages = ["verl_tool"]  # Explicitly specify only the verl_tool package
 
 [project.optional-dependencies]
 vllm = [
-    "vllm>=0.11.0",
+    "vllm<=0.11.0",
 ]
 tool_browser = [
     "mini_webarena @ git+https://github.com/cogito233/mini_webarena.git",

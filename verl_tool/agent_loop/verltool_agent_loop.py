@@ -1,4 +1,3 @@
-
 # Copyright 2024 Bytedance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +13,7 @@
 # limitations under the License.
 import logging
 import os
+import time
 import aiohttp
 import asyncio
 import numpy as np
@@ -29,6 +29,7 @@ from verl.utils.profiler import simple_timer
 from .agent_loop import AgentLoopBase, register, AgentLoopOutput
 from .vision_utils import decode_image_url, encode_image, encode_image_url
 from verl_tool.utils.dataset.audio_utils import encode_audio_data
+import socket
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -41,6 +42,34 @@ CONTROL_CHAR_RE = re.compile(
     # this matches U+0000 through U+001F, excluding tab(09), LF(0A), CR(0D)
     r'[\x00-\x08\x0B\x0C\x0E-\x1F]'
 )
+MAX_OBS_LENGTH = 100000  # maximum observation length to send back to the tool server
+
+async def on_connection_queued_start(session, trace_config_ctx, params):
+    if hasattr(trace_config_ctx, 'trace_request_ctx') and trace_config_ctx.trace_request_ctx is not None:
+        trace_config_ctx.trace_request_ctx['queued_start'] = asyncio.get_event_loop().time()
+
+async def on_connection_queued_end(session, trace_config_ctx, params):
+    if hasattr(trace_config_ctx, 'trace_request_ctx') and trace_config_ctx.trace_request_ctx is not None:
+        if 'queued_start' in trace_config_ctx.trace_request_ctx:
+            trace_config_ctx.trace_request_ctx['queued_duration'] = asyncio.get_event_loop().time() - trace_config_ctx.trace_request_ctx['queued_start']
+
+async def on_connection_create_start(session, trace_config_ctx, params):
+    if hasattr(trace_config_ctx, 'trace_request_ctx') and trace_config_ctx.trace_request_ctx is not None:
+        trace_config_ctx.trace_request_ctx['create_start'] = asyncio.get_event_loop().time()
+
+async def on_connection_create_end(session, trace_config_ctx, params):
+    if hasattr(trace_config_ctx, 'trace_request_ctx') and trace_config_ctx.trace_request_ctx is not None:
+        if 'create_start' in trace_config_ctx.trace_request_ctx:
+            trace_config_ctx.trace_request_ctx['create_duration'] = asyncio.get_event_loop().time() - trace_config_ctx.trace_request_ctx['create_start']
+
+async def on_request_start(session, trace_config_ctx, params):
+    if hasattr(trace_config_ctx, 'trace_request_ctx') and trace_config_ctx.trace_request_ctx is not None:
+        trace_config_ctx.trace_request_ctx['request_start'] = asyncio.get_event_loop().time()
+
+async def on_request_end(session, trace_config_ctx, params):
+    if hasattr(trace_config_ctx, 'trace_request_ctx') and trace_config_ctx.trace_request_ctx is not None:
+        if 'request_start' in trace_config_ctx.trace_request_ctx:
+            trace_config_ctx.trace_request_ctx['request_duration'] = asyncio.get_event_loop().time() - trace_config_ctx.trace_request_ctx['request_start']
 
 @dataclass
 class AgentActorConfig:
@@ -70,18 +99,21 @@ class AgentActorConfig:
     rollout_mode: str="async" # "sync" or "async"
     mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
-    tool_call_time_out: int=None # Timeout for tool calls in async rollout.
-    tool_call_max_retries: int=5 # Maximum number of retries for tool calls in async rollout.
+    tool_call_timeout: int=None # Timeout for tool calls in async rollout.
+    tool_call_max_retries: int=1 # Maximum number of retries for tool calls in async rollout.
+    max_concurrent_trajectories: int=1024 # Maximum number of concurrent trajectories globally for async rollout for all agent workers. If None, no limit is applied.
     
     # The following fields are to be disgarded, only for compatibility
     rolling_with_prompt: bool=False
     call_tool_first: bool=False
     additional_eos_token_ids: list=None
-    max_concurrent_trajectories: int=None # Maximum number of concurrent trajectories for async rollout. If None, no limit is applied.
     over_sampling: bool=False # Whether to over-sample the trajectories in async rollout.
     min_turns: int=0
-    retokeniziation: bool=False
+    retokenization: bool=False
     
+    # experimental features
+    mask_void_traj: bool=False # whether to mask the void trajectory (no tool call and no final answer)
+    logprobs: bool=False # whether to return logprobs for each generated token
     
 def sanitize_request(obj: Any) -> Any:
     """
@@ -109,6 +141,8 @@ def sanitize_request(obj: Any) -> Any:
 class VerlToolAgentLoop(AgentLoopBase):
     """Naive agent loop that only do single turn chat completion."""
     _init_lock = threading.Lock()
+    _session: aiohttp.ClientSession | None = None
+    _session_lock = asyncio.Lock()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -166,7 +200,8 @@ class VerlToolAgentLoop(AgentLoopBase):
             cls.max_obs_length = cls.agent_config.max_obs_length if cls.agent_config.max_obs_length is not None else 512
             cls.max_turns = cls.agent_config.max_turns if cls.agent_config.max_turns > 0 else 10
             cls.val_max_turns = cls.agent_config.val_max_turns if cls.agent_config.val_max_turns > 0 else cls.agent_config.max_turns
-            
+            cls.logprobs = cls.agent_config.logprobs
+            cls.session_limit = cls.agent_config.max_concurrent_trajectories
             
             # for multimodal processing
             cls.qwen_image_placeholder = "<|vision_start|><|image_pad|><|vision_end|>"
@@ -188,33 +223,129 @@ class VerlToolAgentLoop(AgentLoopBase):
                 return
             cls._class_initialized = True
         
-    async def _aiohttp_request(self, data):
-        timeout_seconds = self.agent_config.tool_call_time_out
+    @classmethod
+    async def get_session(cls, timeout_seconds: float) -> aiohttp.ClientSession:
+        # Double-checked locking for lazy init
+        if cls._session is None or cls._session.closed:
+            async with cls._session_lock:
+                if cls._session is None or cls._session.closed:
+                    timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+                    
+                    trace_config = aiohttp.TraceConfig()
+                    trace_config.on_connection_queued_start.append(on_connection_queued_start)
+                    trace_config.on_connection_queued_end.append(on_connection_queued_end)
+                    trace_config.on_connection_create_start.append(on_connection_create_start)
+                    trace_config.on_connection_create_end.append(on_connection_create_end)
+                    trace_config.on_request_start.append(on_request_start)
+                    trace_config.on_request_end.append(on_request_end)
+                    
+                    cls._session = aiohttp.ClientSession(
+                        timeout=timeout,
+                        connector=aiohttp.TCPConnector(
+                            limit=cls.session_limit,
+                            limit_per_host=cls.session_limit,
+                            ttl_dns_cache=300,
+                            family=socket.AF_INET,
+                        ),
+                        trace_configs=[trace_config]
+                    )
+                    logging.info(f"Created shared aiohttp ClientSession for AgentLoopWorker with limit={cls.session_limit}")
+        return cls._session
+
+    @classmethod
+    async def aclose_session(cls):
+        if cls._session is not None and not cls._session.closed:
+            await cls._session.close()
+            cls._session = None
+            logging.info("Closed shared aiohttp ClientSession for AgentLoopWorker")
+
+    async def _aiohttp_request(self, payload: dict):
         max_retries = self.agent_config.tool_call_max_retries
-        for attempt in range(max_retries):
-            session = None
+        timeout_seconds = self.agent_config.tool_call_timeout
+
+        session_request_time = 0
+        session = await self.get_session(timeout_seconds)
+        
+        start_time = time.time()
+        for attempt in range(max_retries + 1):
             try:
-                timeout = aiohttp.ClientTimeout(total=timeout_seconds)
-                session = aiohttp.ClientSession(timeout=timeout)
+                trace_ctx = {}
                 async with session.post(
                     url=self.agent_config.tool_server_url,
-                    json=data,
+                    json=payload,
+                    trace_request_ctx=trace_ctx
                 ) as resp:
-                    data = await resp.json()
-                    return data
-            except asyncio.TimeoutError as e:
-                if attempt == max_retries - 1:
-                    raise e
-                logging.warning(f"Attempt {attempt + 1} failed: {e}. traj_id: {data['trajectory_ids']}. Retrying...")
-                await asyncio.sleep(1)  # Brief delay before retry
-            finally:
-                if session:
-                    await session.close()
+                    resp_start_time = time.time()
+                    resp.raise_for_status()
+                    
+                    # Measure response read time and size
+                    read_start = time.time()
+                    resp_data = await resp.json()
+                    read_duration = time.time() - read_start
+                    
+                    # Calculate approximate response size
+                    try:
+                        resp_size = len(json.dumps(resp_data))
+                    except:
+                        resp_size = 0
                         
+                    resp_end_time = time.time()
+                    resp_data['time awaiting response_ms'] = (resp_end_time - resp_start_time) * 1000.0
+                    resp_data['success'] = True
+                    resp_data['client_queued_ms'] = trace_ctx.get('queued_duration', 0.0) * 1000.0
+                    resp_data['client_conn_create_ms'] = trace_ctx.get('create_duration', 0.0) * 1000.0
+                    resp_data['client_request_send_ms'] = trace_ctx.get('request_duration', 0.0) * 1000.0
+                    resp_data['request_start_ms'] = trace_ctx.get('request_start', 0.0) * 1000.0
+                    resp_data['response_read_ms'] = read_duration * 1000.0
+                    resp_data['response_size_mb'] = resp_size / (1024 * 1024)
+                    resp_data['X-Process-Time'] = float(resp.headers.get('X-Process-Time', '0.0'))
+                    
+                    if resp_data['response_size_mb'] > 1.0:
+                        logging.warning(f"Large response received: {resp_data['response_size_mb']:.2f} MB. Read time: {read_duration:.2f}s")
+                    break
+
+            except asyncio.TimeoutError as e:
+                logging.error(
+                    f"Attempt {attempt + 1} failed due to timeout: {e}. "
+                    f"traj_id: {payload.get('trajectory_ids', [])}. Retrying..."
+                )
+                resp_data = {"observations": [f"Tool call timeout after {timeout_seconds} seconds."], "dones": [1], "valids": [0], "processing_time_ms": timeout_seconds * 1000.0, "success": False}
+
+            except aiohttp.ClientConnectorError as e:
+                logging.error(
+                    f"Attempt {attempt + 1} failed to connect to tool server: {e}. "
+                    f"traj_id: {payload.get('trajectory_ids', [])}. Retrying..."
+                )
+                resp_data = {"observations": [f"Tool server connection error: {e}."], "dones": [1], "valids": [0], "processing_time_ms": 0.0, "success": False}
+
+            except Exception as e:
+                logging.error(
+                    f"Attempt {attempt + 1} failed with error: {e}. "
+                    f"traj_id: {payload.get('trajectory_ids', [])}. Retrying..."
+                )
+                resp_data = {"observations": [f"Tool call error: {e}."], "dones": [1], "valids": [0], "processing_time_ms": 0.0, "success": False}
+            # if attempt == max_retries:
+            #     raise
+            await asyncio.sleep(1)
+        session_request_time = time.time() - start_time
+        resp_data['session_request_time'] = session_request_time
+        resp_data['time awaiting response_ms'] = resp_data.get('time awaiting response_ms', 0.0)
+        return resp_data
+        
+                
     async def send_batch_requests_async(self, batch_data: Dict[str, Any]) -> Dict[str, Any]:
         """Robust version with retry logic"""
         safe_payload = sanitize_request(batch_data)
         
+        # Debug: Check payload size
+        try:
+            json_str = json.dumps(safe_payload)
+            payload_size_mb = len(json_str) / (1024 * 1024)
+            if payload_size_mb > 1.0:
+                logger.warning(f"Large payload detected: {payload_size_mb:.2f} MB")
+        except Exception:
+            pass
+
         try:
             return await self._aiohttp_request(safe_payload)
         except Exception as e:
@@ -253,6 +384,9 @@ class VerlToolAgentLoop(AgentLoopBase):
         obs = response['observations'][0]
         done = int(response['dones'][0])
         is_valid_action = int(response['valids'][0])
+        processing_time_ms = float(response.get('processing_time_ms', 0.0))
+        success = response.get('success', True)
+        
         
         # postprocess next_obs. For now we support two types of observations:
         # 1. string observations, which will be the most common case
@@ -276,7 +410,7 @@ class VerlToolAgentLoop(AgentLoopBase):
         else:
             raise ValueError(f"Invalid observation type: {type(obs)}. Expected str or dict.")
         
-        tool_interact_info['obs'] = obs_text
+        tool_interact_info['obs'] = obs_text[:MAX_OBS_LENGTH]
         tool_interact_info['reward'] = reward
         tool_interact_info['trajectory_id'] = traj_id
         tool_interact_info['action'] = action
@@ -285,7 +419,12 @@ class VerlToolAgentLoop(AgentLoopBase):
         tool_interact_info['valid_action'] = is_valid_action
         tool_interact_info['finish'] = not do_action
         tool_interact_info['invalid_reason'] = tool_interact_info.get('invalid_reason', None)
+        tool_interact_info['processing_time_ms'] = processing_time_ms
+        tool_interact_info['success'] = success
         
+        for key in response.keys():
+            if key not in ['observations', 'dones', 'valids', 'processing_time_ms', 'success'] and isinstance(response[key], float):
+                tool_interact_info[key] = response[key]
         return tool_interact_info
         
 
@@ -331,6 +470,8 @@ class VerlToolAgentLoop(AgentLoopBase):
             "rewards": [],
             "tool_interact_info": [],
             "is_traj_finished": False,
+            "valid_traj": 1,
+            "retokenization_diff": []
         }
         
         if image_data or audio_data:
@@ -353,6 +494,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             "n": 1,  # already repeated by n times in repeat_inputs_by_n
             "stop": self.action_stop_tokens,  # stop when generated an end of action
             "include_stop_str_in_output": True,
+            "logprobs": self.logprobs,
         })
         
         running_prompt_ids = prompt_ids.copy()
@@ -392,15 +534,17 @@ class VerlToolAgentLoop(AgentLoopBase):
             response_mask.extend([1] * len(gen_ids))
             response_logprobs.extend(gen_logprobs)
             
-            
             stats_dict["num_turns"] += 1
             stats_dict["action_lengths"].append(len(gen_ids))
-            stats_dict["action_logps"].append(sum(gen_logprobs))
+            stats_dict["action_logps"].append(np.mean(gen_logprobs) if len(gen_logprobs) > 0 else 0.0)
             if gen_text.strip() == "":
                 stats_dict["empty_responses"] += 1
             
             finish_reason = output.finish_reason
             stop_reason = output.stop_reason
+            if isinstance(stop_reason, int):
+                print(f"Turn {step}: stop_reason is int: {stop_reason}")
+                stop_reason = self.tokenizer.decode([stop_reason])[0]
             
             if not use_tool:
                 # only one turn generation
@@ -420,12 +564,14 @@ class VerlToolAgentLoop(AgentLoopBase):
                         break
             # send generated action to tool server
             if do_action and not is_last_step:
+                extra_fields = kwargs.get("extra_info", {}).copy()
                 extra_fields = {}
                 if encoded_image_data is not None:
                     extra_fields["images"] = encoded_image_data
                 if encoded_audio_data is not None:
                     extra_fields["audio"] = encoded_audio_data
                 logger.info(f"Turn {step}: finish_reason={finish_reason}, stop_reason={stop_reason}, do_action={do_action}, action_text={json.dumps(action_text[-50:])}")
+                start = metrics.get("tool_calls", 0.0)
                 with simple_timer("tool_calls", metrics):
                     tool_results = await self.interact_with_tool_server(
                         traj_id=request_id,
@@ -434,6 +580,9 @@ class VerlToolAgentLoop(AgentLoopBase):
                         extra_fields=extra_fields,
                         is_last_step=is_last_step,
                     )
+                end = metrics.get("tool_calls", 0.0)
+                tool_results['interact_time_ms'] = (end - start) * 1000.0
+                
                 # process observations and prepare for next turn
                 obs_text = tool_results['obs']
                 if tool_results.get('image', None):
@@ -524,20 +673,23 @@ class VerlToolAgentLoop(AgentLoopBase):
                     response_mask.extend([1] * len(obs_token_ids))
                 response_logprobs.extend([0.0] * len(obs_token_ids)) # pad with 0.0 logprobs for observations
                 
-                if self.agent_config.retokeniziation:
+                if self.agent_config.retokenization:
                     new_text = self.tokenizer.decode(running_prompt_ids[previous_length:], skip_special_tokens=False)
                     new_ids = self.tokenizer.encode(new_text)
-                    if len(new_ids) != len(running_prompt_ids) - previous_length:
-                        logger.warning(f"Retokenization changed the length from {len(running_prompt_ids) - previous_length} to {len(new_ids)}. traj_id={request_id}, turn={step}")
+                    if new_ids != running_prompt_ids[previous_length:]:
+                        stats_dict['retokenization_diff'].append(1)
+                        logger.debug(f"Retokenization changed the length from {len(running_prompt_ids) - previous_length} to {len(new_ids)}. traj_id={request_id}, turn={step}")
+                    else:
+                        stats_dict['retokenization_diff'].append(0)
                     running_prompt_ids = running_prompt_ids[:previous_length] + new_ids
-                    if len(response_mask) > running_prompt_ids:
-                        response_mask = response_mask[:len(running_prompt_ids)]
+                    if len(response_mask) > (len(running_prompt_ids) - len(prompt_ids)):
+                        response_mask = response_mask[:len(running_prompt_ids) - len(prompt_ids)]
                     else:
-                        response_mask.extend([response_mask[-1]] * (len(running_prompt_ids) - len(response_mask)))
-                    if len(response_logprobs) > running_prompt_ids:
-                        response_logprobs = response_logprobs[:len(running_prompt_ids)]
+                        response_mask.extend([response_mask[-1]] * (len(running_prompt_ids) - len(prompt_ids) - len(response_mask)))
+                    if len(response_logprobs) > (len(running_prompt_ids) - len(prompt_ids)):
+                        response_logprobs = response_logprobs[:len(running_prompt_ids) - len(prompt_ids)]
                     else:
-                        response_logprobs.extend([0.0] * (len(running_prompt_ids) - len(response_logprobs)))
+                        response_logprobs.extend([0.0] * (len(running_prompt_ids) - len(prompt_ids) - len(response_logprobs)))
 
                 if tool_results['done']:
                     # finish the trajectory
@@ -546,28 +698,52 @@ class VerlToolAgentLoop(AgentLoopBase):
                     break
             else:
                 # finish the trajectory
-                stats_dict["is_traj_finished"] = True
                 if finish_reason == "stop":
                     if not stop_reason:
+                        stats_dict["is_traj_finished"] = True
                         if gen_text.strip() == "":
                             traj_stop_reason = "model_chose_to_finish_with_empty_response"
                         else:
                             traj_stop_reason = "model_chose_to_finish"
                     else:
+                        stats_dict["is_traj_finished"] = False
                         if do_action and is_last_step:
                             traj_stop_reason = "max_turns_reached"
                         else:
                             traj_stop_reason = "no_action_stop_token_found_in_stop_reason=" + stop_reason
                 elif finish_reason == "length":
+                    stats_dict["is_traj_finished"] = False
                     traj_stop_reason = "max_response_length_reached"
                 else:
+                    stats_dict["is_traj_finished"] = True
                     traj_stop_reason = f"finish_reason_{finish_reason}"
                 break
         
         logger.debug(f"Trajectory {request_id} finished after {step} turns. Stop reason: {traj_stop_reason}")
         response_ids = running_prompt_ids[len(prompt_ids):]
         assert len(response_ids) == len(response_mask), f"Response ids and mask length mismatch: {len(response_ids)} vs {len(response_mask)}"
-        await self.close_traj_tool_threads(request_id=request_id)
+        start = time.time()
+        # let close traj run in background but don't wait
+        asyncio.create_task(self.close_traj_tool_threads(request_id=request_id))
+        # await self.close_traj_tool_threads(request_id=request_id)
+        end = time.time()
+        close_traj_time = end - start
+        
+        if self.agent_config.mask_overlong_loss and not stats_dict["is_traj_finished"]:
+            # mask the whole response
+            response_mask = [0] * len(response_mask)
+            stats_dict["valid_traj"] = 0
+            logger.info(f"Masking the whole response for traj_id={request_id} due to overlong trajectory and not finished.")
+        
+        
+        if self.agent_config.mask_void_traj:
+            response_text = self.tokenizer.decode(response_ids, skip_special_tokens=True).strip()
+            has_answer = "\\boxed" in response_text or "final_answer(" in response_text
+            if stats_dict["valid_action"] == 0 and not has_answer:
+                # mask the whole response
+                response_mask = [0] * len(response_mask)
+                stats_dict["valid_traj"] = 0
+                logger.info(f"Masking the whole response for traj_id={request_id} due to void trajectory (no valid action or no final answer). valid_action={stats_dict['valid_action']}, has_answer={has_answer}")
             
         verl_tool_metrics = {
             "num_turns": stats_dict["num_turns"],
@@ -577,11 +753,39 @@ class VerlToolAgentLoop(AgentLoopBase):
             "per_obs_length": np.mean(stats_dict["obs_lengths"]) if len(stats_dict["obs_lengths"]) > 0 else 0,
             "per_action_logp": np.mean(stats_dict["action_logps"]) if len(stats_dict["action_logps"]) > 0 else 0,
             "per_reward_from_tool": np.mean(stats_dict["rewards"]) if len(stats_dict["rewards"]) > 0 else 0,
+            "tool_call_success": np.mean([info.get("success", 1.0) for info in stats_dict["tool_interact_info"]]) if len(stats_dict["tool_interact_info"]) > 0 else 1.0,
             "traj_actions_length": sum(stats_dict["action_lengths"]),
             "traj_obs_length": sum(stats_dict["obs_lengths"]),
             "generated_length": len(output.token_ids),
             "is_traj_finished": float(stats_dict["is_traj_finished"]),
+            "valid_traj": float(stats_dict["valid_traj"]),
+            "no_loss_on_traj": response_mask.count(1) == 0,
+            "retokenization_diff": np.mean(stats_dict["retokenization_diff"]) if len(stats_dict["retokenization_diff"]) > 0 else 0,
+            "tool_processing_time_sec": sum(info.get("processing_time_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "tool_queue_time_sec": sum(info.get("queue_time_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "client_queued_time_sec": sum(info.get("client_queued_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "client_conn_create_time_sec": sum(info.get("client_conn_create_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "client_request_send_time_sec": sum(info.get("client_request_send_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "response_read_time_sec": sum(info.get("response_read_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "response_size_mb": sum(info.get("response_size_mb", 0.0) for info in stats_dict["tool_interact_info"]),
+            "response_await_time_sec": sum(info.get("time awaiting response_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "interact_time_time_sec": sum(info.get("interact_time_ms", 0.0) for info in stats_dict["tool_interact_info"]) / 1000.0,
+            "session_request_time": sum(info.get("session_request_time", 0.0) for info in stats_dict["tool_interact_info"]),
+            "X-Process-Time_sec": sum(info.get("X-Process-Time", 0.0) for info in stats_dict["tool_interact_info"]),
+            "close_traj_time": close_traj_time,
         }
+        # additional metrics in tool_interact_info can be added later
+        if stats_dict["tool_interact_info"] and all("metrics" in info for info in stats_dict["tool_interact_info"]):
+            # do mean aggregation for each metric key
+            tool_metric_keys = stats_dict["tool_interact_info"][0]["metrics"].keys()
+            for key in tool_metric_keys:
+                try:
+                    verl_tool_metrics[f"tool_avg_{key}"] = np.mean([float(info["metrics"][key]) for info in stats_dict["tool_interact_info"] if key in info["metrics"]])
+                except Exception as e:
+                    logger.warning(f"Failed to compute mean for tool metric {key}: {e}")
+        # additional per-turn logp
+        for i, logp in enumerate(stats_dict["action_logps"]):
+            verl_tool_metrics[f"turn_{i+1}_action_logp"] = logp
         
         multi_modal_output = {}
         if running_image_data is not None:

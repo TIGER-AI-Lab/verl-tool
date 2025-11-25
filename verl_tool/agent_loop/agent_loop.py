@@ -475,6 +475,7 @@ class AgentLoopWorker:
         )
         
         if self.config.actor_rollout_ref.agent.max_concurrent_trajectories is not None:
+            print(f"Agent Worker {self.name} using semaphore with max concurrency {self.config.actor_rollout_ref.agent.max_concurrent_trajectories}")
             semaphore = asyncio.Semaphore(self.config.actor_rollout_ref.agent.max_concurrent_trajectories)
             def semaphore_wrapper(func):
                 async def wrapper(*args, **kwargs):
@@ -492,8 +493,9 @@ class AgentLoopWorker:
             kwargs = {k: v[i] for k, v in batch.non_tensor_batch.items()}
             tasks.append(asyncio.create_task(semaphore_wrapper(self._run_agent_loop)(sampling_params, trajectory_info[i], **kwargs)))
         # outputs = await asyncio.gather(*tasks)
+        print(f"Agent Worker {self.name} launching {len(tasks)} tasks...")
         outputs = await tqdm.gather(*tasks, desc=f"Agent Worker {self.name} Looping", total=len(tasks))
-
+        print(f"Agent Worker {self.name} finished {len(tasks)} tasks.")
         output = self._postprocess(outputs)
         return output
 
@@ -862,7 +864,18 @@ class AgentLoopManager:
 
     def _init_agent_loop_workers(self):
         self.agent_loop_workers = []
+        expected_num_workers = self.config.trainer.nnodes
         num_workers = self.config.actor_rollout_ref.rollout.agent.num_workers
+        num_workers = max(expected_num_workers, num_workers)
+        logger.warning(f"Initializing {num_workers} agent loop workers...")
+        # print(f"Agent Loop Worker max concurrency: {self.config.actor_rollout_ref.agent.max_concurrent_trajectories}")
+        self.max_concurrent_trajectories = self.config.actor_rollout_ref.agent.get("max_concurrent_trajectories", None)
+        if self.max_concurrent_trajectories is not None:
+            # divide by num_workers to get per-worker concurrency
+            self.config.actor_rollout_ref.agent.max_concurrent_trajectories = (
+                self.max_concurrent_trajectories // num_workers
+            )
+            logger.warning(f"Per-Agent Loop Worker max concurrency: {self.config.actor_rollout_ref.agent.max_concurrent_trajectories}")
 
         node_ids = [node["NodeID"] for node in ray.nodes() if node["Alive"] and node["Resources"].get("CPU", 0) > 0]
         for i in range(num_workers):
@@ -893,6 +906,7 @@ class AgentLoopManager:
             )
         if self.config.actor_rollout_ref.rollout.free_cache_engine:
             self.wake_up()
+        print(f"Dispatching {len(prompts)} prompts to {len(self.agent_loop_workers)} agent loop workers...")
         chunkes = prompts.chunk(len(self.agent_loop_workers))
         outputs = ray.get(
             [

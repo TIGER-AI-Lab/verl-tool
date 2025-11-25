@@ -144,10 +144,11 @@ def _qwen2_5_dedup_multimodal_tokens(prompt_ids: list[int], processor):
         is_image_token = prompt_ids == image_token_id
         mask[1:] &= ~(is_image_token[1:] & is_image_token[:-1])
 
-        # For Qwen2_5OmniProcessor, also deduplicate consecutive audio tokens
-        audio_token_id = processor.tokenizer.audio_token_id
-        is_audio_token = prompt_ids == audio_token_id
-        mask[1:] &= ~(is_audio_token[1:] & is_audio_token[:-1])
+        if is_qwen2_5_omni:
+            # For Qwen2_5OmniProcessor, also deduplicate consecutive audio tokens
+            audio_token_id = processor.tokenizer.audio_token_id
+            is_audio_token = prompt_ids == audio_token_id
+            mask[1:] &= ~(is_audio_token[1:] & is_audio_token[:-1])
 
         return prompt_ids[mask].tolist()
     else:

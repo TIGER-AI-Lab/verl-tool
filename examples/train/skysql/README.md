@@ -18,6 +18,19 @@ unzip data/skysql/databases.zip -d data/skysql
 python examples/data_preprocess/skysql/sql.py --dataset_path VerlTool/SkyRL-SQL-Reproduction --train_databases_dir ./data/skysql/databases --test_databases_dir ./data/skysql/databases --save_dir ./data/skysql
 ```
 
+## Test Sql server
+```bash
+# Start the tool server
+host=localhost
+port=5000
+tool_type=ipython_code # separate by comma if you want to start multiple tool servers
+workers_per_tool=512 # number of workers for the tool server, meaning how many threads will be used to handle a single tool request with multiple trajectories
+python -m verl_tool.servers.serve --host $host --port $port --tool_type $tool_type --workers_per_tool $workers_per_tool --use_ray=True --log_level debug &
+```
+
+```bash
+python -m verl_tool/servers/tests/test_sql_tool.py python --url=http://localhost:$port/get_observation
+
 ## Training
 ```bash
 bash examples/train/skysql/train_7b.sh
