@@ -783,12 +783,9 @@ class VerlToolAgentLoop(AgentLoopBase):
                     verl_tool_metrics[f"tool_avg_{key}"] = np.mean([float(info["metrics"][key]) for info in stats_dict["tool_interact_info"] if key in info["metrics"]])
                 except Exception as e:
                     logger.warning(f"Failed to compute mean for tool metric {key}: {e}")
-<<<<<<< HEAD
         # additional per-turn logp
         for i, logp in enumerate(stats_dict["action_logps"]):
             verl_tool_metrics[f"turn_{i+1}_action_logp"] = logp
-=======
->>>>>>> 4b2e64680edb8306615e159f13f897edf2c1670c
         
         multi_modal_output = {}
         if running_image_data is not None:
