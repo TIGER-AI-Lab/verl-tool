@@ -16,6 +16,7 @@ dependencies = [
     "ipython",
     "func_timeout",
     "aiofiles",
+    "click==8.2.1",
 ]
 
 [tool.setuptools]

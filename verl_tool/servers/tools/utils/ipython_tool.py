@@ -212,6 +212,8 @@ class KernelManager:
                 logger.debug(f"Cache HIT for request_id={request_id}")
                 return actor
             
+            
+                                                  
             # Create new actor
             logger.info(f"Cache MISS for request_id={request_id}, creating new KernelActor")
             if self.available_actors:

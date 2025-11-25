@@ -121,6 +121,7 @@ class AgentLoopMetrics(BaseModel):
     generate_sequences: float = 0.0
     tool_calls: float = 0.0
     
+    
 
 class AgentLoopOutput(BaseModel):
     """Agent loop output."""
