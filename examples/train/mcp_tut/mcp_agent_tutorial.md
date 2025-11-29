@@ -8,14 +8,14 @@ This guide explains how to train/evaluation MCP agents end-to-end in this repo, 
 
 ## 1.How we use MCP in this repo
 Model Context Protocol (MCP) standardizes tool invocation over a transport (stdio/SSE). In this repo:
-- **Gateway**: [`verl_tool.servers.tools.utils.local_mcp.gateway`](../../verl_tool/servers/tools/utils/local_mcp/gateway.py) loads servers from [`server_list.json`](../../verl_tool/servers/tools/utils/local_mcp/configs/server_list.json) and exposes them via SSE. We include calculator, weather, google search, notion, etc.
-- **Tool server**: [`verl_tool.servers.tool_server`](../../verl_tool/servers/tool_server.py) with [`mcp_interface`](../../verl_tool/servers/tools/mcp_interface.py) adapts LLM tool calls (`<tool_call>...</tool_call>`) to MCP gateway requests
+- **Gateway**: [`verl_tool.servers.tools.utils.local_mcp.gateway`](../../../verl_tool/servers/tools/utils/local_mcp/gateway.py) loads servers from [`server_list.json`](../../../verl_tool/servers/tools/utils/local_mcp/configs/server_list.json) and exposes them via SSE. We include calculator, weather, google search, notion, etc.
+- **Tool server**: [`verl_tool.servers.tool_server`](../../../verl_tool/servers/tool_server.py) with [`mcp_interface`](../../../verl_tool/servers/tools/mcp_interface.py) adapts LLM tool calls (`<tool_call>...</tool_call>`) to MCP gateway requests
 - **Reward managers**:
-  - [`mcp_static`](../../verl_tool/workers/reward_manager/mcp_static.py): compares model `<answer>...</answer>` to static `ground_truth` with numeric and substring tolerance.
-  - [`mcp_dynamic`](../../verl_tool/workers/reward_manager/mcp_dynamic.py): executes `validation_calls` stored in the sample against MCP at eval time, then matches the model answer (with keyword fallback for summaries, e.g., “no active alerts” or alert names).
+  - [`mcp_static`](../../../verl_tool/workers/reward_manager/mcp_static.py): compares model `<answer>...</answer>` to static `ground_truth` with numeric and substring tolerance.
+  - [`mcp_dynamic`](../../../verl_tool/workers/reward_manager/mcp_dynamic.py): executes `validation_calls` stored in the sample against MCP at eval time, then matches the model answer (with keyword fallback for summaries, e.g., "no active alerts" or alert names).
 - **Datasets**:
-  - [`mcp_gsm8k`](../../examples/data_preprocess/mcp_gsm8k.py)
-  - [`mcp_weather`](../../examples/data_preprocess/mcp_weather.py)
+  - [`mcp_gsm8k`](../../data_preprocess/mcp_gsm8k.py)
+  - [`mcp_weather`](../../data_preprocess/mcp_weather.py)
 
 ## 2. Environment setup
 ```bash
@@ -39,7 +39,7 @@ uv pip install "flash-attn==2.8.3" --no-build-isolation
 If your torch/OS combo differs, pick a compatible flash-attn/vLLM build, or set `ATTN_IMPL=sdpa` to avoid flash-attn dependency.
 
 ## 3. MCP setup and smoke test
-Ensure [`server_list.json`](../../verl_tool/servers/tools/utils/local_mcp/configs/server_list.json) includes the servers you need.
+Ensure [`server_list.json`](../../../verl_tool/servers/tools/utils/local_mcp/configs/server_list.json) includes the servers you need.
 
 We initially provice following MCP servers:
 - No extra keys: `calculator`, `date`, `echo`, `weather`, `wikipedia`, `yfinance`, `chrome`, `playwright`
@@ -85,7 +85,7 @@ Example data:
   }
 }
 ```
-Scoring: [`mcp_static`](../../verl_tool/workers/reward_manager/mcp_static.py) extracts `<answer>...</answer>`, normalizes text/number; reward 1 if it matches `ground_truth` (tolerance 1e-4 or substring), else 0.
+Scoring: [`mcp_static`](../../../verl_tool/workers/reward_manager/mcp_static.py) extracts `<answer>...</answer>`, normalizes text/number; reward 1 if it matches `ground_truth` (tolerance 1e-4 or substring), else 0.
 
 
 Eval / train (scripts auto-start gateway + tool server):
@@ -148,11 +148,11 @@ bash examples/train/mcp_tut/mcp_weather/train.sh
 
 ## 7. Custom MCP tasks
 The examples above show minimal training/eval in verltool; real MCP workflows often involve richer environments (multiple MCPs, multi-step reasoning, tool chaining). Defining your own task can follow the pattern below:
-1) Add your MCP server to [`server_list.json`](../../verl_tool/servers/tools/utils/local_mcp/configs/server_list.json) (stdio/SSE command, env vars).  
+1) Add your MCP server to [`server_list.json`](../../../verl_tool/servers/tools/utils/local_mcp/configs/server_list.json) (stdio/SSE command, env vars).  
 2) In data generation, populate:
    - `extra_info.mcp_servers` to restrict server choices.
    - Static: `reward_model.ground_truth`; Dynamic: `validation_calls` (server, tool name, arguments).  
-3) Pick reward manager: [`mcp_static`](../../verl_tool/workers/reward_manager/mcp_static.py) for fixed answers, [`mcp_dynamic`](../../verl_tool/workers/reward_manager/mcp_dynamic.py) for live tool answers (extend keyword rules if needed); for richer tasks, implement your own reward manager using these as references.  
+3) Pick reward manager: [`mcp_static`](../../../verl_tool/workers/reward_manager/mcp_static.py) for fixed answers, [`mcp_dynamic`](../../../verl_tool/workers/reward_manager/mcp_dynamic.py) for live tool answers (extend keyword rules if needed); for richer tasks, implement your own reward manager using these as references.  
 
 ## 8. Common Q&A
 - *Ports are occupied — what to do?*  
