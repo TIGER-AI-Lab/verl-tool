@@ -2,7 +2,9 @@
 
 This guide explains how to train/evaluation MCP agents end-to-end in this repo, including environment setup, local MCP gateway/tool server, reward managers, and two worked examples. It also covers how to bring up your own MCP server and extend datasets.
 
-![MCP-VerlTool Overview](../../../assets/imgs/mcp_verltool.png)
+<div align="center">
+  <img src="../../../assets/imgs/mcp_verltool.png" alt="MCP-VerlTool Overview" width="300">
+</div>
 
 ## 1.How we use MCP in this repo
 Model Context Protocol (MCP) standardizes tool invocation over a transport (stdio/SSE). In this repo:
