@@ -16,7 +16,7 @@ def build_server(port: int) -> FastMCP:
     :param port: Port for SSE.
     :return: The MCP server.
     """
-    mcp = FastMCP("google_search", port=port)
+    mcp = FastMCP("wikipedia", port=port)
 
     @mcp.tool()
     async def search(query: str) -> str:
