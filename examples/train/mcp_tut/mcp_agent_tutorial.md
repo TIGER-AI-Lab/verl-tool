@@ -49,7 +49,7 @@ We initially provice following MCP servers:
   - `postgres` → `POSTGRES_ADDRESS`
   - `notion` → `NOTION_API_KEY`
 
-For configurate the API_KEYs, please copy `.env.example` to `.env` and fill the required API keys.
+For configurate the API_KEYs, please import required API keys to `.env`.
 
 Run the smoke script to start the gateway and list tools for target servers (no task calls):
 ```bash
