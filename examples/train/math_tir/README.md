@@ -1,4 +1,4 @@
-# AceCoder Training Guide
+# MathTIR Training Guide
 
 ## Dataset Preparation
 
