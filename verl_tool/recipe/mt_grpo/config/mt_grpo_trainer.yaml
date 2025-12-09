@@ -1,0 +1,21 @@
+# MT-GRPO Trainer Configuration
+# Inherits from verl_tool's ppo_trainer.yaml and adds turn-level credit assignment
+
+defaults:
+  # Inherit from verl_tool's base ppo trainer config
+  - /verl_tool/trainer/config/ppo_trainer
+  - _self_
+
+# MT-GRPO specific algorithm settings
+algorithm:
+  # Advantage estimator - set to mt_grpo for turn-level credit assignment
+  adv_estimator: mt_grpo
+
+  # Coefficient for turn advantage in tool calling phase
+  # Tool phase: advantage = outcome_adv + turn_advantage_coef * turn_adv
+  # Answer phase: advantage = outcome_adv
+  turn_advantage_coef: 1.0
+
+  # GRPO settings (no std normalization to match original MT-GRPO)
+  norm_adv_by_std_in_grpo: False
+
