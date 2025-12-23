@@ -565,7 +565,6 @@ class VerlToolAgentLoop(AgentLoopBase):
             # send generated action to tool server
             if do_action and not is_last_step:
                 extra_fields = kwargs.get("extra_info", {}).copy()
-                extra_fields = {}
                 if encoded_image_data is not None:
                     extra_fields["images"] = encoded_image_data
                 if encoded_audio_data is not None:
