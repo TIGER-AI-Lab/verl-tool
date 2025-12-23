@@ -9,7 +9,7 @@ git submodule update --init --recursive
 uv sync
 source .venv/bin/activate
 uv pip install -e verl
-uv pip install -e ".[vllm,acecoder,torl,search_tool]"
+uv pip install -e ".[vllm,acecoder,torl,search_tool,python_code_dep]"
 uv pip install "flash-attn==2.8.3" --no-build-isolation
 ```
 

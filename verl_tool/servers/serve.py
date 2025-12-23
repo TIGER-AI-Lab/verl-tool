@@ -145,6 +145,7 @@ def _start_backend_server(
         cmd.extend(["--enable_hashing", "False"])
 
     logger.info(f"[BACKEND {idx}] Starting with command: {' '.join(cmd)}")
+    logger.info(f"[BACKEND {idx}] Logging to: {log_file.name if log_file else 'stdout/stderr'}")
 
     proc = subprocess.Popen(
         cmd,

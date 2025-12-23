@@ -19,29 +19,29 @@ def test_python(
     action = """<python>print('Hello from Python!')</python> ..."""
     print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 2 ---")
-#     action = """<python>import sys\n\nprint('Hello from Python!')\nprint(f'Arguments: {sys.argv[1:]}')\nfor i in range(5):\n    print(f'Number {i}')</python> ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 2 ---")
+    action = """<python>import sys\n\nprint('Hello from Python!')\nprint(f'Arguments: {sys.argv[1:]}')\nfor i in range(5):\n    print(f'Number {i}')</python> ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 3 ---")
-#     action = """```python\nprint('Hello from Python!')\n``` ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 3 ---")
+    action = """```python\nprint('Hello from Python!')\n``` ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 3.1 ---")
-#     action = """```python\nx = 10\nprint(f'Value of x is {x}')\n``` ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 3.1 ---")
+    action = """```python\nx = 10\nprint(f'Value of x is {x}')\n``` ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 3.2 ---")
-#     action = """```python\nprint(x)\n``` ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 3.2 ---")
+    action = """```python\nprint(x)\n``` ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 3.3 ---")
-#     action = """```python\nraise ValueError('This is a test error')\n``` ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 3.3 ---")
+    action = """```python\nraise ValueError('This is a test error')\n``` ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 3.4 ---")
-#     action = """```python\nprint('This will run after error')\nprint(x)\n``` ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 3.4 ---")
+    action = """```python\nprint('This will run after error')\nprint(x)\n``` ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
 #     print("--- Testing 3.5 ---")
 #     action = """
@@ -107,25 +107,25 @@ def test_python(
 # """
 #     print(_send_test_request(url, trajectory_id, action, "Another Python"))
     
-#     print("--- Testing 4 ---")
-#     action = """```<python>\nprint('Hello from Python!')</python> ... <python>print('Hello again!')</python>``` ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 4 ---")
+    action = """```<python>\nprint('Hello from Python!')</python> ... <python>print('Hello again!')</python>``` ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 5 ---")
-#     action = """```<python>import time\ntime.sleep(30)\nprint('Hello from Python!')</python> ... <python>print('Hello again!')</python>``` ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 5 ---")
+    action = """```<python>import time\ntime.sleep(30)\nprint('Hello from Python!')</python> ... <python>print('Hello again!')</python>``` ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
     
-#     print("--- Testing 6 ---") # syntax error, this prnit is intended!
-#     action = """```<python>prnit('Hello from Python!')</python> ..."""
-#     print(_send_test_request(url, trajectory_id, action, "Python"))
+    print("--- Testing 6 ---") # syntax error, this prnit is intended!
+    action = """```<python>prnit('Hello from Python!')</python> ..."""
+    print(_send_test_request(url, trajectory_id, action, "Python"))
 
-#     print("--- Testing 7 ---") # memory limit
-#     action = """```<python>\nimport numpy as np\nx = np.random.rand(5000, 5000)\nsize_of_x_in_bytes = x.nbytes\nprint(f'Memory test completed after allocating a {len(x)}x{len(x[0])} array, which is {size_of_x_in_bytes / (1024 * 1024):.2f} MB.')</python> ...```"""
-#     print(_send_test_request(url, trajectory_id, action, "Python Memory Test"))
+    print("--- Testing 7 ---") # memory limit
+    action = """```<python>\nimport numpy as np\nx = np.random.rand(5000, 5000)\nsize_of_x_in_bytes = x.nbytes\nprint(f'Memory test completed after allocating a {len(x)}x{len(x[0])} array, which is {size_of_x_in_bytes / (1024 * 1024):.2f} MB.')</python> ...```"""
+    print(_send_test_request(url, trajectory_id, action, "Python Memory Test"))
 
-#     print("--- Testing 8 ---") # memory limit
-#     action = """```<python>\nimport numpy as np\nx = np.random.rand(40000, 40000)\nsize_of_x_in_bytes = x.nbytes\nprint(f'Memory test completed after allocating a {len(x)}x{len(x[0])} array, which is {size_of_x_in_bytes / (1024 * 1024):.2f} MB.')</python> ...```"""
-#     print(_send_test_request(url, trajectory_id, action, "Python Memory Test"))
+    print("--- Testing 8 ---") # memory limit
+    action = """```<python>\nimport numpy as np\nx = np.random.rand(40000, 40000)\nsize_of_x_in_bytes = x.nbytes\nprint(f'Memory test completed after allocating a {len(x)}x{len(x[0])} array, which is {size_of_x_in_bytes / (1024 * 1024):.2f} MB.')</python> ...```"""
+    print(_send_test_request(url, trajectory_id, action, "Python Memory Test"))
     
     print("--- Testing 9 ---") # test finish
     action = ""

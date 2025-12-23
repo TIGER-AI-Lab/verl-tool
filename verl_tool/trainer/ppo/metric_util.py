@@ -33,6 +33,13 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
     """
     result = verl_compute_data_metrics(batch, use_critic)
     
+    # compute zero-advantage seq ratio
+    advantages = batch.batch["advantages"]
+    response_mask = batch.batch["response_mask"].bool()
+    masked_adv = advantages * response_mask
+    zero_adv_seq = (masked_adv.sum(dim=1) == 0).float()
+    result["critic/zero_adv_seq_ratio"] = zero_adv_seq.mean().item()
+    
     verl_tool_metrics = batch.non_tensor_batch.get("verl_tool_metrics", [])
     all_keys = []
     for x in verl_tool_metrics:

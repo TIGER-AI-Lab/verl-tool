@@ -145,6 +145,7 @@ PYTHONUNBUFFERED=1 python3 -m verl_tool.trainer.main_ppo \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.rollout_data_dir=$(pwd)/verl_step_records/$run_name \
+    trainer.validation_data_dir=$(pwd)/verl_step_records/$run_name-val \
     trainer.nnodes=$n_nodes \
     +trainer.remove_previous_ckpt_in_save=True \
     trainer.save_freq=10 \

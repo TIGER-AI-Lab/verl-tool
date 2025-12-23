@@ -4,8 +4,8 @@ enable_agent: True
 # Maximum number of turns (0 means no limit)
 max_turns: 1
 
-# Validation maximum number of turns (0 means no limit)
-val_max_turns: 1
+# Validation maximum number of turns (null means same as max_turns)
+val_max_turns: null
 
 # Minimum number of turns (0 means no limit)
 min_turns: 0

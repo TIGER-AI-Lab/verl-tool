@@ -34,6 +34,7 @@ acecoder = [
 ]
 torl = [
     "math-verify",
+    "latex2sympy2_extended[antlr4_9_3]",
 ]
 search_tool = [
     "google-api-python-client",

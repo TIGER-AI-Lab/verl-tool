@@ -18,9 +18,7 @@ import regex as re
 import numpy as np
 from pathlib import Path
 from verl import DataProto
-from .reward_score import _default_compute_score
-from .reward_score.math_eval import compute_score as torl_compute_score
-from .reward_score.math_eval import score_single
+from .reward_score.eval_lcb import eval_lcb
 from verl.workers.reward_manager import register
 import torch
 from collections import defaultdict
@@ -55,7 +53,7 @@ def extract_answer(text, mode='math'):
     if mode == 'math':
         return extract_box_contents(text)
     elif mode == 'lcb_code':
-        start_idx = text.rfind('```python')
+        start_idx = text.rfind('```python') # find the last code block
         if start_idx != -1:
             end_idx = text.find('```', start_idx+len('```python'))
             if end_idx != -1:
@@ -74,8 +72,30 @@ def extract_answer(text, mode='math'):
     else:
         raise ValueError(f"Unsupported mode: {mode}")
     
-@register("torl")
-class ToRLRewardManager:
+    
+def code_rl_compute_score(
+    problem_id,
+    difficulty,
+    generation,
+    test_cases,
+    starter_code,
+    timeout=10
+):
+    """Compute the reward score for a given code generation."""
+    resp = eval_lcb(
+        problem_id=problem_id,
+        difficulty=difficulty,
+        generation=generation,
+        test_cases=test_cases,
+        starter_code=starter_code,
+        timeout=timeout
+    )
+    is_correct = resp['correctness']
+    other_details = resp
+    return is_correct, other_details
+    
+@register("code_rl")
+class CodeRLRewardManager:
     """The reward manager.
     """
     name="torl"
@@ -83,67 +103,9 @@ class ToRLRewardManager:
     def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key='data_source', **kwargs) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
-        # self.compute_score = compute_score if compute_score else _default_compute_score
-        # self.compute_score = torl_compute_score
-        self.compute_score = score_single
+        self.compute_score = code_rl_compute_score
         self.reward_fn_key = reward_fn_key
-        self.step = None
-        self.add_format_think_penalty = False # -0.5 if not begines with <think> and end with </think>
-        self.add_format_answer_penalty = False # -0.5 if not having <answer> </answer>
-        self.add_valid_action_penalty = False # -0.25 if num turns > 0 not action not valid
-        self.add_unfinished_traj_penalty = False # -0.25 if the traj is not finished
-        self.add_no_tool_interact_penalty = False # -0.25 if the traj's num turn is 0, no interaction at all
-        self.add_code_exec_penalty = False # -0.25 if the execution has an error.
 
-    def add_additional_penalties(self, response: str, data_i, scores_i: dict):
-        # 1.4 format penalty
-        if self.add_format_think_penalty:
-            match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
-            if not match or not response.startswith("<think>") or response.count("<think>") != 1 or response.count("</think>") != 1:
-                scores_i['score'] -= 0.5
-                scores_i['think_format_penalty'] = 1
-            else:
-                scores_i['think_format_penalty'] = 0
-        if self.add_format_answer_penalty:
-            match = re.search(r"<answer>(.*?)</answer>", response, re.DOTALL)
-            if not match or not response.endswith("</answer>") or response.count("<answer>") != 1 or response.count("</answer>") != 1:
-                scores_i['score'] -= 0.5
-                scores_i['answer_format_penalty'] = 1
-            else:
-                scores_i['answer_format_penalty'] = 0
-        if "turns_stats" in data_i.non_tensor_batch:
-            if self.add_valid_action_penalty:
-                num_turn = data_i.non_tensor_batch["turns_stats"]
-                num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
-                if num_valid_action < num_turn:
-                    scores_i['score'] -= 0.25
-                    scores_i['valid_action_penalty'] = 1
-                else:
-                    scores_i['valid_action_penalty'] = 0
-            if self.add_unfinished_traj_penalty:
-                is_active = data_i.non_tensor_batch["active_mask"]
-                if is_active:
-                    scores_i['score'] -= 0.25
-                    scores_i['unfinished_traj_penalty'] = 1
-                else:
-                    scores_i['unfinished_traj_penalty'] = 0
-            if self.add_no_tool_interact_penalty:
-                num_valid_action = data_i.non_tensor_batch["valid_action_stats"]
-                if num_valid_action == 0:
-                    scores_i['score'] -= 0.25
-                    scores_i['no_tool_interact_penalty'] = 1
-                else:
-                    scores_i['no_tool_interact_penalty'] = 0
-            if self.add_code_exec_penalty:
-                keywords = ["ERROR:\nTraceback", "Execution timed out"]
-                if any(keyword in response for keyword in keywords):
-                    scores_i['score'] -= 0.25
-                    scores_i['exec_error'] = 1
-                else:
-                    scores_i['exec_error'] = 0
-        
-        return scores_i
-    
     def __call__(self, data: DataProto, return_dict=False):
         """We will expand this function gradually based on the available datasets"""
         # check the last step index
@@ -180,25 +142,25 @@ class ToRLRewardManager:
             prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
             response_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
 
-            ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
-
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
-
-            extra_info = data_item.non_tensor_batch.get('extra_info', None)
-            extracted_answer = extract_answer(response_str, mode='math')
+            ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
+            test_cases = data_item.non_tensor_batch['reward_model']['test_cases']
+            difficulty = data_item.non_tensor_batch['reward_model'].get('difficulty', '')
+            starter_code = data_item.non_tensor_batch['reward_model'].get('starter_code', '') or ''
             
-            torl_score = self.compute_score(
-                response_str,
-                ground_truth,
-            ) # 1 or -1
-            if isinstance(torl_score, bool):
-                torl_score = 1.0 if torl_score else -1.0
-            score['accuracy'] = 1. if torl_score > 0 else 0.
-            score['score'] = torl_score
-            score['has_answer'] = 1. if extracted_answer else 0.
-
-            # add additional penalty
-            score = self.add_additional_penalties(response_str, data_item, score)      
+            answer = extract_answer(response_str, mode='lcb_code')
+            
+            is_correct, other_details = self.compute_score(
+                problem_id=data_item.non_tensor_batch['extra_info']['problem_id'],
+                difficulty=difficulty,
+                generation=answer,
+                test_cases=test_cases,
+                starter_code=starter_code,
+                timeout=25 # should be around 25
+            )
+            score['accuracy'] = 1.0 if is_correct else 0.0
+            score['score'] = score['accuracy']
+            score['has_answer'] = 1. if answer.strip() != "" else 0.
 
             if score['accuracy'] > 0:
                 reward_extra_info['correct_response_length'].append(valid_response_length)

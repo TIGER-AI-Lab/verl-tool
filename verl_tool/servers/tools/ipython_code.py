@@ -12,7 +12,7 @@ from .utils.ipython_tool import call_python_script_with_ipython, remove_kernel
 logger = logging.getLogger(__name__)
 
 # Timeout for code execution in seconds
-TIMEOUT = 10
+TIMEOUT = 20
 PRE_IMPORT_LIBS = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(6*10**5)\n\n"
 
 def check_forbidden_imports(code: str) -> bool:

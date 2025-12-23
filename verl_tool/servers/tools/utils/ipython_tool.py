@@ -7,6 +7,7 @@ import sys
 import os
 import site
 import asyncio
+import shutil
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
 from collections import OrderedDict
@@ -15,7 +16,7 @@ import logging
 from IPython.terminal.interactiveshell import TerminalInteractiveShell, InteractiveShell
 from pathlib import Path
 import ray
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
 from traitlets.config import Config
 
 import signal
@@ -69,7 +70,12 @@ class KernelActor:
     A Ray actor that owns a single IPython shell in its own process.
     """
 
-    def __init__(self):
+    def __init__(self, request_id: str):
+        self.base_dir = Path(str(Path.cwd()))
+        self.work_dir = self.base_dir / "tmp" / "kernels" / request_id
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(self.work_dir)
+        
         c = Config()
         c.HistoryManager.enabled = False
         shell = InteractiveShell.instance(colors='NoColor', config=c)
@@ -154,8 +160,13 @@ class KernelActor:
         output = output.replace(site_packages_dir, "/lib/python3.10/site-packages").rstrip(' \n')
         return output if output else "Script executed successfully (no output)", success
 
-    def reset(self):
+    def reset(self, request_id: Optional[str] = None) -> None:
         """Optional: clear namespace if you want."""
+        if self.work_dir.exists():
+            shutil.rmtree(self.work_dir, ignore_errors=True)
+        self.work_dir = self.base_dir / "tmp" / "kernels" / (request_id or "default")
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(self.work_dir)
         try:
             if hasattr(self.shell, "user_ns"):
                 self.shell.user_ns.clear()
@@ -218,17 +229,17 @@ class KernelManager:
             logger.info(f"Cache MISS for request_id={request_id}, creating new KernelActor")
             if self.available_actors:
                 actor = self.available_actors.pop()
-                future = actor.reset.remote()
+                future = actor.reset.remote(request_id=request_id)
                 ray.get(future)
             else:
                 if len(self.actor_cache) + len(self.available_actors) < self.max_actors:
-                    actor = KernelActor.remote()
+                    actor = KernelActor.remote(request_id=request_id)
                 else:
                     # wait for an available actor to be recycled
                     while not self.available_actors:
                         time.sleep(0.5)
                     actor = self.available_actors.pop()
-                    future = actor.reset.remote()
+                    future = actor.reset.remote(request_id=request_id)
                     ray.get(future)
             
             self.actor_cache[request_id] = actor
@@ -243,21 +254,62 @@ class KernelManager:
             "kernel_ids": list(self.actor_cache.keys()),
             "manager_id": self.manager_id,
         }
-    
-    def remove_kernel(self, request_id: str) -> bool:
-        """Remove a specific kernel."""
+        
+    def _is_actor_healthy(self, actor, timeout_s: float = 0.5) -> bool:
+        """Actor responds to a quick ping => healthy enough to recycle."""
+        try:
+            ray.get(actor.get_actor_id.remote(), timeout=timeout_s)
+            return True
+        except (RayActorError, RayTaskError, GetTimeoutError):
+            return False
+        except Exception:
+            return False
+
+    def remove_kernel(self, request_id: str, hard_remove: bool = False) -> bool:
+        """
+        Remove kernel from active cache.
+        - hard_remove=True: never recycle; just kill (best-effort).
+        - hard_remove=False: try recycle if healthy; else kill+drop.
+        Returns True if it was present in cache and removed from cache; False otherwise.
+        """
         with self.cache_lock:
             actor = self.actor_cache.pop(request_id, None)
-            if actor is not None:
-                try:
-                    ray.get(actor.reset.remote())
-                    self.available_actors.append(actor)
-                    logger.debug(f"Removed kernel for request_id={request_id}")
-                    return True
-                except Exception as e:
-                    logger.warning(f"Error killing actor {request_id}: {e}")
-                    return False
-            return False
+            if actor is None:
+                return False
+
+        # Hard remove: don't recycle, just kill best-effort.
+        if hard_remove:
+            try:
+                ray.kill(actor, no_restart=True)
+                logger.debug(f"Hard-removed kernel (request_id={request_id})")
+            except Exception as e:
+                logger.debug(f"Hard-remove kill failed/already dead (request_id={request_id}): {e}")
+            return True
+
+        # Soft remove: recycle if possible.
+        if not self._is_actor_healthy(actor, timeout_s=0.5):
+            # dead or stuck -> drop
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass
+            logger.info(f"Kernel actor unhealthy; dropped (request_id={request_id})")
+            return True
+
+        # Actor healthy: try reset; if reset fails, drop.
+        try:
+            ray.get(actor.reset.remote(), timeout=2.0)
+            with self.cache_lock:
+                self.available_actors.append(actor)
+            logger.debug(f"Kernel recycled (request_id={request_id})")
+        except Exception as e:
+            logger.warning(f"Reset failed; dropping actor (request_id={request_id}): {e}")
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass
+
+        return True
     
     def cleanup_all(self) -> None:
         """Kill all actors and clear the cache."""
@@ -335,19 +387,20 @@ async def call_python_script_with_ipython_async(
         try:
             # Execute on the kernel actor with timeout
             future = actor.execute.remote(script, max_output_size, timeout)
-            result = ray.get(future, timeout=timeout + 120)
+            result = ray.get(future, timeout=timeout + 10)
             return result
-        except GetTimeoutError:
-            logger.warning(f"Execution timeout for request_id={request_id}")
+        except Exception as e:
+            logger.exception(f"Error during script execution for request_id={request_id}: {e}")
             # Kill the timed-out actor and remove from cache
-            try:
-                ray.kill(actor)
-            except Exception as e:
-                logger.warning(f"Error killing actor on timeout: {e}")
-            
-            future = manager.remove_kernel.remote(request_id)
+            future = manager.remove_kernel.remote(request_id, hard_remove=True)
             ray.get(future)
-            return f"Execution timeout after {timeout} seconds", False
+            
+            if isinstance(e, GetTimeoutError):
+                logger.warning(f"Execution timeout for request_id={request_id}")
+                return f"Execution timeout after {timeout} seconds", False
+            else:
+                logger.error(f"Execution error for request_id={request_id}: {e}")
+                return f"Execution error: {str(e)}", False
 
     output, success = await loop.run_in_executor(None, _run)
     

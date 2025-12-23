@@ -75,7 +75,7 @@ async def on_request_end(session, trace_config_ctx, params):
 class AgentActorConfig:
     enable_agent: bool=True
     max_turns: int=0
-    val_max_turns: int=0
+    val_max_turns: int=None
     max_start_length: int=None
     max_prompt_length: int=None
     max_response_length: int=None
@@ -99,7 +99,7 @@ class AgentActorConfig:
     rollout_mode: str="async" # "sync" or "async"
     mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
-    tool_call_timeout: int=None # Timeout for tool calls in async rollout.
+    tool_call_timeout: int=30 # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=1 # Maximum number of retries for tool calls in async rollout.
     max_concurrent_trajectories: int=1024 # Maximum number of concurrent trajectories globally for async rollout for all agent workers. If None, no limit is applied.
     
@@ -199,7 +199,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             cls.max_action_length = cls.agent_config.max_action_length
             cls.max_obs_length = cls.agent_config.max_obs_length if cls.agent_config.max_obs_length is not None else 512
             cls.max_turns = cls.agent_config.max_turns if cls.agent_config.max_turns > 0 else 10
-            cls.val_max_turns = cls.agent_config.val_max_turns if cls.agent_config.val_max_turns > 0 else cls.agent_config.max_turns
+            cls.val_max_turns = cls.agent_config.val_max_turns if (cls.agent_config.val_max_turns and cls.agent_config.val_max_turns > 0) else cls.agent_config.max_turns
             cls.logprobs = cls.agent_config.logprobs
             cls.session_limit = cls.agent_config.max_concurrent_trajectories
             
@@ -783,9 +783,11 @@ class VerlToolAgentLoop(AgentLoopBase):
                     verl_tool_metrics[f"tool_avg_{key}"] = np.mean([float(info["metrics"][key]) for info in stats_dict["tool_interact_info"] if key in info["metrics"]])
                 except Exception as e:
                     logger.warning(f"Failed to compute mean for tool metric {key}: {e}")
-        # additional per-turn logp
-        for i, logp in enumerate(stats_dict["action_logps"]):
-            verl_tool_metrics[f"turn_{i+1}_action_logp"] = logp
+        
+        if self.logprobs:
+            # additional per-turn logp
+            for i, logp in enumerate(stats_dict["action_logps"]):
+                verl_tool_metrics[f"turn_{i+1}_action_logp"] = logp
         
         multi_modal_output = {}
         if running_image_data is not None:
