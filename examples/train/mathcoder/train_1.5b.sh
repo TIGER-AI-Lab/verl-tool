@@ -1,4 +1,4 @@
-set -x
+16set -x
 train_data=[$(pwd)/data/mathcoder/code_train.parquet,\
 $(pwd)/data/mathcoder/math_train.parquet]
 val_data=[$(pwd)/data/mathcoder/code_test.parquet,\
