@@ -565,7 +565,6 @@ class VerlToolAgentLoop(AgentLoopBase):
             # send generated action to tool server
             if do_action and not is_last_step:
                 extra_fields = kwargs.get("extra_info", {}).copy()
-                extra_fields = {}
                 if encoded_image_data is not None:
                     extra_fields["images"] = encoded_image_data
                 if encoded_audio_data is not None:
@@ -746,6 +745,7 @@ class VerlToolAgentLoop(AgentLoopBase):
                 logger.info(f"Masking the whole response for traj_id={request_id} due to void trajectory (no valid action or no final answer). valid_action={stats_dict['valid_action']}, has_answer={has_answer}")
             
         verl_tool_metrics = {
+            "use_tool": float(use_tool),
             "num_turns": stats_dict["num_turns"],
             "empty_responses": stats_dict["empty_responses"],
             "valid_action": stats_dict["valid_action"],
@@ -805,4 +805,5 @@ class VerlToolAgentLoop(AgentLoopBase):
             metrics=metrics,
             extra_fields={"tool_interact_info": stats_dict.get("tool_interact_info", []), "traj_stop_reason": traj_stop_reason, "verl_tool_metrics": verl_tool_metrics},
         )
+        logger.debug(f"Agent loop output for traj_id={request_id}: response_length={len(output.response_ids)}, metrics={verl_tool_metrics}")
         return output

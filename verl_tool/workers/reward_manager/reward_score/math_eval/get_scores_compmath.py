@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sys
+import ray
 from typing import List, Optional
 import numpy as np
 
@@ -195,7 +196,38 @@ def is_int_string(s: str) -> bool:
     except (ValueError, AttributeError):
         return False
 
+# extraction patterns (same as before)
+pattern1 = r"\\boxed\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}"
+pattern2 = r"\*\*(.*?)\*\*"
+pattern3 = r"\\\[\n(.*?)\n\\\]"
+pattern4 = r'is \\\((.*?)\\\)'
+pattern5 = r"\\\[\\n(.*?)\\n\\\]"
 
+pattern1_re = re.compile(pattern1, re.DOTALL)
+pattern2_re = re.compile(pattern2, re.DOTALL)
+pattern3_re = re.compile(pattern3, re.DOTALL)
+pattern4_re = re.compile(pattern4, re.DOTALL)
+pattern5_re = re.compile(pattern5, re.DOTALL)
+
+patterns = [pattern1_re, pattern2_re, pattern3_re, pattern4_re, pattern5_re]
+
+@ray.remote
+def math_equal_remote(a: str, b: str) -> bool:
+    return math_equal(a, b)
+
+def math_equal_with_timeout_ray(a: str, b: str, timeout_s: float = 30) -> bool:
+    ref = math_equal_remote.remote(a, b)
+    try:
+        return ray.get(ref, timeout=timeout_s)
+    except ray.exceptions.GetTimeoutError:
+        print(f"math_equal timeout for answers: {a[-50:]} vs {b[-50:]}")
+        # important: try to cancel so it doesn't keep running forever
+        ray.cancel(ref, force=True)
+        return False
+    except Exception:
+        ray.cancel(ref, force=True)
+        return False
+    
 def score_single(pred_output: str, gold: str) -> bool:
     """
     Score one prediction against one gold answer.
@@ -203,42 +235,18 @@ def score_single(pred_output: str, gold: str) -> bool:
     gold: gold answer (string)
     returns: True if correct else False
     """
-    # extraction patterns (same as before)
-    pattern1 = r"\\boxed\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}"
-    pattern2 = r"\*\*(.*?)\*\*"
-    pattern3 = r"\\\[\n(.*?)\n\\\]"
-    pattern4 = r'is \\\((.*?)\\\)'
-    pattern5 = r"\\\[\\n(.*?)\\n\\\]"
-
-    pattern1_re = re.compile(pattern1, re.DOTALL)
-    pattern2_re = re.compile(pattern2, re.DOTALL)
-    pattern3_re = re.compile(pattern3, re.DOTALL)
-    pattern4_re = re.compile(pattern4, re.DOTALL)
-    pattern5_re = re.compile(pattern5, re.DOTALL)
-
-    matches1 = pattern1_re.findall(pred_output)
-    matches2 = pattern2_re.findall(pred_output)
-    matches3 = pattern3_re.findall(pred_output)
-    matches4 = pattern4_re.findall(pred_output)
-    matches5 = pattern5_re.findall(pred_output)
-
-    if len(matches1) >= 1:
-        extracted_answer = matches1[-1]
-    elif len(matches2) >= 1:
-        extracted_answer = matches2[-1]
-    elif len(matches3) >= 1:
-        extracted_answer = matches3[-1]
-    elif len(matches4) >= 1:
-        extracted_answer = matches4[-1]
-    elif len(matches5) >= 1:
-        extracted_answer = matches5[-1]
+    for p in patterns:
+        matches = p.findall(pred_output)
+        if len(matches) >= 1:
+            extracted_answer = matches[-1]
+            break
     else:
         extracted_answer = pred_output
 
     if gold is None:
         return False
 
-    if math_equal(extracted_answer, gold):
+    if math_equal_with_timeout_ray(extracted_answer, gold, timeout_s=30):
         return True
     
     extracted_answer = math_answer_cleaning(extracted_answer)
@@ -247,7 +255,7 @@ def score_single(pred_output: str, gold: str) -> bool:
     if is_int_string(gold):
         return gold == extracted_answer
 
-    if math_equal(extracted_answer, gold):
+    if math_equal_with_timeout_ray(extracted_answer, gold):
         return True
     if round_number(extracted_answer) == round_number(gold):
         return True

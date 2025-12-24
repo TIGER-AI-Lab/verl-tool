@@ -490,13 +490,12 @@ class AgentLoopWorker:
                 return wrapper
 
         tasks = []
+        run_agent_loop_task = semaphore_wrapper(self._run_agent_loop)
         for i in range(len(batch)):
             kwargs = {k: v[i] for k, v in batch.non_tensor_batch.items()}
-            tasks.append(asyncio.create_task(semaphore_wrapper(self._run_agent_loop)(sampling_params, trajectory_info[i], **kwargs)))
+            tasks.append(asyncio.create_task(run_agent_loop_task(sampling_params, trajectory_info[i], **kwargs)))
         # outputs = await asyncio.gather(*tasks)
-        print(f"Agent Worker {self.name} launching {len(tasks)} tasks...")
         outputs = await tqdm.gather(*tasks, desc=f"Agent Worker {self.name} Looping", total=len(tasks))
-        print(f"Agent Worker {self.name} finished {len(tasks)} tasks.")
         output = self._postprocess(outputs)
         return output
 
