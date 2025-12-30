@@ -27,12 +27,23 @@ def main(
     records_folder: str = "verl_step_records/acetoolreason-fsdp-agent-models_atr_v2.3_math_rl_with_tool_stage2_32k-grpo-n8-b128-t1.0-lr1e-6-v2-math-rl-with-tool-stage3-40k",
     train_dataset_path: str = "data/math_rl/train_tool_stage_3.parquet",
     is_tool_used: bool = True,
+    max_step_records_to_read: int = None,
+    filter_too_hard: bool = False,
+    easy_acc_threshold: float = 0.9,
 ):
     records_folder = Path(records_folder)
     dataset = datasets.load_dataset("parquet", data_files={"train": train_dataset_path})["train"]
     all_records = []
     record_files = list(records_folder.glob("*.jsonl"))
+    if is_tool_used:
+        output_path = Path(train_dataset_path).parent / (Path(train_dataset_path).stem + "_filtered_by_tir.parquet")
+    else:
+        output_path = Path(train_dataset_path).parent / (Path(train_dataset_path).stem + "_filtered_by_no_tool.parquet")
     for record_file in tqdm(record_files, desc="Loading record files"):
+        step_idx = int(record_file.stem)
+        if max_step_records_to_read is not None and step_idx > max_step_records_to_read:
+            print(f"Skipping record file {record_file} with step index {step_idx} > {max_step_records_to_read}")
+            continue
         with record_file.open("r") as f:
             for line in f:
                 all_records.append(json.loads(line))
@@ -85,8 +96,8 @@ def main(
     
     # remove those problems in original dataset that are too easy
     # acc >= 0.9
-    easy_problems = {problem for problem, stats in problem_acc_map.items() if (stats["correct"] / stats["total"] >= 0.9)}
-    print(f"Number of easy problems (accuracy >= 0.9): {len(easy_problems)}")
+    easy_problems = {problem for problem, stats in problem_acc_map.items() if (stats["correct"] / stats["total"] >= easy_acc_threshold)}
+    print(f"Number of easy problems (accuracy >= {easy_acc_threshold:.1f}): {len(easy_problems)}")
     
     def filter_easy_problems(example):
         problem = example['prompt'][1]['content'].strip()
@@ -94,10 +105,21 @@ def main(
     filtered_dataset = dataset.filter(filter_easy_problems)
     print(f"Original dataset size: {len(dataset)}")
     print(f"Filtered dataset size: {len(filtered_dataset)}")
+    
+    if filter_too_hard:
+        # also filter too hard problems (acc <= 0.1)
+        hard_problems = {problem for problem, stats in problem_acc_map.items() if (stats["correct"] / stats["total"] == 0)}
+        print(f"Number of hard problems (accuracy == 0): {len(hard_problems)}")
+        def filter_hard_problems(example):
+            problem = example['prompt'][1]['content'].strip()
+            return problem not in hard_problems
+        filtered_dataset = filtered_dataset.filter(filter_hard_problems)
+        print(f"Dataset size after filtering too hard problems: {len(filtered_dataset)}")
+    
     if is_tool_used:
-        output_path = Path(train_dataset_path).parent / (Path(train_dataset_path).stem + "_filtered_by_tir.parquet")
+        output_path = Path(train_dataset_path).parent / (Path(train_dataset_path).stem + f"_filtered_by_tir_{easy_acc_threshold}.parquet")
     else:
-        output_path = Path(train_dataset_path).parent / (Path(train_dataset_path).stem + "_filtered_by_no_tool.parquet")
+        output_path = Path(train_dataset_path).parent / (Path(train_dataset_path).stem + f"_filtered_by_no_tool_{easy_acc_threshold}.parquet")
     filtered_dataset.to_parquet(output_path)
     print(f"Filtered dataset saved to {output_path}")
     
@@ -110,12 +132,12 @@ if __name__ == "__main__":
 # With Tool Stage 1
 python scripts/filter_too_easy_prompts.py \
     --records_folder verl_step_records/acetoolreason-fsdp-agent-models_atr_8b_9e-6_v2.3_sft_5epoch-grpo-n8-b128-t1.0-lr1e-6-v2-math-rl-with-tool-stage1-24k \
-    --train_dataset_path data/math_rl/train_tool_stage_1.parquet --is_tool_used True
+    --train_dataset_path data/math_rl/train_tool_stage_1.parquet --is_tool_used True  --easy_acc_threshold 0.9
 
 # With Tool Stage 2
 python scripts/filter_too_easy_prompts.py \
     --records_folder verl_step_records/acetoolreason-fsdp-agent-models_atr_v2.3_math_rl_with_tool_stage1_24k-grpo-n8-b128-t1.0-lr2e-6-v2-math-rl-with-tool-stage2-32k \
-    --train_dataset_path data/math_rl/train_tool_stage_2.parquet --is_tool_used True
+    --train_dataset_path data/math_rl/train_tool_stage_2.parquet --is_tool_used True --easy_acc_threshold 0.9
     
 # With Tool Stage 3
 python scripts/filter_too_easy_prompts.py \
@@ -140,11 +162,11 @@ python scripts/filter_too_easy_prompts.py \
     
 # Code RL mix
 python scripts/filter_too_easy_prompts.py \
-    --records_folder verl_step_records/acetoolreason-fsdp-agent-models_atr_8b_9e-6_v2.3_sft_5epoch-grpo-n8-b128-t1.0-lr1e-6-code-rl-mix-tool-32k \
-    --train_dataset_path data/code_rl/train_no_tool_problems.parquet --is_tool_used False
+    --records_folder verl_step_records/acetoolreason-fsdp-agent-models_atr_8b_9e-6_v2.3_sft_5epoch-grpo-n8-b128-t1.0-lr4e-6-code-rl-mix-tool-32k \
+    --train_dataset_path data/code_rl/train_no_tool_problems.parquet --is_tool_used False --max_step_records_to_read 70 --filter_too_hard True
 
 python scripts/filter_too_easy_prompts.py \
-    --records_folder verl_step_records/acetoolreason-fsdp-agent-models_atr_8b_9e-6_v2.3_sft_5epoch-grpo-n8-b128-t1.0-lr1e-6-code-rl-mix-tool-32k \
-    --train_dataset_path data/code_rl/train_tool_problems.parquet --is_tool_used True
+    --records_folder verl_step_records/acetoolreason-fsdp-agent-models_atr_8b_9e-6_v2.3_sft_5epoch-grpo-n8-b128-t1.0-lr4e-6-code-rl-mix-tool-32k \
+    --train_dataset_path data/code_rl/train_tool_problems.parquet --is_tool_used True --max_step_records_to_read 70 --filter_too_hard True
 
 """

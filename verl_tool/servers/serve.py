@@ -318,6 +318,7 @@ def create_router_app(worker_base_urls: List[str]) -> FastAPI:
         """
         Proxy handler that forwards requests to backend workers.
         """
+        start_time = time.time()
         method = request.method
         query_params = dict(request.query_params)
         body_bytes = await request.body()
@@ -405,6 +406,8 @@ def create_router_app(worker_base_urls: List[str]) -> FastAPI:
             k: v for k, v in response.headers.items()
             if k.lower() not in HOP_BY_HOP_HEADERS
         }
+        end_time = time.time()
+        # print(f"[ROUTER] {method} {full_path} -> worker {worker_idx} took {end_time - start_time:.2f} seconds") # for debug
 
         return Response(
             status_code=response.status_code,
@@ -596,7 +599,8 @@ def main(
         log_interval: Interval for logging statistics in seconds
         uvi_workers: Number of uvicorn worker processes
     """
-    # Configure logging
+    max_concurrent_requests += 16  # buffer for safety
+    # Configure logging to log_level
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     logging.basicConfig(
         level=numeric_level,
@@ -732,7 +736,7 @@ def main(
         logger.info(f"[MAIN] Starting router on {host}:{port} with {router_workers} workers")
 
         uvicorn.run(
-            "verl_tool.servers.serve:router_factory",  # <--- 注意这里
+            "verl_tool.servers.serve:router_factory",  # <--- factory import string
             host=host,
             port=port,
             log_level=log_level,
@@ -742,7 +746,7 @@ def main(
             timeout_keep_alive=30,
             backlog=ROUTER_BACKLOG,
             workers=router_workers,
-            factory=True,  # <--- 关键！告诉 uvicorn 这是一个工厂函数
+            factory=True,  # <--- important for factory function
         )
         
     except KeyboardInterrupt:

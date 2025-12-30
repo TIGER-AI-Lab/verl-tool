@@ -677,7 +677,14 @@ class AgentLoopWorker:
                     non_tensor_batch=non_tensor_batch,
                     meta_info={"global_steps": trajectory["step"], "validate": trajectory["validate"]},
                 )
-                result = await self.reward_manager_worker.compute_score.remote(data)
+                result = self.reward_manager_worker.compute_score.remote(data)
+                try:
+                    result = ray.get(result, timeout=300)
+                    result['reward_extra_info']['timeout'] = 0.0
+                except ray.exceptions.GetTimeoutError:
+                    logger.warning("RewardManagerWorker compute_score timeout, set reward_score to 0.0")
+                    result = {"reward_score": -1.0, "reward_extra_info": {"timeout": 1.0}}
+                
                 output.reward_score = result["reward_score"]
                 output.extra_fields["reward_extra_info"] = result["reward_extra_info"]
                 
@@ -741,7 +748,7 @@ class AgentLoopWorker:
         reward_extra_keys = list(reward_extra_infos[0].keys())
         reward_extra_keys.sort()
         for key in reward_extra_keys:
-            non_tensor_batch[key] = np.array([info[key] for info in reward_extra_infos])
+            non_tensor_batch[key] = np.array([info.get(key) for info in reward_extra_infos])
 
         # Add multi_modal_inputs to non_tensor_batch if any samples have them
         multi_modal_inputs_list = [input.multi_modal_inputs for input in inputs]

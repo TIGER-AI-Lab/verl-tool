@@ -7,50 +7,6 @@ from verl.trainer.ppo.metric_utils import compute_data_metrics as verl_compute_d
 from verl.trainer.ppo.metric_utils import bootstrap_metric, calc_maj_val
 from functools import partial
 from collections import defaultdict
-def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str, Any]:
-    """
-    Computes various metrics from a batch of data for PPO training.
-
-    This function calculates metrics related to scores, rewards, advantages, returns, values,
-    and sequence lengths from a batch of data. It provides statistical information (mean, max, min)
-    for each metric category.
-
-    Args:
-        batch: A DataProto object containing batch data with token-level scores, rewards, advantages, etc.
-        use_critic: Whether to include critic-specific metrics. Defaults to True.
-
-    Returns:
-        A dictionary of metrics including:
-            - critic/score/mean, max, min: Statistics about sequence scores
-            - critic/rewards/mean, max, min: Statistics about sequence rewards
-            - critic/advantages/mean, max, min: Statistics about advantages
-            - critic/returns/mean, max, min: Statistics about returns
-            - critic/values/mean, max, min: Statistics about critic values (if use_critic=True)
-            - critic/vf_explained_var: Explained variance of the value function (if use_critic=True)
-            - response_length/mean, max, min, clip_ratio: Statistics about response lengths
-            - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
-            - num_turns/mean, max, min: Statistics about the number of multi-turn conversations
-    """
-    result = verl_compute_data_metrics(batch, use_critic)
-    
-    # compute zero-advantage seq ratio
-    advantages = batch.batch["advantages"]
-    response_mask = batch.batch["response_mask"].bool()
-    masked_adv = advantages * response_mask
-    zero_adv_seq = (masked_adv.sum(dim=1) == 0).float()
-    result["critic/zero_adv_seq_ratio"] = zero_adv_seq.mean().item()
-    
-    verl_tool_metrics = batch.non_tensor_batch.get("verl_tool_metrics", [])
-    all_keys = []
-    for x in verl_tool_metrics:
-        all_keys.extend(list(x.keys()))
-    all_keys = set(all_keys)
-    for key in all_keys:
-        values = np.array([float(m[key]) for m in verl_tool_metrics if key in m])
-        result[f"verl_tool/{key}/mean"] = values.mean()
-        result[f"verl_tool/{key}/max"] = values.max()
-        result[f"verl_tool/{key}/min"] = values.min()
-    return result
 
 def process_validation_metrics(
     data_sources: list[str], sample_uids: list[str], infos_dict: dict[str, list[Any]], seed: int = 42
@@ -165,3 +121,65 @@ def process_validation_metrics(
                 data_src2var2metric2val[data_source][var_name][metric_name] = np.mean(uid_vals)
 
     return data_src2var2metric2val
+
+
+def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str, Any]:
+    """
+    Computes various metrics from a batch of data for PPO training.
+
+    This function calculates metrics related to scores, rewards, advantages, returns, values,
+    and sequence lengths from a batch of data. It provides statistical information (mean, max, min)
+    for each metric category.
+
+    Args:
+        batch: A DataProto object containing batch data with token-level scores, rewards, advantages, etc.
+        use_critic: Whether to include critic-specific metrics. Defaults to True.
+
+    Returns:
+        A dictionary of metrics including:
+            - critic/score/mean, max, min: Statistics about sequence scores
+            - critic/rewards/mean, max, min: Statistics about sequence rewards
+            - critic/advantages/mean, max, min: Statistics about advantages
+            - critic/returns/mean, max, min: Statistics about returns
+            - critic/values/mean, max, min: Statistics about critic values (if use_critic=True)
+            - critic/vf_explained_var: Explained variance of the value function (if use_critic=True)
+            - response_length/mean, max, min, clip_ratio: Statistics about response lengths
+            - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
+            - num_turns/mean, max, min: Statistics about the number of multi-turn conversations
+    """
+    result = verl_compute_data_metrics(batch, use_critic)
+    
+    # compute zero-advantage seq ratio
+    advantages = batch.batch["advantages"]
+    response_mask = batch.batch["response_mask"].bool()
+    masked_adv = advantages * response_mask
+    zero_adv_seq = (masked_adv.sum(dim=1) == 0).float()
+    result["critic/zero_adv_seq_ratio"] = zero_adv_seq.mean().item()
+    
+    verl_tool_metrics = batch.non_tensor_batch.get("verl_tool_metrics", [])
+    all_keys = []
+    for x in verl_tool_metrics:
+        all_keys.extend(list(x.keys()))
+    all_keys = set(all_keys)
+    for key in all_keys:
+        values = np.array([float(m[key]) for m in verl_tool_metrics if key in m])
+        result[f"verl_tool/{key}/mean"] = values.mean()
+        result[f"verl_tool/{key}/max"] = values.max()
+        result[f"verl_tool/{key}/min"] = values.min()
+    
+    # add reward extra info metrics
+    reward_extra_infos = batch.non_tensor_batch.get("reward_extra_info", [])
+    data_sources = batch.non_tensor_batch.get("data_source", [])
+    sample_uids = batch.non_tensor_batch.get("uid", [])
+    reward_extra_info_metrics = process_validation_metrics(
+        data_sources=data_sources,
+        sample_uids=sample_uids,
+        infos_dict={k: [info.get(k, None) for info in reward_extra_infos] for k in reward_extra_infos[0].keys()} if reward_extra_infos is not None else {},
+        seed=42,
+    )
+    for data_source, var2metric in reward_extra_info_metrics.items():
+        for var_name, metric in var2metric.items():
+            for metric_name, metric_val in metric.items():
+                result[f"reward_extra_info/{data_source}/{var_name}/{metric_name}"] = metric_val
+    return result
+

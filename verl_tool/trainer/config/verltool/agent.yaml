@@ -86,4 +86,4 @@ mask_overlong_loss: False
 max_concurrent_trajectories: 1024
 
 # tool call timeout in seconds
-tool_call_timeout: 30
+tool_call_timeout: null

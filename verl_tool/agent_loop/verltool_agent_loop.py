@@ -43,6 +43,7 @@ CONTROL_CHAR_RE = re.compile(
     r'[\x00-\x08\x0B\x0C\x0E-\x1F]'
 )
 MAX_OBS_LENGTH = 100000  # maximum observation length to send back to the tool server
+DEFAULT_TOOL_CALL_TIMEOUT = 180  # default timeout for tool calls in seconds
 
 async def on_connection_queued_start(session, trace_config_ctx, params):
     if hasattr(trace_config_ctx, 'trace_request_ctx') and trace_config_ctx.trace_request_ctx is not None:
@@ -99,7 +100,7 @@ class AgentActorConfig:
     rollout_mode: str="async" # "sync" or "async"
     mask_overlong_loss: bool=False # whether to mask the overlong trajectory to not train on it
     enable_tqdm: bool=True # Whether to enable tqdm for async rollout.
-    tool_call_timeout: int=30 # Timeout for tool calls in async rollout.
+    tool_call_timeout: int=DEFAULT_TOOL_CALL_TIMEOUT # Timeout for tool calls in async rollout.
     tool_call_max_retries: int=1 # Maximum number of retries for tool calls in async rollout.
     max_concurrent_trajectories: int=1024 # Maximum number of concurrent trajectories globally for async rollout for all agent workers. If None, no limit is applied.
     
@@ -202,6 +203,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             cls.val_max_turns = cls.agent_config.val_max_turns if (cls.agent_config.val_max_turns and cls.agent_config.val_max_turns > 0) else cls.agent_config.max_turns
             cls.logprobs = cls.agent_config.logprobs
             cls.session_limit = cls.agent_config.max_concurrent_trajectories
+            cls.agent_config.tool_call_timeout = cls.agent_config.tool_call_timeout or DEFAULT_TOOL_CALL_TIMEOUT
             
             # for multimodal processing
             cls.qwen_image_placeholder = "<|vision_start|><|image_pad|><|vision_end|>"
