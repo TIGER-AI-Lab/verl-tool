@@ -170,7 +170,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             if cls.agent_config.action_stop_tokens is not None:
                 if os.path.exists(cls.agent_config.action_stop_tokens):
                     with open(cls.agent_config.action_stop_tokens, 'r') as f:
-                        cls.action_stop_tokens = [x for x in f.read().split(',') if x]
+                        cls.action_stop_tokens = [x.strip() for x in f.read().split(',') if x.strip()]
                     logger.info(f"Using action stop tokens: {cls.action_stop_tokens}")
                 else:
                     raise ValueError(f"action_stop_tokens file not found: {cls.agent_config.action_stop_tokens}")
