@@ -802,9 +802,11 @@ class VerlToolAgentLoop(AgentLoopBase):
             response_mask = response_mask[:cut_index]
             response_logprobs = response_logprobs[:cut_index]
 
-        # 保证图片与 token 一一对应，防止 Qwen3-VL 等模型在 tokens/features 数量不一致时报错。
-        # 这里只统计最终会送进模型的 token（prompt_ids + 截断后的 response_ids），
-        # 并以 <|vision_start|> 的出现次数近似为可用图片段数量。
+        # Keep image features aligned with tokens to avoid tokens/features mismatch
+        # errors in models such as Qwen3-VL.
+        # Count only the tokens that will actually be fed to the model
+        # (prompt_ids + truncated response_ids), and approximate available image
+        # segments by counting contiguous token: <|vision_start|>
         if running_image_data is not None:
             full_ids = prompt_ids + response_ids
             vision_start_id = self.tokenizer.convert_tokens_to_ids("<|vision_start|>")
