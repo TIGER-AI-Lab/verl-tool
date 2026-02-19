@@ -170,7 +170,7 @@ class VerlToolAgentLoop(AgentLoopBase):
             if cls.agent_config.action_stop_tokens is not None:
                 if os.path.exists(cls.agent_config.action_stop_tokens):
                     with open(cls.agent_config.action_stop_tokens, 'r') as f:
-                        cls.action_stop_tokens = [x for x in f.read().split(',') if x]
+                        cls.action_stop_tokens = [x.strip() for x in f.read().split(',') if x.strip()]
                     logger.info(f"Using action stop tokens: {cls.action_stop_tokens}")
                 else:
                     raise ValueError(f"action_stop_tokens file not found: {cls.agent_config.action_stop_tokens}")
@@ -785,6 +785,34 @@ class VerlToolAgentLoop(AgentLoopBase):
         # additional per-turn logp
         for i, logp in enumerate(stats_dict["action_logps"]):
             verl_tool_metrics[f"turn_{i+1}_action_logp"] = logp
+        
+        # Safely truncate final response so that we do not cut through multimodal placeholder tokens.
+        # Here we treat `cut_index` as "the first index to be dropped", so the last kept index is `cut_index - 1`.
+        if len(response_ids) > self.response_length:
+            cut_index = self.response_length
+            last_keep = cut_index - 1
+            if last_keep >= 0 and response_ids[last_keep] in self.non_truncate_token_ids:
+                # Step backwards over a contiguous block of placeholder tokens so that
+                # we either keep the whole block (if it is fully within the limit) or
+                # drop it entirely when it would otherwise be partially kept.
+                while last_keep >= 0 and response_ids[last_keep] in self.non_truncate_token_ids:
+                    last_keep -= 1
+                cut_index = last_keep + 1
+            response_ids = response_ids[:cut_index]
+            response_mask = response_mask[:cut_index]
+            response_logprobs = response_logprobs[:cut_index]
+
+        # Keep image features aligned with tokens to avoid tokens/features mismatch
+        # errors in models such as Qwen3-VL.
+        # Count only the tokens that will actually be fed to the model
+        # (prompt_ids + truncated response_ids), and approximate available image
+        # segments by counting contiguous token: <|vision_start|>
+        if running_image_data is not None:
+            full_ids = prompt_ids + response_ids
+            vision_start_id = self.tokenizer.convert_tokens_to_ids("<|vision_start|>")
+            num_visual_segments = full_ids.count(vision_start_id)
+            if len(running_image_data) > num_visual_segments:
+                running_image_data = running_image_data[:num_visual_segments]
         
         multi_modal_output = {}
         if running_image_data is not None:
