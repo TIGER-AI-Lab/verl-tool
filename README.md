@@ -27,7 +27,7 @@ VerlTool: A unified and easy-to-extend tool-agent training framework based on ve
 
 
 ## News
-+ [2026/03/01] 🏆 Our paper has been accepted by [**ICLR 2026 Workshop**](https://openreview.net/group?id=ICLR.cc/2026/Workshop/LLA/Authors&referrer=%5BHomepage%5D(%2F))!
++ [2026/03/01] 🏆 Our paper has been accepted by [**ICLR 2026 Lifelong Agents Workshop**](https://openreview.net/group?id=ICLR.cc/2026/Workshop/LLA/Authors&referrer=%5BHomepage%5D(%2F))!
 + [2025/11/10] VerlTool has re-organized its codebase to improve modularity and maintainability, supporting to the latest verl (`0.6.0`) and vllm (`0.11.0`) versions. Please refer to the [verl-tool v0.6.0.dev Upgrade Notes](/assets/docs/updates/verltool_v0.6.0_upgrade.md) for more details.
 + [2025/09/02] VerlTool's tech report is out! See on [Hugging Face Daily Paper](https://huggingface.co/papers/2509.01055)!
 + [2025/06/30] We reproduce Search-R1 with even higher performance on the same benchmarks! See [PR](https://github.com/TIGER-AI-Lab/verl-tool/pull/71) and training [README](examples/train/search_r1/README.md) for more details.
