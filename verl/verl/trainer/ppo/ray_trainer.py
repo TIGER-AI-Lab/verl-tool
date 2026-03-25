@@ -80,13 +80,26 @@ class ResourcePoolManager:
         For FSDP backend, uses max_colocate_count=1 to merge WorkerGroups.
         For Megatron backend, uses max_colocate_count>1 for different models.
         """
+        # Allow CPU-only execution by disabling GPU scheduling when requested.
+        # This is critical for local smoke tests on machines without CUDA/NPU.
+        use_gpu_env = os.getenv("VERL_USE_GPU", "").strip().lower()
+        if use_gpu_env in {"0", "false", "no"}:
+            use_gpu = False
+        elif use_gpu_env in {"1", "true", "yes"}:
+            use_gpu = True
+        else:
+            # Default behavior remains GPU scheduling, but allow CPU-only if the
+            # cluster exposes no GPUs/NPUs.
+            avail = ray.available_resources()
+            use_gpu = ("GPU" in avail and avail.get("GPU", 0) > 0) or ("NPU" in avail and avail.get("NPU", 0) > 0)
+
         for resource_pool_name, process_on_nodes in self.resource_pool_spec.items():
             # max_colocate_count means the number of WorkerGroups (i.e. processes) in each RayResourcePool
             # For FSDP backend, we recommend using max_colocate_count=1 that merge all WorkerGroups into one.
             # For Megatron backend, we recommend using max_colocate_count>1
             # that can utilize different WorkerGroup for differnt models
             resource_pool = RayResourcePool(
-                process_on_nodes=process_on_nodes, use_gpu=True, max_colocate_count=1, name_prefix=resource_pool_name
+                process_on_nodes=process_on_nodes, use_gpu=use_gpu, max_colocate_count=1, name_prefix=resource_pool_name
             )
             self.resource_pool_dict[resource_pool_name] = resource_pool
 
@@ -108,15 +121,18 @@ class ResourcePoolManager:
             for node, node_info in node_available_resources.items()
         }
 
-        # check total required gpus can be satisfied
-        total_available_gpus = sum(node_available_gpus.values())
-        total_required_gpus = sum(
-            [n_gpus for process_on_nodes in self.resource_pool_spec.values() for n_gpus in process_on_nodes]
-        )
-        if total_available_gpus < total_required_gpus:
-            raise ValueError(
-                f"Total available GPUs {total_available_gpus} is less than total desired GPUs {total_required_gpus}"
+        # check total required gpus can be satisfied (only when using GPU scheduling)
+        avail = ray.available_resources()
+        using_gpu = ("GPU" in avail and avail.get("GPU", 0) > 0) or ("NPU" in avail and avail.get("NPU", 0) > 0)
+        if using_gpu:
+            total_available_gpus = sum(node_available_gpus.values())
+            total_required_gpus = sum(
+                [n_gpus for process_on_nodes in self.resource_pool_spec.values() for n_gpus in process_on_nodes]
             )
+            if total_available_gpus < total_required_gpus:
+                raise ValueError(
+                    f"Total available GPUs {total_available_gpus} is less than total desired GPUs {total_required_gpus}"
+                )
 
 
 def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty="kl"):

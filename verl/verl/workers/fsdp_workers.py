@@ -146,8 +146,13 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         if not torch.distributed.is_initialized():
             rank = int(os.environ.get("RANK", 0))
             world_size = int(os.environ.get("WORLD_SIZE", 1))
+            backend = (
+                "cpu:gloo"
+                if get_device_name() == "cpu"
+                else f"cpu:gloo,{get_device_name()}:{get_nccl_backend()}"
+            )
             torch.distributed.init_process_group(
-                backend=f"cpu:gloo,{get_device_name()}:{get_nccl_backend()}",
+                backend=backend,
                 rank=rank,
                 world_size=world_size,
                 timeout=datetime.timedelta(seconds=self.config.get("nccl_timeout", 600)),
@@ -492,15 +497,18 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         cpu_offload = None if role == "actor" else CPUOffload(offload_params=True)
         fsdp_strategy = self.config.actor.strategy
         if fsdp_strategy == "fsdp":
+            is_cpu = get_device_name() == "cpu"
             actor_module_fsdp = FSDP(
                 actor_module,
                 cpu_offload=cpu_offload,
                 param_init_fn=init_fn,
                 auto_wrap_policy=auto_wrap_policy,
-                device_id=get_device_id(),
+                device_id=None if is_cpu else get_device_id(),
                 sharding_strategy=sharding_strategy,  # zero3
                 mixed_precision=mixed_precision,
-                sync_module_states=True,
+                # On CPU, `sync_module_states=True` can error because it expects GPU
+                # parameters/buffers when using FSDP initialization.
+                sync_module_states=False if is_cpu else True,
                 device_mesh=self.device_mesh,
                 use_orig_params=self.use_orig_params,
                 forward_prefetch=fsdp_config.get("forward_prefetch", False),

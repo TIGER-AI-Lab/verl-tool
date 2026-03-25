@@ -31,12 +31,18 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
-    AutoModelForVision2Seq,
     GenerationConfig,
     MistralForSequenceClassification,
     PretrainedConfig,
     PreTrainedModel,
 )
+
+# Some Transformers builds (or older versions) may not include vision seq2seq models.
+# `verl` can still run text-only PPO without this symbol.
+try:  # pragma: no cover
+    from transformers import AutoModelForVision2Seq  # type: ignore
+except Exception:  # pragma: no cover
+    AutoModelForVision2Seq = None  # type: ignore
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from verl.models.registry import ModelRegistry
@@ -590,7 +596,8 @@ def patch_valuehead_model(model) -> None:
     from types import MethodType
 
     from transformers import PreTrainedModel
-    from trl import AutoModelForCausalLMWithValueHead
+    # TRL moved value-head models under experimental PPO in newer versions.
+    from trl.experimental.ppo import AutoModelForCausalLMWithValueHead
 
     def tie_weights(self: "AutoModelForCausalLMWithValueHead") -> None:
         if isinstance(self.pretrained_model, PreTrainedModel):
@@ -617,14 +624,22 @@ def patch_valuehead_model(model) -> None:
 
 
 def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_code):
-    from transformers import AutoModelForCausalLM, AutoModelForTokenClassification, AutoModelForVision2Seq
+    from transformers import AutoModelForCausalLM, AutoModelForTokenClassification
+
+    try:  # pragma: no cover
+        from transformers import AutoModelForVision2Seq  # type: ignore
+    except Exception:  # pragma: no cover
+        AutoModelForVision2Seq = None  # type: ignore
+
+    # FlashAttention2 is GPU-only; avoid enabling it for CPU runs.
+    attn_impl = "flash_attention_2" if torch.cuda.is_available() else None
 
     try:
         model = AutoModelForTokenClassification.from_pretrained(
             pretrained_model_name_or_path=local_path,
             torch_dtype=torch_dtype,
             config=model_config,
-            attn_implementation="flash_attention_2",
+            attn_implementation=attn_impl,
             trust_remote_code=trust_remote_code,
         )
         return model
@@ -636,9 +651,13 @@ def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_cod
 
     assert is_trl_available()
 
-    from trl import AutoModelForCausalLMWithValueHead
+    try:  # pragma: no cover
+        from trl.experimental.ppo import AutoModelForCausalLMWithValueHead
+    except Exception:  # pragma: no cover
+        # Back-compat for older TRL versions.
+        from trl import AutoModelForCausalLMWithValueHead  # type: ignore
 
-    if type(model_config) in AutoModelForVision2Seq._model_mapping.keys():
+    if AutoModelForVision2Seq is not None and type(model_config) in AutoModelForVision2Seq._model_mapping.keys():
         module_class = AutoModelForVision2Seq
     else:
         module_class = AutoModelForCausalLM
@@ -646,7 +665,7 @@ def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_cod
         pretrained_model_name_or_path=local_path,
         torch_dtype=torch_dtype,
         config=model_config,
-        attn_implementation="flash_attention_2",
+        attn_implementation=attn_impl,
         trust_remote_code=trust_remote_code,
     )
     model = AutoModelForCausalLMWithValueHead.from_pretrained(ori_model)

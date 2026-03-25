@@ -25,15 +25,22 @@ import verl.experimental.agent_loop
 from verl_tool.agent_loop import AgentLoopManager
 import verl.trainer.ppo.ray_trainer
 from .reward import compute_reward, compute_reward_async
-from verl_tool.workers.rollout.vllm_rollout.vllm_async_server import VerlToolvLLMHttpServer
-import verl.workers.rollout.vllm_rollout.vllm_async_server
 from .metric_util import compute_data_metrics, process_validation_metrics
 verl.experimental.agent_loop.AgentLoopManager = AgentLoopManager
 verl.trainer.ppo.ray_trainer.compute_reward = compute_reward
 verl.trainer.ppo.ray_trainer.compute_reward_async = compute_reward_async
 verl.trainer.ppo.ray_trainer.compute_data_metrics = compute_data_metrics
 verl.trainer.ppo.ray_trainer.process_validation_metrics = process_validation_metrics
-verl.workers.rollout.vllm_rollout.vllm_async_server.vLLMHttpServer = VerlToolvLLMHttpServer
+
+# `vllm` is optional and often unavailable on macOS; allow PPO to run with the
+# non-vLLM (HF) rollout path by making this patch conditional.
+try:  # pragma: no cover
+    from verl_tool.workers.rollout.vllm_rollout.vllm_async_server import VerlToolvLLMHttpServer
+    import verl.workers.rollout.vllm_rollout.vllm_async_server
+
+    verl.workers.rollout.vllm_rollout.vllm_async_server.vLLMHttpServer = VerlToolvLLMHttpServer
+except Exception:  # pragma: no cover
+    pass
 ##############################################################################
 
 class AgentRayPPOTrainer(RayPPOTrainer):

@@ -1,9 +1,13 @@
 from .base import BaseTool, register_tool
 import regex as re
-import ray
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+try:
+    import ray  # optional; only needed if tools are Ray actors
+except Exception:  # pragma: no cover
+    ray = None
 
 
 @register_tool
@@ -34,7 +38,7 @@ class FinishTool(BaseTool):
         
         # Clean up environments for all tools
         for tool_type, tool in self.other_tools.items():
-            if isinstance(tool, ray.actor.ActorHandle):
+            if ray is not None and isinstance(tool, ray.actor.ActorHandle):
                 logger.debug(f"FinishTool: Deleting env for tool {tool_type} and trajectory_id={trajectory_id}, has_env={ray.get(tool.has_env.remote(trajectory_id))}, env_cache_keys={ray.get(tool.get_env_cache_keys.remote())}")
                 has_env = ray.get(tool.has_env.remote(trajectory_id))
                 if has_env:

@@ -8,7 +8,14 @@ dependencies = [
     "fire>=0.7.0",
     "psutils>=3.3.9",
     "timeout-decorator>=0.5.0",
-    "pyext",
+    # Tool server runtime deps (needed for the minimal runnable walkthrough)
+    "fastapi>=0.110",
+    "uvicorn>=0.22",
+    "pydantic>=2.0",
+    "httpx>=0.24",
+    "requests>=2.31.0",
+    "tqdm>=4.0",
+    "cachetools>=5.0",
     "qwen_vl_utils>=0.0.14",
     "qwen_omni_utils",
     "transformers",
@@ -34,6 +41,12 @@ acecoder = [
 ]
 torl = [
     "math-verify",
+]
+prime_code = [
+    # NOTE: pyext is unmaintained and breaks on Python >= 3.12 (e.g., uses inspect.getargspec).
+    # If you truly need prime-code reward scoring, use a patched fork:
+    #   pip install git+https://github.com/ShaohonChen/PyExt.git@py311support
+    "pyext; python_version < '3.12'",
 ]
 search_tool = [
     "google-api-python-client",

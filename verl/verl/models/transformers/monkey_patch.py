@@ -280,7 +280,10 @@ def apply_monkey_patch(
     )
 
     if is_trl_available():
-        from trl import AutoModelForCausalLMWithValueHead  # type: ignore
+        try:  # pragma: no cover
+            from trl.experimental.ppo import AutoModelForCausalLMWithValueHead  # type: ignore
+        except Exception:  # pragma: no cover
+            from trl import AutoModelForCausalLMWithValueHead  # type: ignore
 
         def state_dict(self, *args, **kwargs):
             return torch.nn.Module.state_dict(self, *args, **kwargs)

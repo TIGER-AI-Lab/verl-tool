@@ -677,7 +677,9 @@ class AsyncToolServer:
                 log_level=self.config.log_level,
                 access_log=False,  # Disable for performance
                 loop="uvloop" if self._has_uvloop() else "asyncio",
-                http="httptools",
+                # "httptools" is faster but requires the optional `httptools` wheel.
+                # Use h11 by default to keep the minimal tool-server runnable on fresh envs.
+                http="h11",
                 timeout_keep_alive=30,
                 backlog=8192, # Increase backlog for high concurrency
             )

@@ -1,0 +1,39 @@
+{
+  "trajectory_id": "test-agent-cd9a165ecc",
+  "task": "Compute (12345 * 6789) and return the exact integer.",
+  "tool_server_url": "http://127.0.0.1:62712/get_observation",
+  "openai_compat": {
+    "base_url": "http://localhost:11434",
+    "model": "llama3.2:3b"
+  },
+  "started_at_ms": 1774445422642,
+  "turns": [
+    {
+      "turn": 1,
+      "llm_output": "```python\nprint(12345 * 6789)\n```",
+      "llm_latency_ms": 589.9793749995297,
+      "tool_called": true,
+      "tool_type_assumed": "python_code",
+      "tool_latency_ms": 69.63354099934804,
+      "tool_response_valid": true,
+      "tool_response_done": false,
+      "tool_observation": "\n```result\n83810205\n```\n",
+      "tool_raw_response": {
+        "observations": [
+          "\n```result\n83810205\n```\n"
+        ],
+        "dones": [
+          false
+        ],
+        "valids": [
+          true
+        ],
+        "processing_time_ms": 55.64308166503906,
+        "queue_time_ms": 5.809783935546875
+      }
+    }
+  ],
+  "stop_reason": "final_answer_no_tool_call",
+  "final_answer": "The result of the computation (12345 * 6789) is 83810205.",
+  "finished_at_ms": 1774445424223
+}

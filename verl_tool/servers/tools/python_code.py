@@ -3,7 +3,6 @@ add-apt-repository ppa:deki/firejail
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get -y install firejail firejail-profiles
 """
-import ray
 from .base import BaseTool, register_tool
 import regex as re
 import subprocess
@@ -146,12 +145,24 @@ def clean_traceback(text, base_path):
 
 # Set resource limits directly
 def set_limits():
-    # Memory limit (8GB)
-    resource.setrlimit(resource.RLIMIT_AS, (4 * 1024**3, resource.RLIM_INFINITY))
-    # # Process limit
-    resource.setrlimit(resource.RLIMIT_CPU, (TIMEOUT, resource.RLIM_INFINITY))
-    # File size limit (500 MB)
-    resource.setrlimit(resource.RLIMIT_FSIZE, (500*1024*1024, 500*1024*1024))
+    # Some rlimits are not supported on all platforms (e.g. RLIMIT_AS on macOS).
+    # If a limit cannot be applied, we prefer to continue without it rather than
+    # failing the whole tool execution with "Exception occurred in preexec_fn".
+    try:
+        # Memory limit (4GB)
+        resource.setrlimit(resource.RLIMIT_AS, (4 * 1024**3, resource.RLIM_INFINITY))
+    except Exception:
+        pass
+    try:
+        # CPU time limit
+        resource.setrlimit(resource.RLIMIT_CPU, (TIMEOUT, resource.RLIM_INFINITY))
+    except Exception:
+        pass
+    try:
+        # File size limit (500 MB)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (500 * 1024 * 1024, 500 * 1024 * 1024))
+    except Exception:
+        pass
 
 def execute_python(code: Union[str, List[str]], timeout: int=TIMEOUT, stdin: Optional[str] = None, python_path: str = None, pre_import_lib: bool = False, use_firejail: bool=False) -> Tuple[str, bool]:
     """
@@ -281,7 +292,8 @@ class PythonCodeTool(BaseTool):
     done_without_error = False
     python_path = None
     pre_import_lib = True
-    use_firejail = True
+    # Firejail is typically Linux-only; default to enabled only when available.
+    use_firejail = filejail_command_exists
     
     def get_usage_inst(self):
         return "You are able to write and execute Python code securely inside a Firejail sandbox."

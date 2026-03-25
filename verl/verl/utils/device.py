@@ -83,7 +83,8 @@ def get_nccl_backend() -> str:
     elif is_npu_available:
         return "hccl"
     else:
-        raise RuntimeError(f"No available nccl backend found on device type {get_device_name()}.")
+        # CPU-only runs should use gloo for distributed collectives.
+        return "gloo"
 
 
 def set_expandable_segments(enable: bool) -> None:
