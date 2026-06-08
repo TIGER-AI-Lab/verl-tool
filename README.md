@@ -27,6 +27,7 @@ VerlTool: A unified and easy-to-extend tool-agent training framework based on ve
 
 
 ## News
++ [2026/06/01] 🏆 Our paper has been accepted by **TMLR 2026**!
 + [2026/03/01] 🏆 Our paper has been accepted by [**ICLR 2026 Lifelong Agents Workshop**](https://lifelongagent.github.io/)!
 + [2025/11/10] VerlTool has re-organized its codebase to improve modularity and maintainability, supporting to the latest verl (`0.6.0`) and vllm (`0.11.0`) versions. Please refer to the [verl-tool v0.6.0.dev Upgrade Notes](/assets/docs/updates/verltool_v0.6.0_upgrade.md) for more details.
 + [2025/09/02] VerlTool's tech report is out! See on [Hugging Face Daily Paper](https://huggingface.co/papers/2509.01055)!
