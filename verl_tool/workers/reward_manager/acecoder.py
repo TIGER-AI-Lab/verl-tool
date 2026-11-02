@@ -35,6 +35,7 @@ import json
 import subprocess
 import time
 import ast
+import tempfile
 from pathlib import Path
 from collections import Counter
 
@@ -130,6 +131,9 @@ class AceCoderRewardManager:
         self.add_no_tool_interact_penalty = False # -1.0 if the traj's num turn is 0, no interaction at all
         self.add_code_exec_penalty = False # -0.25 if the execution has an error.
         self.reward_fn_key = reward_fn_key
+        # scratch dir for the sample/result files of the acecoder eval script
+        self.record_dir = Path(kwargs.get("record_dir") or Path(tempfile.gettempdir()) / "acecoder_records")
+        self.record_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             from acecoder import evaluate_test_cases
